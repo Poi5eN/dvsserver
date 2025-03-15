@@ -11,7 +11,7 @@ const parentSchema = new mongoose.Schema({
   schoolId: { type: String, required: true },
   session: { type: String, required: true },
   studentIds: [
-    { type: mongoose.Schema.Types.ObjectId, ref: "NewStudentModel", required: true },
+    { type: String, ref: "NewStudentModel", required: true },
   ],
   studentNames: [String],
   fatherName: { type: String, required: [true, "Please Enter Father Name"] },

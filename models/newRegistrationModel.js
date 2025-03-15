@@ -1,88 +1,85 @@
 const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 
 const newRegistrationSchema = new mongoose.Schema({
+  registrationId: {
+    type: String,
+    required: true,
+    unique: true,
+    default: uuidv4, // Automatically generates a UUID
+  },
   schoolId: {
     type: String,
-    required: true
+    required: true,
+  },
+  session: {
+    type: String,
+    required: true,
   },
   studentFullName: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   guardianName: {
     type: String,
-    trim: true
+    trim: true,
   },
   registerClass: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   studentAddress: {
     type: String,
-    trim: true
+    trim: true,
   },
   mobileNumber: {
     type: Number,
-    trim: true
+    trim: true,
   },
   studentEmail: {
     type: String,
-    unique: true,
-    trim: true
+    trim: true, // Removed global unique constraint; handled per school/session in code
   },
   gender: {
     type: String,
-    enum: ['Male', 'Female', 'Other']
+    enum: ['Male', 'Female', 'Other'],
   },
   amount: {
     type: Number,
-    // required: true
   },
   registrationNumber: {
     type: String,
-    required: true,
-    unique: true,
-    length: 6
+    required: true, // Removed global unique constraint; handled per school in code
   },
-  // Additional fields:
   rollNo: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   admissionNo: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   fatherName: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   parentEmail: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   motherName: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   remarks: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
   transport: {
     type: String,
-    // required: true,
-    trim: true
+    trim: true,
   },
-  // Image fields (store Base64-encoded string data)
   studentPhoto: {
     public_id: { type: String, default: '' },
     url: { type: String, default: '' },
@@ -99,20 +96,22 @@ const newRegistrationSchema = new mongoose.Schema({
     public_id: { type: String, default: '' },
     url: { type: String, default: '' },
   },
-  approvalStatus: { type: String, default: 'pending', enum: ['pending', 'approved', 'rejected'] },
-  session: { type: String, required: true },
-  // createdBy field to track the user who created the registration
+  approvalStatus: {
+    type: String,
+    default: 'pending',
+    enum: ['pending', 'approved', 'rejected'],
+  },
   createdBy: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
   },
   createdAt: {
     type: Date,
-    default: Date.now()
-}
+    default: Date.now,
+  },
 }, {
-  timestamps: true  // Automatically adds createdAt and updatedAt fields
+  timestamps: true,
 });
 
 const NewRegistrationModel = mongoose.model('NewRegistration', newRegistrationSchema);

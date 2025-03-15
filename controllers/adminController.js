@@ -1316,6 +1316,18 @@ const generateAdmission = async (schoolId) => {
   );
 };
 
+
+
+function generateRandomPassword(length = 8) {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+  let password = "";
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * charset.length);
+    password += charset[randomIndex];
+  }
+  return password;
+}
+
 exports.createRegistration = async (req, res) => {
   try {
     const {
@@ -1336,68 +1348,51 @@ exports.createRegistration = async (req, res) => {
     } = req.body;
 
     const schoolId = req.user.schoolId;
+    const session = req.user.session;
     const createdBy = req.user._id;
 
-    // Enhanced validation
-    // if (!schoolId) return res.status(400).json({ success: false, message: "School ID is required." });
-    // if (!createdBy) return res.status(400).json({ success: false, message: "User ID is required." });
-    if (!studentFullName)
-      return res
-        .status(400)
-        .json({ success: false, message: "Student full name is required." });
-    // if (!guardianName) return res.status(400).json({ success: false, message: "Guardian name is required." });
-    // if (!registerClass) return res.status(400).json({ success: false, message: "Class is required." });
-    // if (!studentAddress) return res.status(400).json({ success: false, message: "Student address is required." });
-    if (!mobileNumber)
-      return res
-        .status(400)
-        .json({ success: false, message: "Mobile number is required." });
-    // if (!studentEmail) return res.status(400).json({ success: false, message: "Student email is required." });
-    // if (!gender) return res.status(400).json({ success: false, message: "Gender is required." });
-    // if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
-    // if (!motherName) return res.status(400).json({ success: false, message: "Mother's name is required." });
-    // if (!remarks) return res.status(400).json({ success: false, message: "Remarks are required." });
-    // if (!transport) return res.status(400).json({ success: false, message: "Transport details are required." });
-
-    // File uploads
-    const files = req.files || [];
-    const studentPhoto = files.find((f) => f.fieldname === "studentPhoto");
-    const motherPhoto = files.find((f) => f.fieldname === "motherPhoto");
-    const fatherPhoto = files.find((f) => f.fieldname === "fatherPhoto");
-    const guardianPhoto = files.find((f) => f.fieldname === "guardianPhoto");
-
-    // Check if registration exists
-    const registrationExist = await NewRegistrationModel.findOne({
-      studentEmail,
-      schoolId,
-    });
-    if (registrationExist) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Already registered in this school with this email!",
-        });
+    // Validation
+    if (!schoolId || !session) {
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
+    }
+    if (!studentFullName) {
+      return res.status(400).json({ success: false, message: "Student full name is required." });
+    }
+    if (!mobileNumber) {
+      return res.status(400).json({ success: false, message: "Mobile number is required." });
     }
 
-    // Generate admissionNo if not provided or empty
-    const finalAdmissionNo =
-      admissionNo && admissionNo.trim() !== ""
-        ? admissionNo
-        : await generateAdmission(schoolId);
+    const files = req.files || [];
+    const studentPhoto = files.find((f) => f.fieldname === "studentPhoto");
+    const fatherPhoto = files.find((f) => f.fieldname === "fatherPhoto");
+    const motherPhoto = files.find((f) => f.fieldname === "motherPhoto");
+    const guardianPhoto = files.find((f) => f.fieldname === "guardianPhoto");
 
-    // Generate unique registration number
-    const registrationNumber = await generateRegistrationNumber(schoolId);
+    // Check for existing registration
+    if (studentEmail) {
+      const registrationExist = await NewRegistrationModel.findOne({
+        studentEmail,
+        schoolId,
+        session,
+      });
+      if (registrationExist) {
+        return res.status(400).json({
+          success: false,
+          message: "Already registered with this email in this school and session!",
+        });
+      }
+    }
 
-    // MinIO Uploads
-    let studentPhotoResult = {},
-      fatherPhotoResult = {},
-      motherPhotoResult = {},
-      guardianPhotoResult = {};
+    // Generate admissionNo and registrationNumber
+    const finalAdmissionNo = admissionNo && admissionNo.trim() !== ""
+      ? admissionNo
+      : await generateAdmission(schoolId); // Assumes this function exists
+    const registrationNumber = await generateRegistrationNumber(schoolId); // Assumes this function exists
+
+    // Handle file uploads
+    let studentPhotoResult = {}, fatherPhotoResult = {}, motherPhotoResult = {}, guardianPhotoResult = {};
     if (studentPhoto) {
-      const fileKey = `registrations/student/${Date.now()}-${
-        studentPhoto.originalname
-      }`;
+      const fileKey = `registrations/student/${Date.now()}-${studentPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1409,9 +1404,7 @@ exports.createRegistration = async (req, res) => {
       studentPhotoResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherPhoto) {
-      const fileKey = `registrations/father/${Date.now()}-${
-        fatherPhoto.originalname
-      }`;
+      const fileKey = `registrations/father/${Date.now()}-${fatherPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1423,9 +1416,7 @@ exports.createRegistration = async (req, res) => {
       fatherPhotoResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherPhoto) {
-      const fileKey = `registrations/mother/${Date.now()}-${
-        motherPhoto.originalname
-      }`;
+      const fileKey = `registrations/mother/${Date.now()}-${motherPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1437,9 +1428,7 @@ exports.createRegistration = async (req, res) => {
       motherPhotoResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianPhoto) {
-      const fileKey = `registrations/guardian/${Date.now()}-${
-        guardianPhoto.originalname
-      }`;
+      const fileKey = `registrations/guardian/${Date.now()}-${guardianPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1454,6 +1443,7 @@ exports.createRegistration = async (req, res) => {
     // Create registration
     const registrationData = await NewRegistrationModel.create({
       schoolId,
+      session,
       studentFullName,
       guardianName,
       registerClass,
@@ -1462,7 +1452,6 @@ exports.createRegistration = async (req, res) => {
       studentEmail,
       gender,
       amount,
-      // rollNo,
       admissionNo: finalAdmissionNo,
       fatherName,
       parentEmail,
@@ -1471,29 +1460,19 @@ exports.createRegistration = async (req, res) => {
       transport,
       registrationNumber,
       createdBy,
-      approvalStatus: "approved",
+      approvalStatus: "pending", // Default to pending
       studentPhoto: studentPhotoResult.url ? studentPhotoResult : undefined,
       fatherPhoto: fatherPhotoResult.url ? fatherPhotoResult : undefined,
       motherPhoto: motherPhotoResult.url ? motherPhotoResult : undefined,
       guardianPhoto: guardianPhotoResult.url ? guardianPhotoResult : undefined,
     });
 
-    // Fetch school details for email branding
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
-      "schoolName image.url"
-    );
+    // Send confirmation email (reusing your design)
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
     const schoolName = schoolDetails?.schoolName || "Your School";
-    const schoolImageUrl =
-      schoolDetails?.image?.url ||
-      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg"; // Fallback image
-    const softwareLogoUrl =
-      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png"; // Digital Vidya Saarthi logo URL
+    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
-    // Log URLs for debugging
-    console.log("School Image URL:", schoolImageUrl);
-    console.log("Software Logo URL:", softwareLogoUrl);
-
-    // Send confirmation email with the gorgeous design
     const emailContent = `
       <!DOCTYPE html>
       <html>
@@ -1504,7 +1483,6 @@ exports.createRegistration = async (req, res) => {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
               <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
@@ -1512,7 +1490,6 @@ exports.createRegistration = async (req, res) => {
               <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your Learning Journey!</p>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
               <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
@@ -1520,14 +1497,14 @@ exports.createRegistration = async (req, res) => {
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Registration Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${registerClass}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Registration ID:</strong> ${registrationData.registrationId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${registerClass || 'N/A'}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Registration Number:</strong> ${registrationNumber}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
               </div>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Hang tight! We’re reviewing your details and will get back to you soon with the next steps.</p>
             </td>
           </tr>
-          <!-- Footer -->
           <tr>
             <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
               <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -1544,7 +1521,9 @@ exports.createRegistration = async (req, res) => {
       </body>
       </html>
     `;
-    await sendEmail(studentEmail, "Registration Confirmation", emailContent);
+    if (studentEmail) {
+      await sendEmail(studentEmail, "Registration Confirmation", emailContent);
+    }
 
     return res.status(201).json({
       success: true,
@@ -1554,7 +1533,7 @@ exports.createRegistration = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to create registration due to an error.",
+      message: "Failed to create registration",
       error: error.message,
     });
   }
@@ -1564,7 +1543,8 @@ exports.createBulkRegistrations = async (req, res) => {
   try {
     const registrations = req.body.registrations;
     const schoolId = req.user.schoolId;
-    const createdBy = req.user.userId;
+    const session = req.user.session;
+    const createdBy = req.user._id;
 
     if (!registrations || !Array.isArray(registrations)) {
       return res.status(400).json({
@@ -1572,14 +1552,12 @@ exports.createBulkRegistrations = async (req, res) => {
         message: "Invalid data format. Expected an array of registrations.",
       });
     }
-    if (!schoolId)
-      return res
-        .status(400)
-        .json({ success: false, message: "School ID is required." });
-    if (!createdBy)
-      return res
-        .status(400)
-        .json({ success: false, message: "User ID is required." });
+    if (!schoolId || !session) {
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
+    }
+    if (!createdBy) {
+      return res.status(400).json({ success: false, message: "User ID is required." });
+    }
 
     const createdRegistrations = [];
     const errors = [];
@@ -1594,48 +1572,37 @@ exports.createBulkRegistrations = async (req, res) => {
         studentEmail,
         gender,
         amount,
-        rollNo,
         admissionNo,
         fatherName,
+        parentEmail,
         motherName,
         remarks,
         transport,
       } = registration;
 
       try {
-        // Validation
         if (!studentFullName) throw new Error("Student full name is required.");
-        if (!guardianName) throw new Error("Guardian name is required.");
-        if (!registerClass) throw new Error("Class is required.");
-        if (!studentAddress) throw new Error("Student address is required.");
         if (!mobileNumber) throw new Error("Mobile number is required.");
-        if (!studentEmail) throw new Error("Student email is required.");
-        if (!gender) throw new Error("Gender is required.");
-        if (!amount) throw new Error("Amount is required.");
-        if (!rollNo) throw new Error("Roll number is required.");
-        if (!admissionNo) throw new Error("Admission number is required.");
-        if (!fatherName) throw new Error("Father's name is required.");
-        if (!motherName) throw new Error("Mother's name is required.");
-        if (!remarks) throw new Error("Remarks are required.");
-        if (!transport) throw new Error("Transport details are required.");
 
-        // Check existing registration
-        const registrationExist = await NewRegistrationModel.findOne({
-          mobileNumber,
-          schoolId,
-        });
-        if (registrationExist) {
-          throw new Error(
-            `Already registered with mobile number: ${mobileNumber}`
-          );
+        if (studentEmail) {
+          const registrationExist = await NewRegistrationModel.findOne({
+            studentEmail,
+            schoolId,
+            session,
+          });
+          if (registrationExist) {
+            throw new Error(`Already registered with email: ${studentEmail} in this school and session`);
+          }
         }
 
-        // Generate registration number
-        const registrationNumber = await generateRegistrationNumber();
+        const finalAdmissionNo = admissionNo && admissionNo.trim() !== ""
+          ? admissionNo
+          : await generateAdmission(schoolId);
+        const registrationNumber = await generateRegistrationNumber(schoolId);
 
-        // Note: Bulk typically doesn’t handle file uploads; assuming no photos for simplicity
         const registrationData = {
           schoolId,
+          session,
           studentFullName,
           guardianName,
           registerClass,
@@ -1644,39 +1611,46 @@ exports.createBulkRegistrations = async (req, res) => {
           studentEmail,
           gender,
           amount,
-          rollNo,
-          admissionNo,
+          admissionNo: finalAdmissionNo,
           fatherName,
+          parentEmail,
           motherName,
           remarks,
           transport,
           registrationNumber,
           createdBy,
+          approvalStatus: "pending",
         };
 
         createdRegistrations.push(registrationData);
       } catch (error) {
         errors.push({
-          mobileNumber: mobileNumber || "unknown",
+          studentEmail: studentEmail || mobileNumber || "unknown",
           error: error.message,
         });
       }
     }
 
     if (createdRegistrations.length > 0) {
-      await NewRegistrationModel.insertMany(createdRegistrations);
+      const insertedRegistrations = await NewRegistrationModel.insertMany(createdRegistrations);
+      // Optionally send emails here for each registration
+      res.status(201).json({
+        success: true,
+        message: "Bulk registrations processed successfully.",
+        createdRegistrations: insertedRegistrations,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "No valid registrations to process.",
+        errors,
+      });
     }
-
-    res.status(201).json({
-      success: true,
-      message: "Bulk registrations processed successfully.",
-      createdRegistrations,
-      errors: errors.length > 0 ? errors : undefined,
-    });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to process bulk registrations due to an error.",
+      message: "Failed to process bulk registrations",
       error: error.message,
     });
   }
@@ -1685,20 +1659,257 @@ exports.createBulkRegistrations = async (req, res) => {
 // Controller for fetching all registrations (GET)
 exports.getRegistrations = async (req, res) => {
   try {
-    const registrations = await NewRegistrationModel.find({
-      schoolId: req.user.schoolId,
-      ...req.sessionFilter,
-    });
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    return res.status(200).json({
+    if (!schoolId || !session) {
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
+    }
+
+    const {
+      registrationId,
+      registrationNumber,
+      studentEmail,
+      parentEmail,
+      mobileNumber,
+      class: registerClass,
+      gender,
+      status, // approvalStatus
+      fetchAll,
+      limit = 10,
+      page = 1,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = req.query;
+
+    let query = { schoolId, session };
+
+    if (registrationId) query.registrationId = registrationId;
+    if (registrationNumber) query.registrationNumber = registrationNumber;
+    if (studentEmail) query.studentEmail = studentEmail;
+    if (parentEmail) query.parentEmail = parentEmail;
+    if (mobileNumber) query.mobileNumber = Number(mobileNumber);
+    if (registerClass) query.registerClass = registerClass;
+    if (gender) query.gender = gender;
+    if (status) query.approvalStatus = status;
+
+    const skip = (page - 1) * limit;
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+    if (registrationId) {
+      const registration = await NewRegistrationModel.findOne(query).lean();
+      if (!registration) {
+        return res.status(404).json({ success: false, message: "Registration not found." });
+      }
+      return res.status(200).json({
+        success: true,
+        data: registration,
+      });
+    }
+
+    const registrations = await NewRegistrationModel.find(query)
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    const total = await NewRegistrationModel.countDocuments(query);
+
+    res.status(200).json({
       success: true,
-      message: "Registrations fetched successfully.",
       data: registrations,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to fetch registrations due to an error.",
+      message: "Failed to fetch registrations",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.updateRegistrationStatus = async (req, res) => {
+  try {
+    const { registrationId } = req.params;
+    const { status } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
+    }
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid status value. Use 'pending', 'approved', or 'rejected'." });
+    }
+
+    const registration = await NewRegistrationModel.findOneAndUpdate(
+      { registrationId, schoolId, session },
+      { approvalStatus: status },
+      { new: true }
+    );
+
+    if (!registration) {
+      return res.status(404).json({ success: false, message: "Registration not found." });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Registration status updated successfully.",
+      data: registration,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update registration status",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.admitRegistration = async (req, res) => {
+  try {
+    const { registrationId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const createdBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
+    }
+
+    const registration = await NewRegistrationModel.findOne({ registrationId, schoolId, session });
+    if (!registration) {
+      return res.status(404).json({ success: false, message: "Registration not found." });
+    }
+    if (registration.approvalStatus !== 'approved') {
+      return res.status(400).json({ success: false, message: "Registration must be approved to admit." });
+    }
+
+    // Check if student already exists
+    if (registration.studentEmail) {
+      const studentExist = await NewStudentModel.findOne({
+        email: registration.studentEmail,
+        schoolId,
+        session,
+      });
+      if (studentExist) {
+        return res.status(400).json({
+          success: false,
+          message: "Student with this email already exists in this school and session.",
+        });
+      }
+    }
+
+    // Generate passwords
+    const studentPassword = generateRandomPassword(); // Assumes this function exists
+    const parentPassword = generateRandomPassword();
+    const studentHashPassword = await hashPassword(studentPassword); // Assumes this function exists
+    const parentHashPassword = await hashPassword(parentPassword);
+
+    // Generate a unique admission number
+    const studentAdmissionNumber = await generateAdmissionNumber(schoolId, NewStudentModel);
+    const parentAdmissionNumber = await generateAdmissionNumber(schoolId, ParentModel);
+
+    // Create student
+    const studentData = await NewStudentModel.create({
+      schoolId,
+      session,
+      studentName: registration.studentFullName,
+      email: registration.studentEmail,
+      password: studentHashPassword,
+      gender: registration.gender,
+      address: registration.studentAddress,
+      contact: registration.mobileNumber,
+      class: registration.registerClass,
+      fatherName: registration.fatherName,
+      motherName: registration.motherName,
+      guardianName: registration.guardianName,
+      remarks: registration.remarks,
+      transport: registration.transport,
+      admissionNumber: studentAdmissionNumber,
+      studentImage: registration.studentPhoto,
+      fatherImage: registration.fatherPhoto,
+      motherImage: registration.motherPhoto,
+      guardianImage: registration.guardianPhoto,
+      approvalStatus: "approved",
+      createdBy,
+      joiningDate: new Date().toISOString().split('T')[0], // Current date
+      rollNo: registration.rollNo || ((await NewStudentModel.countDocuments({ schoolId, class: registration.registerClass })) + 1).toString(),
+      // Default or null fields
+      dateOfBirth: null,
+      section: null,
+      country: null,
+      subject: [],
+      religion: null,
+      caste: null,
+      nationality: null,
+      pincode: null,
+      state: null,
+      city: null,
+    });
+
+    // Create parent
+    const parentData = await ParentModel.create({
+      schoolId,
+      session,
+      studentIds: [studentData.studentId], // Using studentId (UUID) instead of _id
+      studentNames: [registration.studentFullName],
+      fatherName: registration.fatherName,
+      motherName: registration.motherName,
+      guardianName: registration.guardianName,
+      email: registration.parentEmail,
+      password: parentHashPassword,
+      contact: registration.mobileNumber ? registration.mobileNumber.toString() : null,
+      admissionNumber: parentAdmissionNumber,
+      createdBy,
+      parentImage: registration.fatherPhoto || registration.motherPhoto || registration.guardianPhoto,
+      fatherImage: registration.fatherPhoto,
+      motherImage: registration.motherPhoto,
+      guardianImage: registration.guardianPhoto,
+      // Default or null fields
+      income: null,
+      qualification: null,
+    });
+
+    // Link parent to student
+    studentData.parentId = parentData.parentId;
+    studentData.parentAdmissionNumber = parentData.admissionNumber;
+    await studentData.save();
+
+    // Send emails (simplified; reuse your email logic)
+    if (registration.studentEmail) {
+      await sendEmail(
+        registration.studentEmail,
+        "Admission Confirmation",
+        `Your admission is confirmed. Student ID: ${studentData.studentId}, Password: ${studentPassword}`
+      );
+    }
+    if (registration.parentEmail) {
+      await sendEmail(
+        registration.parentEmail,
+        "Parent Account Created",
+        `Your parent account is created. Parent ID: ${parentData.parentId}, Password: ${parentPassword}`
+      );
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Student and parent created successfully from registration.",
+      student: studentData,
+      parent: parentData,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to admit registration",
       error: error.message,
     });
   }
@@ -1766,30 +1977,33 @@ exports.getRegistrationByNumber = async (req, res) => {
 // EDIT REGISTRATION CODE
 exports.editRegistration = async (req, res) => {
   try {
-    const { registrationNumber } = req.params;
+    const { registrationId } = req.params;
     const updateData = req.body;
     const files = req.files || [];
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    const registration = await NewRegistrationModel.findOne({
-      registrationNumber,
-      schoolId: req.user.schoolId,
-    });
-    if (!registration) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Registration not found." });
+    if (!schoolId || !session) {
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
     }
 
-    // Handle file uploads if provided
+    const registration = await NewRegistrationModel.findOne({
+      registrationId,
+      schoolId,
+      session,
+    });
+    if (!registration) {
+      return res.status(404).json({ success: false, message: "Registration not found." });
+    }
+
+    // Handle file uploads
     const studentPhoto = files.find((f) => f.fieldname === "studentPhoto");
     const fatherPhoto = files.find((f) => f.fieldname === "fatherPhoto");
     const motherPhoto = files.find((f) => f.fieldname === "motherPhoto");
     const guardianPhoto = files.find((f) => f.fieldname === "guardianPhoto");
 
     if (studentPhoto) {
-      const fileKey = `registrations/student/${Date.now()}-${
-        studentPhoto.originalname
-      }`;
+      const fileKey = `registrations/student/${Date.now()}-${studentPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1801,9 +2015,7 @@ exports.editRegistration = async (req, res) => {
       updateData.studentPhoto = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherPhoto) {
-      const fileKey = `registrations/father/${Date.now()}-${
-        fatherPhoto.originalname
-      }`;
+      const fileKey = `registrations/father/${Date.now()}-${fatherPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1815,9 +2027,7 @@ exports.editRegistration = async (req, res) => {
       updateData.fatherPhoto = { public_id: fileKey, url: minioData.Location };
     }
     if (motherPhoto) {
-      const fileKey = `registrations/mother/${Date.now()}-${
-        motherPhoto.originalname
-      }`;
+      const fileKey = `registrations/mother/${Date.now()}-${motherPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1829,9 +2039,7 @@ exports.editRegistration = async (req, res) => {
       updateData.motherPhoto = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianPhoto) {
-      const fileKey = `registrations/guardian/${Date.now()}-${
-        guardianPhoto.originalname
-      }`;
+      const fileKey = `registrations/guardian/${Date.now()}-${guardianPhoto.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1840,15 +2048,12 @@ exports.editRegistration = async (req, res) => {
         ACL: "public-read",
       };
       const minioData = await s3.upload(params).promise();
-      updateData.guardianPhoto = {
-        public_id: fileKey,
-        url: minioData.Location,
-      };
+      updateData.guardianPhoto = { public_id: fileKey, url: minioData.Location };
     }
 
     const updatedRegistration = await NewRegistrationModel.findOneAndUpdate(
-      { registrationNumber, schoolId: req.user.schoolId },
-      { ...updateData, updatedBy: req.user.userId }, // Add updatedBy if needed
+      { registrationId, schoolId, session },
+      { ...updateData, updatedBy: req.user._id },
       { new: true }
     );
 
@@ -1860,7 +2065,7 @@ exports.editRegistration = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Failed to update registration due to an error.",
+      message: "Failed to update registration",
       error: error.message,
     });
   }
@@ -2265,7 +2470,7 @@ exports.createStudentParent = async (req, res) => {
       parentData = await ParentModel.create({
         schoolId,
         session,
-        studentIds: [studentData._id],
+        studentIds: [studentData.studentId], // Using studentId instead of _id
         studentNames: [studentFullName],
         fatherName: fatherName,
         motherName,
@@ -2319,15 +2524,18 @@ exports.createStudentParent = async (req, res) => {
     }
 
     if (parentData) {
+      // Change this line:
       studentData.parentId = parentData.parentId || parentExist.parentId;
       studentData.parentAdmissionNumber = parentAdmissionNumber || parentData.admissionNumber;
       await studentData.save();
+      
     } else {
       return res.status(500).json({
         success: false,
         message: "Parent creation failed due to an error.",
       });
     }
+    
 
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
     const schoolName = schoolDetails?.schoolName || "Your School";
@@ -2662,8 +2870,8 @@ exports.createBulkStudentParent = async (req, res) => {
           parentData = await ParentModel.findOneAndUpdate(
             { admissionNumber: parentAdmissionNumber, schoolId, session },
             {
-              $push: { studentIds: studentData._id },
-              studentNames: studentFullName,
+              $push: { studentIds: studentData.studentId }, // Using studentId instead of _id
+              $addToSet: { studentNames: studentFullName },
             },
             { new: true }
           );
@@ -2671,7 +2879,7 @@ exports.createBulkStudentParent = async (req, res) => {
           parentData = await ParentModel.create({
             schoolId,
             session,
-            studentIds: [studentData._id],
+            studentIds: [studentData.studentId], // Using studentId instead of _id
             studentNames: [studentFullName],
             fatherName: fatherName,
             motherName,
@@ -3196,7 +3404,6 @@ exports.editStudentParent = async (req, res) => {
   }
 };
 
-
 exports.getStudentParent = async (req, res) => {
   try {
     // Get schoolId and session from authenticated user
@@ -3220,8 +3427,10 @@ exports.getStudentParent = async (req, res) => {
       class: studentClass,
       section,
       gender,
-      fetchAllStudents, // New parameter
-      fetchAllParents,  // New parameter
+      status, // New parameter for filtering by status (active or deactivated)
+      fetchAllStudents,
+      fetchAllParents,
+      fetchParentsWithMultipleChildren,
       limit = 10,
       page = 1,
       sortBy = 'createdAt',
@@ -3239,11 +3448,13 @@ exports.getStudentParent = async (req, res) => {
     if (studentClass) studentQuery.class = studentClass;
     if (section) studentQuery.section = section;
     if (gender) studentQuery.gender = gender;
+    if (status) studentQuery.status = status; // Add status filter for students
 
     // Build parent query - use parentId field instead of _id
     if (parentId) parentQuery.parentId = parentId;
     if (parentAdmissionNumber) parentQuery.admissionNumber = parentAdmissionNumber;
     if (email) parentQuery.email = email;
+    if (status) parentQuery.status = status; // Add status filter for parents
 
     // Pagination
     const skip = (page - 1) * limit;
@@ -3268,7 +3479,8 @@ exports.getStudentParent = async (req, res) => {
         parentData = await ParentModel.findOne({ 
           parentId: student.parentId, 
           schoolId, 
-          session 
+          session,
+          ...(status ? { status } : {}) // Apply status filter if provided
         }).lean();
       }
       
@@ -3277,7 +3489,7 @@ exports.getStudentParent = async (req, res) => {
         parentDetails: parentData
       };
     }
-    // If specific parentId is provided, fetch only that parent
+    // If specific parentId is provided, fetch that parent with all children
     else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
       
@@ -3291,23 +3503,68 @@ exports.getStudentParent = async (req, res) => {
       const students = await NewStudentModel.find({
         parentId: parent.parentId,
         schoolId,
-        session
+        session,
+        ...(status ? { status } : {}) // Apply status filter if provided
       }).lean();
+      
+      // Check if parent has multiple children
+      const hasMultipleChildren = students.length > 1;
       
       responseData.parent = {
         ...parent,
-        studentDetails: students
+        studentDetails: students,
+        hasMultipleChildren: hasMultipleChildren,
+        totalChildren: students.length
       };
     }
-    // Fetch all students only (no filters)
-    else if (fetchAllStudents === 'true') {
-      const students = await NewStudentModel.find({ schoolId, session })
+    // Fetch all parents with multiple children
+    else if (fetchParentsWithMultipleChildren === 'true') {
+      const parents = await ParentModel.find({ schoolId, session, ...(status ? { status } : {}) })
         .sort(sort)
         .skip(skip)
         .limit(parseInt(limit))
         .lean();
 
-      const totalStudents = await NewStudentModel.countDocuments({ schoolId, session });
+      // Filter parents with multiple children and fetch their students
+      const parentsWithMultipleChildren = [];
+      for (const parent of parents) {
+        const students = await NewStudentModel.find({
+          parentId: parent.parentId,
+          schoolId,
+          session,
+          ...(status ? { status } : {}) // Apply status filter if provided
+        }).lean();
+        
+        if (students.length > 1) {
+          parentsWithMultipleChildren.push({
+            ...parent,
+            studentDetails: students,
+            totalChildren: students.length
+          });
+        }
+      }
+
+      const totalParentsWithMultiple = parentsWithMultipleChildren.length;
+
+      responseData.parentsWithMultipleChildren = {
+        data: parentsWithMultipleChildren.slice(skip, skip + parseInt(limit)),
+        pagination: {
+          total: totalParentsWithMultiple,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalParentsWithMultiple / limit),
+        },
+      };
+    }
+    // Fetch all students only (no filters)
+    else if (fetchAllStudents === 'true') {
+      const students = await NewStudentModel.find({ schoolId, session, ...(status ? { status } : {}) })
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean();
+
+      const totalStudents = await NewStudentModel.countDocuments({ schoolId, session, ...(status ? { status } : {}) });
 
       responseData.students = {
         data: students,
@@ -3321,13 +3578,13 @@ exports.getStudentParent = async (req, res) => {
     }
     // Fetch all parents only (no filters)
     else if (fetchAllParents === 'true') {
-      const parents = await ParentModel.find({ schoolId, session })
+      const parents = await ParentModel.find({ schoolId, session, ...(status ? { status } : {}) })
         .sort(sort)
         .skip(skip)
         .limit(parseInt(limit))
         .lean();
 
-      const totalParents = await ParentModel.countDocuments({ schoolId, session });
+      const totalParents = await ParentModel.countDocuments({ schoolId, session, ...(status ? { status } : {}) });
 
       responseData.parents = {
         data: parents,
@@ -3484,6 +3741,88 @@ exports.getStudentAndParent = async (req, res) => {
   }
 };
 
+
+exports.toggleStudentParentStatus = async (req, res) => {
+  try {
+    const studentId = req.params.studentId; // Using UUID as per your structure
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID (UUID) is required in the URL parameter.",
+      });
+    }
+
+    // Find the student
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found or does not belong to this school and session.",
+      });
+    }
+
+    // Toggle student status
+    const newStudentStatus = student.status === "active" ? "deactivated" : "active";
+
+    // Update student
+    const updatedStudent = await NewStudentModel.findOneAndUpdate(
+      { studentId, schoolId, session },
+      {
+        $set: {
+          status: newStudentStatus,
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    // If student has a parent, toggle parent's status as well
+    let updatedParent = null;
+    if (student.parentId) {
+      const parent = await ParentModel.findOne({ parentId: student.parentId, schoolId, session });
+      if (parent) {
+        const newParentStatus = parent.status === "active" ? "deactivated" : "active";
+        updatedParent = await ParentModel.findOneAndUpdate(
+          { parentId: student.parentId, schoolId, session },
+          {
+            $set: {
+              status: newParentStatus,
+              updatedBy,
+              updatedAt: new Date(),
+            },
+          },
+          { new: true, runValidators: true }
+        );
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Student and parent status toggled successfully to ${newStudentStatus}`,
+      student: updatedStudent,
+      parent: updatedParent || "No parent associated",
+    });
+  } catch (error) {
+    console.error("Error in toggleStudentParentStatus:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to toggle student and parent status",
+      error: error.message,
+    });
+  }
+};
+
 /**
  * Approve Admission
  * PATCH /approveAdmission/:studentId
@@ -3611,23 +3950,51 @@ exports.getStudentAndParent = async (req, res) => {
  */
 exports.approveAdmission = async (req, res) => {
   try {
-    const { studentId } = req.params;
-    const student = await NewStudentModel.findById(studentId);
+    const studentId = req.params.studentId; // Using UUID
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID (UUID) is required in the URL parameter.",
+      });
+    }
+
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found",
+        message: "Student not found or does not belong to this school and session.",
       });
     }
-    student.approvalStatus = "approved";
-    await student.save();
-    return res.status(200).json({
+
+    const updatedStudent = await NewStudentModel.findOneAndUpdate(
+      { studentId, schoolId, session },
+      {
+        $set: {
+          approvalStatus: "approved",
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
       success: true,
       message: "Admission approved successfully",
-      student,
+      student: updatedStudent,
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -3637,6 +4004,16 @@ exports.approveAdmission = async (req, res) => {
 exports.approveMultipleAdmissions = async (req, res) => {
   try {
     const { studentIds } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -3645,16 +4022,23 @@ exports.approveMultipleAdmissions = async (req, res) => {
     }
 
     const result = await NewStudentModel.updateMany(
-      { _id: { $in: studentIds }, approvalStatus: "pending" },
-      { $set: { approvalStatus: "approved" } }
+      { studentId: { $in: studentIds }, schoolId, session, approvalStatus: "pending" },
+      {
+        $set: {
+          approvalStatus: "approved",
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      }
     );
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      message: `${result.nModified} admissions approved successfully`,
+      message: `${result.modifiedCount} admissions approved successfully`,
+      modifiedCount: result.modifiedCount,
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -3668,16 +4052,29 @@ exports.approveMultipleAdmissions = async (req, res) => {
  */
 exports.getPendingAdmissions = async (req, res) => {
   try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
     const pendingAdmissions = await NewStudentModel.find({
+      schoolId,
+      session,
       approvalStatus: "pending",
-    });
-    return res.status(200).json({
+    }).lean();
+
+    res.status(200).json({
       success: true,
       message: "Pending admissions fetched successfully",
       data: pendingAdmissions,
     });
   } catch (error) {
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message,
     });
@@ -3736,80 +4133,71 @@ exports.getStudentsByClassSectionAdmin = async (req, res) => {
 
 exports.linkStudentToParent = async (req, res) => {
   try {
-    const { studentId, parentAdmissionNumber } = req.body;
+    const studentId = req.params.studentId; // Using UUID from URL params
+    const { parentAdmissionNumber } = req.body;
     const schoolId = req.user.schoolId;
-    const updatedBy = req.user._id; // Track who made the update (optional)
+    const session = req.user.session;
+    const updatedBy = req.user._id; // Track who made the update
 
     // Validation
-    if (!schoolId) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID is required from authenticated admin.",
-        });
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
     }
     if (!studentId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Student ID is required." });
+      return res.status(400).json({
+        success: false,
+        message: "Student ID (UUID) is required in the URL parameter.",
+      });
     }
     if (!parentAdmissionNumber) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Parent admission number is required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Parent admission number is required in the request body.",
+      });
     }
 
-    // Find the student
-    const student = await NewStudentModel.findOne({ _id: studentId, schoolId });
+    // Find the student using studentId (UUID)
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
     if (!student) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Student not found or does not belong to this school.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Student not found or does not belong to this school and session.",
+      });
     }
 
-    // Find the new parent
+    // Find the new parent using parentAdmissionNumber
     const newParent = await ParentModel.findOne({
       admissionNumber: parentAdmissionNumber,
       schoolId,
+      session,
     });
     if (!newParent) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: `Parent with admission number ${parentAdmissionNumber} not found in this school.`,
-        });
+      return res.status(404).json({
+        success: false,
+        message: `Parent with admission number ${parentAdmissionNumber} not found in this school and session.`,
+      });
     }
 
     // Check if the student is already linked to this parent
-    if (
-      student.parentId &&
-      student.parentId.toString() === newParent._id.toString()
-    ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Student is already linked to this parent.",
-        });
+    if (student.parentId && student.parentId.toString() === newParent.parentId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "Student is already linked to this parent.",
+      });
     }
 
     // If the student was previously linked to another parent, update the old parent's student list
     if (student.parentId) {
-      const oldParent = await ParentModel.findById(student.parentId);
+      const oldParent = await ParentModel.findOne({ parentId: student.parentId, schoolId, session });
       if (oldParent) {
         oldParent.studentIds = oldParent.studentIds.filter(
-          (id) => id.toString() !== studentId
+          (id) => id.toString() !== student._id.toString()
         );
         oldParent.studentNames = oldParent.studentNames.filter(
-          (name) => name !== student.fullName
+          (name) => name !== student.studentName
         );
         await oldParent.save();
       }
@@ -3817,32 +4205,40 @@ exports.linkStudentToParent = async (req, res) => {
 
     // Update the new parent's student list
     newParent.studentIds.push(student._id);
-    if (!newParent.studentNames.includes(student.fullName)) {
-      newParent.studentNames.push(student.fullName);
+    if (!newParent.studentNames.includes(student.studentName)) {
+      newParent.studentNames.push(student.studentName);
     }
+    newParent.updatedBy = updatedBy;
+    newParent.updatedAt = new Date();
     await newParent.save();
 
     // Update the student's parent details
-    student.parentId = newParent._id;
+    student.parentId = newParent.parentId;
     student.parentAdmissionNumber = parentAdmissionNumber;
+    student.updatedBy = updatedBy;
+    student.updatedAt = new Date();
     await student.save();
 
     res.status(200).json({
       success: true,
       message: "Student successfully linked to the new parent.",
       student: {
-        _id: student._id,
-        fullName: student.fullName,
+        studentId: student.studentId,
+        studentName: student.studentName,
         admissionNumber: student.admissionNumber,
         parentId: student.parentId,
         parentAdmissionNumber: student.parentAdmissionNumber,
+        updatedBy: student.updatedBy,
+        updatedAt: student.updatedAt,
       },
       parent: {
-        _id: newParent._id,
-        fullName: newParent.fullName,
+        parentId: newParent.parentId,
+        fatherName: newParent.fatherName,
         admissionNumber: newParent.admissionNumber,
         studentIds: newParent.studentIds,
         studentNames: newParent.studentNames,
+        updatedBy: newParent.updatedBy,
+        updatedAt: newParent.updatedAt,
       },
     });
   } catch (error) {
@@ -4191,99 +4587,183 @@ exports.getAllParentsWithChildren = async (req, res) => {
 
 exports.updateParent = async (req, res) => {
   try {
+    // Get parentId from URL parameters
+    const { parentId } = req.params;
     const { fatherName, motherName, parentEmail, parentContact } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const parentImageFile = req.file;
-
-    const parentData = await ParentModel.findOne({
-      schoolId: req.user.schoolId,
-      email: parentEmail,
-    });
-
-    if (!parentData) {
-      return res.status(404).json({
-        status: false,
-        message: "Parent Data is not found",
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
       });
     }
 
+    const parentData = await ParentModel.findOne({ parentId, schoolId, session });
+    if (!parentData) {
+      return res.status(404).json({
+        success: false,
+        message: "Parent not found or does not belong to this school and session.",
+      });
+    }
+
+    const parentImageFile = req.file;
+    let parentImageResult = parentData.parentImage;
+
     if (parentImageFile) {
-      const fileUri = getDataUri(parentImageFile);
-      const parentImageResult = await cloudinary.uploader.upload(
-        fileUri.content
-      );
-      parentData.parentImage = {
-        public_id: parentImageResult.public_id,
-        url: parentImageResult.secure_url,
+      if (parentData.parentImage.public_id) {
+        await s3.deleteObject({
+          Bucket: process.env.MINIO_BUCKET,
+          Key: parentData.parentImage.public_id,
+        }).promise();
+      }
+      const fileKey = `parents/${Date.now()}-${parentImageFile.originalname}`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: parentImageFile.buffer,
+        ContentType: parentImageFile.mimetype,
+        ACL: "public-read",
       };
+      const minioData = await s3.upload(params).promise();
+      parentImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    if (fatherName) {
-      parentData.fatherName = fatherName;
-    }
+    const updateFields = {
+      fatherName: fatherName || parentData.fatherName,
+      motherName: motherName || parentData.motherName,
+      contact: parentContact || parentData.contact,
+      email: parentEmail || parentData.email,
+      parentImage: parentImageResult.url ? parentImageResult : parentData.parentImage,
+      updatedBy,
+      updatedAt: new Date(),
+    };
 
-    if (motherName) {
-      parentData.motherName = motherName;
-    }
-
-    if (parentContact) {
-      parentData.parentContact = parentContact;
-    }
-
-    if (parentEmail) {
-      parentData.email = parentEmail;
-    }
-
-    const updatedParentData = await parentData.save();
+    const updatedParentData = await ParentModel.findOneAndUpdate(
+      { parentId, schoolId, session },
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
 
     res.status(200).json({
       success: true,
-      message: "Parent data is updated",
+      message: "Parent data updated successfully",
       updatedParentData,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Parent data is not updated due to error",
+      message: "Parent data not updated due to error",
       error: error.message,
     });
   }
 };
 
+
 exports.deactivateParent = async (req, res) => {
   try {
-    const { email } = req.body;
+    // Get parentId from URL parameters
+    const { parentId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const Parent = await ParentModel.findOneAndUpdate(
-      { schoolId: req.user.schoolId, email: email },
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const parent = await ParentModel.findOneAndUpdate(
+      { parentId, schoolId, session },
       {
         $set: {
-          parentStatus: "deactivated",
+          status: "deactivated",
+          updatedBy,
+          updatedAt: new Date(),
         },
       },
       { new: true }
     );
-    console.log(Parent);
-    if (!Parent) {
+
+    if (!parent) {
       return res.status(404).json({
         success: false,
-        message: "Record not found",
+        message: "Parent not found or does not belong to this school and session.",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Parent is deactivated",
-      Parent,
+      message: "Parent deactivated successfully",
+      parent,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Parent is not deactivated due to error",
+      message: "Parent not deactivated due to error",
       error: error.message,
     });
   }
 };
+
+exports.toggleParentStatus = async (req, res) => {
+  try {
+    // Get parentId from URL parameters
+    const { parentId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    // Find the parent based on parentId, schoolId, and session
+    const parent = await ParentModel.findOne({ parentId, schoolId, session });
+    if (!parent) {
+      return res.status(404).json({
+        success: false,
+        message: "Parent not found or does not belong to this school and session.",
+      });
+    }
+
+    // Toggle the parent's status between 'active' and 'deactivated'
+    const newStatus = parent.status === "active" ? "deactivated" : "active";
+
+    // Update the parent's status
+    const updatedParent = await ParentModel.findOneAndUpdate(
+      { parentId, schoolId, session },
+      {
+        $set: {
+          status: newStatus,
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Parent status updated to ${newStatus}`,
+      parent: updatedParent,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Parent status toggle failed due to error",
+      error: error.message,
+    });
+  }
+};
+
 
 exports.getAllParents = async (req, res) => {
   try {
@@ -4324,10 +4804,24 @@ exports.getAllParents = async (req, res) => {
 exports.bulkUpdateStudents = async (req, res) => {
   try {
     const {
-      studentIds, // Array of specific student IDs to update
+      studentIds, // Array of specific student UUIDs to update
       filters, // Filters like class, section, etc.
       updateFields, // Object containing fields to update
     } = req.body;
+    
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    console.log("Bulk Update Request Body:", req.body);
+    console.log("Authentication Details:", { schoolId, session, updatedBy });
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
 
     if (!updateFields || Object.keys(updateFields).length === 0) {
       return res.status(400).json({
@@ -4336,30 +4830,38 @@ exports.bulkUpdateStudents = async (req, res) => {
       });
     }
 
-    // Build the query based on provided filters and/or student IDs
-    let query = {
-      schoolId: req.user.schoolId,
-      status: "active",
-    };
+    // Build the query
+    let query = { schoolId, session, status: "active" };
 
-    // Add studentIds to query if provided
     if (studentIds && studentIds.length > 0) {
-      query._id = { $in: studentIds };
+      query.studentId = { $in: studentIds };
     }
 
-    // Add other filters if provided
     if (filters) {
       if (filters.class) query.class = filters.class;
       if (filters.section) query.section = filters.section;
-      // Add any other filters you want to support
+      if (filters.gender) query.gender = filters.gender;
+      // Add other filters as needed
     }
 
-    // Validate the update fields against the schema
+    console.log("Query to find students:", query);
+
+    // Check if any students match the query
+    const matchingStudents = await NewStudentModel.countDocuments(query);
+    console.log("Matching students count:", matchingStudents);
+    
+    if (matchingStudents === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No students found matching the criteria",
+      });
+    }
+
+    // Validate update fields
     const validUpdateFields = {};
     const studentSchema = NewStudentModel.schema;
 
     for (const [key, value] of Object.entries(updateFields)) {
-      // Handle nested fields (like udisePlusDetails)
       if (key.includes(".")) {
         const [parent, child] = key.split(".");
         if (studentSchema.path(`${parent}.${child}`)) {
@@ -4377,18 +4879,20 @@ exports.bulkUpdateStudents = async (req, res) => {
       });
     }
 
-    // Perform the bulk update
+    validUpdateFields.updatedBy = updatedBy;
+    validUpdateFields.updatedAt = new Date();
+
+    console.log("Valid fields to update:", validUpdateFields);
+
     const result = await NewStudentModel.updateMany(
       query,
       { $set: validUpdateFields },
-      {
-        runValidators: true,
-        multi: true,
-      }
+      { runValidators: true }
     );
 
-    // Get the updated students
-    const updatedStudents = await NewStudentModel.find(query);
+    console.log("Update result:", result);
+
+    const updatedStudents = await NewStudentModel.find(query).lean();
 
     res.status(200).json({
       success: true,
@@ -4451,78 +4955,150 @@ exports.getAllStudents = async (req, res) => {
 
 exports.deactivateStudent = async (req, res) => {
   try {
-    const { email } = req.body;
-    console.log(email);
-    const student = await NewStudentModel.findOne({
-      schoolId: req.user.schoolId,
-      email: email,
-    });
+    // Get studentId from URL parameters
+    const { studentId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    if (!student) {
-      return res.status(404).json({
+    if (!schoolId || !session) {
+      return res.status(400).json({
         success: false,
-        message: "Student data is not found",
+        message: "School ID and session are required from authenticated admin.",
       });
     }
 
-    const Student = await NewStudentModel.findOneAndUpdate(
-      { schoolId: req.user.schoolId, email: email },
-      {
-        $set: {
-          status: "deactivated",
-        },
-      },
-      { new: true }
-    );
-
-    const Parent = await ParentModel.findByIdAndUpdate(
-      { schoolId: req.user.schoolId, _id: student.parentId },
-      {
-        $set: {
-          status: "deactivated",
-        },
-      },
-      { new: true }
-    );
-
-    if (!Student || !Parent) {
-      return res.status(400).json({
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    if (!student) {
+      return res.status(404).json({
         success: false,
-        message: "Student and Parent is not deactivated due to error",
+        message: "Student not found or does not belong to this school and session.",
       });
+    }
+
+    const updatedStudent = await NewStudentModel.findOneAndUpdate(
+      { studentId, schoolId, session },
+      {
+        $set: {
+          status: "deactivated",
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    let updatedParent = null;
+    if (student.parentId) {
+      updatedParent = await ParentModel.findOneAndUpdate(
+        { parentId: student.parentId, schoolId, session },
+        {
+          $set: {
+            status: "deactivated",
+            updatedBy,
+            updatedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
     }
 
     res.status(200).json({
       success: true,
-      message: "Student and Parent is deactivated",
-      Student,
-      Parent,
+      message: "Student and parent deactivated successfully",
+      student: updatedStudent,
+      parent: updatedParent || "No parent associated",
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Student is not deactivated due to error",
+      message: "Student not deactivated due to error",
       error: error.message,
     });
   }
 };
 
+
+exports.toggleStudentStatus = async (req, res) => {
+  try {
+    // Get studentId from URL parameters
+    const { studentId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    // Find the student based on studentId, schoolId, and session
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found or does not belong to this school and session.",
+      });
+    }
+
+    // Toggle the student's status between 'active' and 'deactivated'
+    const newStatus = student.status === "active" ? "deactivated" : "active";
+
+    // Update the student's status
+    const updatedStudent = await NewStudentModel.findOneAndUpdate(
+      { studentId, schoolId, session },
+      {
+        $set: {
+          status: newStatus,
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Student status updated to ${newStatus}`,
+      student: updatedStudent,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Student status toggle failed due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
 exports.getDeactivatedStudents = async (req, res) => {
   try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
     const { email, studentClass, section } = req.query;
 
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
     const filter = {
-      ...(email ? { email: email } : {}),
+      schoolId,
+      session,
+      status: "deactivated",
+      ...(email ? { email } : {}),
       ...(studentClass ? { class: studentClass } : {}),
-      ...(section ? { section: section } : {}),
-      ...req.sessionFilter,
+      ...(section ? { section } : {}),
     };
 
-    const deactivatedStudents = await NewStudentModel.find({
-      schoolId: req.user.schoolId,
-      status: "deactivated",
-      ...filter,
-    });
+    const deactivatedStudents = await NewStudentModel.find(filter).lean();
 
     if (deactivatedStudents.length === 0) {
       return res.status(404).json({
@@ -4590,48 +5166,78 @@ exports.deleteStudent = async (req, res) => {
 
 exports.updateStudent = async (req, res) => {
   try {
+    const studentId = req.params.studentId; // Using UUID
     const { email, ...studentFields } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const StudentImage = req.file;
-    const studentData = await NewStudentModel.findOne({
-      schoolId: req.user.schoolId,
-      email: email,
-    });
-
-    if (!studentData) {
-      return res.status(404).json({
-        status: false,
-        message: "Student Data is not found",
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID (UUID) is required in the URL parameter.",
       });
     }
 
-    if (StudentImage) {
-      const fileUri = getDataUri(StudentImage);
-      const studentImageResult = await cloudinary.uploader.upload(
-        fileUri.content
-      );
+    const studentData = await NewStudentModel.findOne({ studentId, schoolId, session });
+    if (!studentData) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found or does not belong to this school and session.",
+      });
+    }
 
-      studentData.image = {
-        public_id: studentImageResult.public_id,
-        url: studentImageResult.secure_url,
+    const studentImageFile = req.file;
+    let studentImageResult = studentData.studentImage;
+
+    if (studentImageFile) {
+      if (studentData.studentImage.public_id) {
+        await s3.deleteObject({
+          Bucket: process.env.MINIO_BUCKET,
+          Key: studentData.studentImage.public_id,
+        }).promise();
+      }
+      const fileKey = `students/${Date.now()}-${studentImageFile.originalname}`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentImageFile.buffer,
+        ContentType: studentImageFile.mimetype,
+        ACL: "public-read",
       };
+      const minioData = await s3.upload(params).promise();
+      studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    for (const key in studentFields) {
-      studentData[key] = studentFields[key];
-    }
+    const updateFields = {
+      ...studentFields,
+      email: email || studentData.email,
+      studentImage: studentImageResult.url ? studentImageResult : studentData.studentImage,
+      updatedBy,
+      updatedAt: new Date(),
+    };
 
-    const updatedStudentData = await studentData.save();
+    const updatedStudentData = await NewStudentModel.findOneAndUpdate(
+      { studentId, schoolId, session },
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
 
     res.status(200).json({
       success: true,
-      message: "Student data is updated",
+      message: "Student data updated successfully",
       updatedStudentData,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Student data is not updated due to error",
+      message: "Student data not updated due to error",
       error: error.message,
     });
   }

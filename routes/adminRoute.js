@@ -36,17 +36,25 @@ router.get('/teacher', verifyToken, admin.getAllTeachers)
 router.post('/admission', verifyToken, uploads, admin.createStudentParent);
 router.post('/admission/bulk', verifyToken, uploads, admin.createBulkStudentParent);
 router.get('/studentparent', verifyToken, uploads, admin.getStudentParent);
+router.put('/studentparent/:studentId/toggle', verifyToken, uploads, admin.toggleStudentParentStatus);
+router.put('/linkStudentToParent', verifyToken,uploads, admin.linkStudentToParent);
 
 
 
 // STUDENT RELATED CONTROLLER FLOW
 router.put('/students/:studentId', verifyToken, uploads, admin.editStudentParent);
 router.get('/students/:studentId', verifyToken, admin.getStudentAndParent);
+router.put('/students/:studentId/toggle', verifyToken, admin.toggleStudentStatus);
+router.put('/students/update/:studentId', verifyToken, singleUpload, admin.updateStudent);
+router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents);
 
 
 
 // PARENT RELATED CONTROLLER FLOW
+router.put('/parents/:parentId', verifyToken, singleUpload, admin.updateParent);
+router.put('/parents/:parentId/toggle', verifyToken, admin.toggleParentStatus);
 router.get('/parentandchild/:parentAdmissionNumber', verifyToken, uploads, admin.getParentWithChildren);
+
 
 
 // FEES RELATED CONTROLLERS FLOW
@@ -58,6 +66,18 @@ router.delete('/deleteFees/:feeStructureId', verifyToken, admin.deleteFees)
 router.post("/createAdditionalFees", verifyToken, admin.createAdditionalFee);
 router.get("/getAdditionalFees", verifyToken, admin.getAllAdditionalFee);
 router.post("/createStudentSpecificFee", verifyToken, admin.createStudentSpecificFee);
+
+
+
+// REGISTRATION RELATED CONTROLLERS FLOW
+router.post('/registration', verifyToken, uploads, admin.createRegistration );
+router.put('/registration/:registrationId', verifyToken, uploads, admin.editRegistration);
+router.get('/registration', verifyToken, uploads, admin.getRegistrations);
+router.post('/registration/bulk', verifyToken, uploads, admin.createBulkRegistrations);
+router.put('/registration/:registrationId/toggle', verifyToken, uploads, admin.updateRegistrationStatus);
+router.post('/registration/:registrationId/admit', verifyToken, uploads, admin.admitRegistration);
+
+
 
 
 // LIBRARY RELATED CONTROLLERS FLOW
@@ -80,37 +100,14 @@ router.get('/getAllItems', verifyToken, admin.getAllItems);
 router.delete('/deleteItem/:itemId', verifyToken, admin.deleteItem);
 router.put('/updateItem/:itemId', verifyToken, admin.updateItem);
 
-// POST route for creating registration
-// router.post('/createRegistration', verifyToken, uploads, admin.createRegistration);
-router.post(
-  '/createRegistration',
-  verifyToken,
-    uploads,
-    convertImagesToBase64,
-    admin.createRegistration
-  );
-router.post('/createBulkRegistrations', verifyToken, uploads, admin.createBulkRegistrations);
-router.put('/editRegistration/:registrationNumber', verifyToken, uploads, admin.editRegistration);
-router.delete('/deleteRegistration/:registrationNumber', verifyToken, uploads, admin.deleteRegistration);
-// GET route for fetching all registrations
-router.get('/getRegistrations', verifyToken, uploads, admin.getRegistrations);
-// GET route for fetching a specific registration by ID
-// router.get('/getRegistration/:id', verifyToken, uploads, admin.getRegistrationById);
-router.get('/getRegistration/:registrationNumber', verifyToken, uploads, admin.getRegistrationByNumber);
 
 
 
-router.put('/updateParent', verifyToken, singleUpload, admin.updateParent);
-router.put('/deactivateParent', verifyToken, admin.deactivateParent);
-router.put('/deactivateStudent', verifyToken, admin.deactivateStudent);
-router.put('/bulkUpdateStudents', verifyToken,uploads, admin.bulkUpdateStudents);
+
 
 
 // LINK EXISTING STUDENT TO PARENT
-router.put('/linkStudentToParent', verifyToken,uploads, admin.linkStudentToParent);
 // router.put('/editStudentParent', verifyToken, admin.editStudentParent); {Old that takes ID as field}
-router.put('/updateStudent', verifyToken, singleUpload, admin.updateStudent);
-router.get('/getDeactivatedStudents', verifyToken, singleUpload, admin.getDeactivatedStudents);
 router.delete('/deleteStudent', verifyToken, singleUpload, admin.deleteStudent);
 
 // PENDING ADMISSION THIRD PARTY
@@ -205,6 +202,9 @@ router.get('/parents', verifyToken, admin.getAllParents);
 router.get('/students/:admissionNumber', verifyToken, uploads, admin.getDataByAdmissionNumber);
 router.get('/allparentswithchildren', verifyToken, admin.getAllParentsWithChildren);
 router.post('/addSibling', verifyToken, uploads, admin.addSibling);
+router.get('/students/inactive', verifyToken, singleUpload, admin.getDeactivatedStudents);
+router.get('/getRegistration/:registrationNumber', verifyToken, uploads, admin.getRegistrationByNumber);
+router.delete('/deleteRegistration/:registrationNumber', verifyToken, uploads, admin.deleteRegistration);
 
 
 

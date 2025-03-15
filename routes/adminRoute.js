@@ -32,6 +32,23 @@ router.get('/teacher', verifyToken, admin.getAllTeachers)
 
 
 
+// ADMISSION RELATED CONTROLLER FLOW
+router.post('/admission', verifyToken, uploads, admin.createStudentParent);
+router.post('/admission/bulk', verifyToken, uploads, admin.createBulkStudentParent);
+router.get('/studentparent', verifyToken, uploads, admin.getStudentParent);
+
+
+
+// STUDENT RELATED CONTROLLER FLOW
+router.put('/students/:studentId', verifyToken, uploads, admin.editStudentParent);
+router.get('/students/:studentId', verifyToken, admin.getStudentAndParent);
+
+
+
+// PARENT RELATED CONTROLLER FLOW
+router.get('/parentandchild/:parentAdmissionNumber', verifyToken, uploads, admin.getParentWithChildren);
+
+
 // FEES RELATED CONTROLLERS FLOW
 router.post('/createFees', verifyToken, admin.createFeeStructure)
 router.get('/getFees', verifyToken, admin.getAllFeeStructures)
@@ -49,8 +66,6 @@ router.put('/returnBook/:issueId', verifyToken, admin.returnBook);
 router.get('/getAllIssuedBookStudent', verifyToken, admin.getAllIssuedBookStudent);
 
 
-// router.put("/updateAdditionalFees/:feeStructureId", verifyToken, admin.updateAdditionalFee);
-// router.delete('/deleteAdditionalFees/:feeStructureId', verifyToken, admin.deleteAdditionalFee)
 
 router.post('/createBook', verifyToken, admin.createBookDetails);
 router.get('/getAllBooks', verifyToken, admin.getAllBooks);
@@ -68,8 +83,8 @@ router.put('/updateItem/:itemId', verifyToken, admin.updateItem);
 // POST route for creating registration
 // router.post('/createRegistration', verifyToken, uploads, admin.createRegistration);
 router.post(
-    '/createRegistration',
-    verifyToken,
+  '/createRegistration',
+  verifyToken,
     uploads,
     convertImagesToBase64,
     admin.createRegistration
@@ -85,18 +100,8 @@ router.get('/getRegistration/:registrationNumber', verifyToken, uploads, admin.g
 
 
 
-router.post('/students', verifyToken, uploads, admin.createStudentParent);
-router.post('/students/bulk', verifyToken, uploads, admin.createBulkStudentParent);
-router.put('/students/:studentId', verifyToken, uploads, admin.editStudentParent);
-router.get('/students/:studentId', verifyToken, admin.getStudentAndParent);
-router.get('/getParentWithChildren/:parentAdmissionNumber', verifyToken, uploads, admin.getParentWithChildren);
-router.get('/getDataByAdmissionNumber/:admissionNumber', verifyToken, uploads, admin.getDataByAdmissionNumber);
-router.get('/getAllParentsWithChildren', verifyToken, admin.getAllParentsWithChildren);
-router.post('/addSibling', verifyToken, uploads, admin.addSibling);
 router.put('/updateParent', verifyToken, singleUpload, admin.updateParent);
 router.put('/deactivateParent', verifyToken, admin.deactivateParent);
-router.get('/getAllParents', verifyToken, admin.getAllParents);
-router.get('/getAllStudents', verifyToken, admin.getAllStudents)
 router.put('/deactivateStudent', verifyToken, admin.deactivateStudent);
 router.put('/bulkUpdateStudents', verifyToken,uploads, admin.bulkUpdateStudents);
 
@@ -123,7 +128,6 @@ router.get('/students/filter', verifyToken, admin.getStudentsByClassSectionAdmin
 
 
 
-router.get('/getLastYearStudents', verifyToken, admin.getStudentsCreatedAfterAprilOfCurrentYear)
 
 
 router.delete('/deleteStudentsBySchool', verifyToken, admin.deleteStudentsBySchool)
@@ -185,3 +189,25 @@ router.post('/marksbulkupload', verifyToken, admin.bulkUploadAdminMarks);
 
 
 module.exports = router 
+
+
+
+
+
+
+
+
+
+// OBSOLETE OR UNNECESSARY CONTROLLERS
+router.get('/students/lastyear', verifyToken, admin.getStudentsCreatedAfterAprilOfCurrentYear)
+router.get('/students', verifyToken, admin.getAllStudents)
+router.get('/parents', verifyToken, admin.getAllParents);
+router.get('/students/:admissionNumber', verifyToken, uploads, admin.getDataByAdmissionNumber);
+router.get('/allparentswithchildren', verifyToken, admin.getAllParentsWithChildren);
+router.post('/addSibling', verifyToken, uploads, admin.addSibling);
+
+
+
+
+// router.put("/updateAdditionalFees/:feeStructureId", verifyToken, admin.updateAdditionalFee);
+// router.delete('/deleteAdditionalFees/:feeStructureId', verifyToken, admin.deleteAdditionalFee)

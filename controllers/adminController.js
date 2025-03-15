@@ -3196,6 +3196,247 @@ exports.editStudentParent = async (req, res) => {
   }
 };
 
+
+exports.getStudentParent = async (req, res) => {
+  try {
+    // Get schoolId and session from authenticated user
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    // Extract query parameters
+    const {
+      studentId,
+      parentId,
+      admissionNumber,
+      parentAdmissionNumber,
+      email,
+      class: studentClass,
+      section,
+      gender,
+      fetchAllStudents, // New parameter
+      fetchAllParents,  // New parameter
+      limit = 10,
+      page = 1,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    // Base query objects
+    let studentQuery = { schoolId, session };
+    let parentQuery = { schoolId, session };
+
+    // Build student query - use studentId field instead of _id
+    if (studentId) studentQuery.studentId = studentId;
+    if (admissionNumber) studentQuery.admissionNumber = admissionNumber;
+    if (email) studentQuery.email = email;
+    if (studentClass) studentQuery.class = studentClass;
+    if (section) studentQuery.section = section;
+    if (gender) studentQuery.gender = gender;
+
+    // Build parent query - use parentId field instead of _id
+    if (parentId) parentQuery.parentId = parentId;
+    if (parentAdmissionNumber) parentQuery.admissionNumber = parentAdmissionNumber;
+    if (email) parentQuery.email = email;
+
+    // Pagination
+    const skip = (page - 1) * limit;
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+    // Execute queries based on what's requested
+    let responseData = {};
+
+    // If specific studentId is provided, fetch only that student
+    if (studentId) {
+      const student = await NewStudentModel.findOne(studentQuery).lean();
+      
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: `Student with ID ${studentId} not found`,
+        });
+      }
+      
+      let parentData = null;
+      if (student.parentId) {
+        parentData = await ParentModel.findOne({ 
+          parentId: student.parentId, 
+          schoolId, 
+          session 
+        }).lean();
+      }
+      
+      responseData.student = {
+        ...student,
+        parentDetails: parentData
+      };
+    }
+    // If specific parentId is provided, fetch only that parent
+    else if (parentId) {
+      const parent = await ParentModel.findOne(parentQuery).lean();
+      
+      if (!parent) {
+        return res.status(404).json({
+          success: false,
+          message: `Parent with ID ${parentId} not found`,
+        });
+      }
+      
+      const students = await NewStudentModel.find({
+        parentId: parent.parentId,
+        schoolId,
+        session
+      }).lean();
+      
+      responseData.parent = {
+        ...parent,
+        studentDetails: students
+      };
+    }
+    // Fetch all students only (no filters)
+    else if (fetchAllStudents === 'true') {
+      const students = await NewStudentModel.find({ schoolId, session })
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean();
+
+      const totalStudents = await NewStudentModel.countDocuments({ schoolId, session });
+
+      responseData.students = {
+        data: students,
+        pagination: {
+          total: totalStudents,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalStudents / limit),
+        },
+      };
+    }
+    // Fetch all parents only (no filters)
+    else if (fetchAllParents === 'true') {
+      const parents = await ParentModel.find({ schoolId, session })
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean();
+
+      const totalParents = await ParentModel.countDocuments({ schoolId, session });
+
+      responseData.parents = {
+        data: parents,
+        pagination: {
+          total: totalParents,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalParents / limit),
+        },
+      };
+    }
+    // Fetch all students with filters
+    else if (Object.keys(studentQuery).length > 2 || studentClass || section || gender) {
+      const students = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean();
+
+      const totalStudents = await NewStudentModel.countDocuments(studentQuery);
+
+      responseData.students = {
+        data: students,
+        pagination: {
+          total: totalStudents,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalStudents / limit),
+        },
+      };
+    }
+    // Fetch all parents with filters
+    else if (parentAdmissionNumber || (Object.keys(parentQuery).length > 2)) {
+      const parents = await ParentModel.find(parentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean();
+
+      const totalParents = await ParentModel.countDocuments(parentQuery);
+
+      responseData.parents = {
+        data: parents,
+        pagination: {
+          total: totalParents,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: Math.ceil(totalParents / limit),
+        },
+      };
+    }
+    // Default: fetch both students and parents
+    else {
+      const [students, parents] = await Promise.all([
+        NewStudentModel.find(studentQuery)
+          .sort(sort)
+          .skip(skip)
+          .limit(parseInt(limit))
+          .lean(),
+        ParentModel.find(parentQuery)
+          .sort(sort)
+          .skip(skip)
+          .limit(parseInt(limit))
+          .lean(),
+      ]);
+
+      const [totalStudents, totalParents] = await Promise.all([
+        NewStudentModel.countDocuments(studentQuery),
+        ParentModel.countDocuments(parentQuery),
+      ]);
+
+      responseData = {
+        students: {
+          data: students,
+          pagination: {
+            total: totalStudents,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            totalPages: Math.ceil(totalStudents / limit),
+          },
+        },
+        parents: {
+          data: parents,
+          pagination: {
+            total: totalParents,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            totalPages: Math.ceil(totalParents / limit),
+          },
+        },
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Data fetched successfully",
+      data: responseData,
+    });
+
+  } catch (error) {
+    console.error("Error in getStudentParent:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch data",
+      error: error.message,
+    });
+  }
+};
+
 exports.getStudentAndParent = async (req, res) => {
   try {
     const studentId = req.params.studentId; // Now using UUID
@@ -3822,15 +4063,24 @@ exports.getParentWithChildren = async (req, res) => {
 exports.getDataByAdmissionNumber = async (req, res) => {
   try {
     const { admissionNumber } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    const studentData = await NewStudentModel.findOne({ admissionNumber });
-    const parentData = await ParentModel.findOne({ admissionNumber });
-    const feeStatusData = await FeeStatus.findOne({ admissionNumber });
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const studentData = await NewStudentModel.findOne({ admissionNumber, schoolId, session });
+    const parentData = await ParentModel.findOne({ admissionNumber, schoolId, session });
+    const feeStatusData = await FeeStatus.findOne({ admissionNumber, schoolId, session });
 
     if (!studentData && !parentData && !feeStatusData) {
       return res.status(404).json({
         success: false,
-        message: "No data found with this admission number",
+        message: "No data found with this admission number for this school and session",
       });
     }
 
@@ -3838,7 +4088,7 @@ exports.getDataByAdmissionNumber = async (req, res) => {
       success: true,
       studentData,
       parentData,
-      feeStatusData, // Add the fee status data to the response
+      feeStatusData,
     });
   } catch (error) {
     res.status(500).json({
@@ -3852,25 +4102,36 @@ exports.getDataByAdmissionNumber = async (req, res) => {
 exports.getAllParentsWithChildren = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    // Find all parents for the school and populate student details
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
     const parents = await ParentModel.find({
       schoolId,
+      session,
       status: "active",
-      ...req.sessionFilter,
-    }).populate("studentIds"); // Ensure that studentIds field is populated with student details
+    }).populate({
+      path: "studentIds",
+      match: { schoolId, session, status: "active" },
+    });
 
     if (parents.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No parents found",
+        message: "No active parents found for this school and session",
       });
     }
 
-    // Format the response
     const parentsWithChildren = parents.map((parent) => {
       const children = parent.studentIds.map((student) => ({
+        studentId: student.studentId,
         schoolId: student.schoolId,
+        session: student.session,
         fullName: student.fullName,
         email: student.email,
         dateOfBirth: student.dateOfBirth,
@@ -3886,19 +4147,17 @@ exports.getAllParentsWithChildren = async (req, res) => {
         country: student.country,
         subject: student.subject,
         admissionNumber: student.admissionNumber,
-        image: student.image,
+        studentImage: student.studentImage,
         createdAt: student.createdAt,
       }));
 
       return {
         parent: {
+          parentId: parent.parentId,
           schoolId: parent.schoolId,
-          studentIds: parent.studentIds.map((student) =>
-            student._id.toString()
-          ), // Return student IDs
-          studentName: parent.studentIds
-            .map((student) => student.fullName)
-            .join(", "), // Concatenate all children's names
+          session: parent.session,
+          studentIds: parent.studentIds.map((student) => student.studentId),
+          studentNames: parent.studentNames.join(", "),
           fullName: parent.fullName,
           motherName: parent.motherName,
           email: parent.email,
@@ -3906,13 +4165,13 @@ exports.getAllParentsWithChildren = async (req, res) => {
           admissionNumber: parent.admissionNumber,
           income: parent.income,
           qualification: parent.qualification,
-          image: parent.image,
+          parentImage: parent.parentImage,
           status: parent.status,
           role: parent.role,
           createdAt: parent.createdAt,
-          children: children, // Add the children array inside the parent object
+          children,
         },
-        children, // Keep the separate children array if needed
+        children,
       };
     });
 
@@ -4152,32 +4411,39 @@ exports.getAllStudents = async (req, res) => {
   try {
     const { email, studentClass, section } = req.query;
 
-    console.log("Chaya", req.sessionFilter);
-    console.log("Ajay", req.user.schoolId);
+    // Ensure req.sessionFilter is properly set to filter based on session-specific data
+    console.log("Session Filter:", req.sessionFilter);
+    console.log("SchoolId:", req.user.schoolId);
+    
+    // Construct the filter
     const filter = {
       ...(email ? { email: email } : {}),
       ...(studentClass ? { class: studentClass } : {}),
       ...(section ? { section: section } : {}),
-      ...req.sessionFilter,
+      ...req.sessionFilter, // Assuming sessionFilter contains additional filters based on session
     };
 
-    console.log("P2 Filter", filter);
+    console.log("Filter applied:", filter);
 
+    // Find all students with the constructed filter
     const allStudent = await NewStudentModel.find({
-      schoolId: req.user.schoolId,
-      status: "active",
-      ...filter,
+      schoolId: req.user.schoolId,  // Filter by schoolId from the authenticated user
+      status: "active",  // Only active students
+      ...filter,  // Apply the additional filters (including session-based ones)
     });
 
+    // Send the response
     res.status(200).json({
       success: true,
       message: "List of all students",
       allStudent,
     });
   } catch (error) {
+    // Error handling
+    console.error("Error in fetching students:", error.stack);
     res.status(500).json({
       success: false,
-      message: "All Student list is not found due to error",
+      message: "All student list is not found due to an error",
       error: error.message,
     });
   }
@@ -4446,6 +4712,9 @@ exports.deleteStudentsByClass = async (req, res) => {
     });
   }
 };
+
+
+
 
 // LATER TEST DELETE BY CLASSWISE/SCHOOLWISE CODE START
 

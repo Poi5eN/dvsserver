@@ -57,18 +57,6 @@ router.get('/parentandchild/:parentAdmissionNumber', verifyToken, uploads, admin
 
 
 
-// FEES RELATED CONTROLLERS FLOW
-router.post('/createFees', verifyToken, admin.createFeeStructure)
-router.get('/getFees', verifyToken, admin.getAllFeeStructures)
-router.get('/getAllFees', verifyToken, admin.getAllFees)
-router.put('/updateFees/:feeStructureId', verifyToken, admin.updateFees)
-router.delete('/deleteFees/:feeStructureId', verifyToken, admin.deleteFees)
-router.post("/createAdditionalFees", verifyToken, admin.createAdditionalFee);
-router.get("/getAdditionalFees", verifyToken, admin.getAllAdditionalFee);
-router.post("/createStudentSpecificFee", verifyToken, admin.createStudentSpecificFee);
-
-
-
 // REGISTRATION RELATED CONTROLLERS FLOW
 router.post('/registration', verifyToken, uploads, admin.createRegistration );
 router.put('/registration/:registrationId', verifyToken, uploads, admin.editRegistration);
@@ -80,6 +68,15 @@ router.post('/registration/:registrationId/admit', verifyToken, uploads, admin.a
 
 
 
+// FEES RELATED CONTROLLERS FLOW
+router.post('/createFees', verifyToken, admin.createFeeStructure)
+router.get('/getFees', verifyToken, admin.getAllFeeStructures)
+router.get('/getAllFees', verifyToken, admin.getAllFees)
+router.put('/updateFees/:feeStructureId', verifyToken, admin.updateFees)
+router.delete('/deleteFees/:feeStructureId', verifyToken, admin.deleteFees)
+router.post("/createAdditionalFees", verifyToken, admin.createAdditionalFee);
+router.get("/getAdditionalFees", verifyToken, admin.getAllAdditionalFee);
+router.post("/createStudentSpecificFee", verifyToken, admin.createStudentSpecificFee);
 // LIBRARY RELATED CONTROLLERS FLOW
 router.post('/issueBook', verifyToken, admin.issueBook);
 router.put('/returnBook/:issueId', verifyToken, admin.returnBook);

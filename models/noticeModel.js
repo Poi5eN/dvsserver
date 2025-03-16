@@ -1,42 +1,57 @@
 const mongoose = require("mongoose");
+const { v4: uuidv4 } = require("uuid");
 
 const noticeSchema = new mongoose.Schema({
-    schoolId: {
-        type: String,
-        required: true
+  noticeId: {
+    type: String,
+    default: uuidv4,
+    required: true,
+    unique: true,
+  },
+  schoolId: {
+    type: String,
+    required: true,
+  },
+  session: {
+    type: String,
+    required: true,
+  },
+  title: {
+    type: String,
+    required: [true, "Please Enter Title of Notice"],
+  },
+  content: {
+    type: String,
+    required: [true, "Please Enter Content of Notice"],
+  },
+  class: {
+    type: String,
+  },
+  section: {
+    type: String,
+  },
+  role: {
+    type: String,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+  },
+  updatedBy: {
+    type: String,
+  },
+  file: {
+    public_id: {
+      type: String,
     },
-    title: {
-        type: String,
-        required: [true, "Please Enter Title of Notice"]
+    url: {
+      type: String,
     },
-    content: {
-        type: String,
-        required: [true, "Please Enter Content of Notice"]
-    },
-    class: {
-        type: String
-    },
-    section: {
-        type: String
-    },
-    role: {
-        type: String
-    },
-    session: { type: String, required: true },
-    createdAt: {
-        type: Date,
-        default: Date.now()
-    },
-    file: {
-        public_id: {
-            type: String,
-            // required: true
-        },
-        url: {
-            type: String,
-            // required: true
-        }
-    }
+  },
 });
 
-module.exports = mongoose.model("Notice", noticeSchema);
+const NoticeModel = mongoose.model("Notice", noticeSchema);
+module.exports = NoticeModel;

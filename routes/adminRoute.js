@@ -14,12 +14,14 @@ router.put('/admin', verifyToken, uploads, admin.updateAdmin);
 
 
 
+
 // CLASS RELATED ROUTES FLOW
 router.post('/class', verifyToken, admin.createClass);
 router.get('/class', verifyToken, admin.getAllClasses);
 router.get('/class/:classId', verifyToken, admin.getClassById);
 router.put('/class/:classId', verifyToken, admin.updateClass);
 router.delete('/class/:classId', verifyToken, admin.deleteClass);
+
 
 
 
@@ -32,12 +34,14 @@ router.get('/teacher', verifyToken, admin.getAllTeachers)
 
 
 
+
 // ADMISSION RELATED CONTROLLER FLOW
 router.post('/admission', verifyToken, uploads, admin.createStudentParent);
 router.post('/admission/bulk', verifyToken, uploads, admin.createBulkStudentParent);
 router.get('/studentparent', verifyToken, uploads, admin.getStudentParent);
 router.put('/studentparent/:studentId/toggle', verifyToken, uploads, admin.toggleStudentParentStatus);
 router.put('/linkStudentToParent', verifyToken,uploads, admin.linkStudentToParent);
+
 
 
 
@@ -50,10 +54,12 @@ router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents)
 
 
 
+
 // PARENT RELATED CONTROLLER FLOW
 router.put('/parents/:parentId', verifyToken, singleUpload, admin.updateParent);
 router.put('/parents/:parentId/toggle', verifyToken, admin.toggleParentStatus);
 router.get('/parentandchild/:parentAdmissionNumber', verifyToken, uploads, admin.getParentWithChildren);
+
 
 
 
@@ -69,120 +75,119 @@ router.post('/registration/:registrationId/admit', verifyToken, uploads, admin.a
 
 
 // FEES RELATED CONTROLLERS FLOW
-router.post('/createFees', verifyToken, admin.createFeeStructure)
-router.get('/getFees', verifyToken, admin.getAllFeeStructures)
-router.get('/getAllFees', verifyToken, admin.getAllFees)
-router.put('/updateFees/:feeStructureId', verifyToken, admin.updateFees)
-router.delete('/deleteFees/:feeStructureId', verifyToken, admin.deleteFees)
-router.post("/createAdditionalFees", verifyToken, admin.createAdditionalFee);
-router.get("/getAdditionalFees", verifyToken, admin.getAllAdditionalFee);
-router.post("/createStudentSpecificFee", verifyToken, admin.createStudentSpecificFee);
-// LIBRARY RELATED CONTROLLERS FLOW
-router.post('/issueBook', verifyToken, admin.issueBook);
-router.put('/returnBook/:issueId', verifyToken, admin.returnBook);
-router.get('/getAllIssuedBookStudent', verifyToken, admin.getAllIssuedBookStudent);
-
-
-
-router.post('/createBook', verifyToken, admin.createBookDetails);
-router.get('/getAllBooks', verifyToken, admin.getAllBooks);
-router.delete('/deleteBook/:bookId', verifyToken, admin.deleteBook);
-router.put('/updateBook/:bookId', verifyToken, admin.updateBook);
-router.post('/issueBook', verifyToken, admin.issueBook);
-router.put('/returnBook', verifyToken, admin.returnBook);
-router.get('/getIssueBookToMe', verifyToken, admin.getAllIssueBookToMe);
-
-router.post('/createItem', verifyToken, admin.createItemDetails);
-router.get('/getAllItems', verifyToken, admin.getAllItems);
-router.delete('/deleteItem/:itemId', verifyToken, admin.deleteItem);
-router.put('/updateItem/:itemId', verifyToken, admin.updateItem);
+router.post("/fees/student", verifyToken, admin.createStudentSpecificFee);
+router.post('/fees/regular', verifyToken, admin.createFeeStructure)
+router.post("/fees/additional", verifyToken, admin.createAdditionalFee);
+router.get("/fees", verifyToken, admin.getFeeStructures);
+router.put('/fees/:feeStructureId', verifyToken, admin.updateFees)
+router.delete('/fees/:feeStructureId', verifyToken, admin.deleteFees)
 
 
 
 
+// BOOK RELATED CONTROLLERS FLOW
+router.post("/library", verifyToken, admin.createBookDetails);
+router.put("/library/:bookId", verifyToken, admin.updateBook);
+router.post("/library/issue", verifyToken, admin.issueBook);
+router.get("/library", verifyToken, admin.getBooks); // Dynamic GET
+router.put("/library/return/:issueId", verifyToken, admin.returnBook);
+router.delete("/library/:bookId", verifyToken, admin.deleteBook);
 
 
 
-// LINK EXISTING STUDENT TO PARENT
-// router.put('/editStudentParent', verifyToken, admin.editStudentParent); {Old that takes ID as field}
-router.delete('/deleteStudent', verifyToken, singleUpload, admin.deleteStudent);
+
+// ITEM RELATED CONTROLLERS FLOW
+router.post("/inventory", verifyToken, admin.createItemDetails);
+router.get("/inventory", verifyToken, admin.getItems); // Dynamic GET
+router.put("/inventory/:itemId", verifyToken, admin.updateItem);
+router.delete("/inventory/:itemId", verifyToken, admin.deleteItem);
+router.post("/inventory/sell/:itemId", verifyToken, admin.sellItem);
+
+
+
+
+// EMPLOYEE RELATED CONTROLLERS FLOW
+router.post("/staff", verifyToken, singleUpload, admin.createEmployee);
+router.get("/staff", verifyToken, admin.getEmployees); // Dynamic GET
+router.put("/staff/:staffId", verifyToken, singleUpload, admin.updateEmployee);
+router.put("/staff/:staffId/toggle", verifyToken, admin.toggleEmployeeStatus);
+
+
+
+
+// NOTICE RELATED CONTROLLERS FLOW
+router.post("/notice", verifyToken, uploads, admin.createNotice);
+router.get("/notice", verifyToken, admin.getNotices);
+router.put("/notice/:noticeId", verifyToken, singleUpload, admin.updateNotice);
+router.delete("/notice/:noticeId", verifyToken, admin.deleteNotice);
+
+
+
+
+// CURRICULUM RELATED CONTROLLERS FLOW
+router.post("/syllabus", verifyToken, uploads, admin.createSyllabus);
+router.get("/syllabus", verifyToken, admin.getSyllabuses);
+router.put("/syllabus/:syllabusId", verifyToken, uploads, admin.updateSyllabus);
+router.delete("/syllabus/:syllabusId", verifyToken, admin.deleteSyllabus);
+
+
+
+
+// ASSIGNMENT RELATED CONTROLLERS FLOW
+router.post("/task", verifyToken, uploads, admin.createTask);
+router.get("/task", verifyToken, admin.getTasks);
+router.put("/task/:taskId", verifyToken, uploads, admin.updateTask);
+router.delete("/task/:taskId", verifyToken, admin.deleteTask);
+
+
+
+
+
+// EXAM RELATED CONTROLLERS FLOW
+router.post("/exam", verifyToken, admin.createAdminExam);
+router.get("/exam", verifyToken, admin.getAdminExams);
+router.put("/exam/:examId", verifyToken, admin.updateAdminExam);
+router.delete("/exam/:examId", verifyToken, admin.deleteAdminExam);
+
+
+
+
+// MARKS RELATED CONTROLLERS FLOW
+router.post("/marks/bulk", verifyToken, admin.bulkUploadAdminMarks);
+router.get("/marks", verifyToken, admin.getAdminMarks);
+router.put("/marks/:marksId", verifyToken, admin.updateAdminMark);
+router.delete("/marks/:marksId", verifyToken, admin.deleteAdminMark);
+
+
+
+
+
+
+
+
+
+
+
 
 // PENDING ADMISSION THIRD PARTY
-// In your admin routes file (for example, routes/adminRoutes.js)
 router.patch('/approveAdmission/:studentId', verifyToken, admin.approveAdmission);
 router.post('/approveAdmissions', verifyToken, admin.approveMultipleAdmissions);
 router.get('/pendingAdmissions', verifyToken, admin.getPendingAdmissions);
 
 
 
-// GET route to fetch students by class/section (Admin)
-router.get('/students/filter', verifyToken, admin.getStudentsByClassSectionAdmin);
 
 
-
-
-
-
-
-router.delete('/deleteStudentsBySchool', verifyToken, admin.deleteStudentsBySchool)
-router.delete('/deleteStudentsByClass', verifyToken, admin.deleteStudentsByClass)
-
-
-router.post("/createEmployee", verifyToken, singleUpload, admin.createEmployee);
-router.get("/getAllEmployees", verifyToken, admin.getAllEmployees);
-router.put('/deactivateEmployee', verifyToken, admin.deactivateEmployee);
-router.put('/updateEmployee', verifyToken, singleUpload, admin.updateEmployee);
-
-
-
-
-
-router.get('/getAllStudentStatus', verifyToken, admin.getAllStudentStatus)
-router.get('/myKids', verifyToken, admin.getMyKids);
-
-router.post('/createNotice', verifyToken, singleUpload, admin.createNotice);
-router.delete('/deleteNotice/:noticeId', verifyToken, admin.deleteNotice);
-router.put('/updateNotice/:noticeId', verifyToken, singleUpload, admin.updateNotice);
-// router.get('/getAllNotice',admin.getAllNotice);
-router.get('/getAllNotice', verifyToken, admin.getAllNotice);
 
 // router.get('/getAllStudentOfClass', verifyToken, admin.getAllStudentOfClass);
 router.put('/promotionOfStudent', verifyToken, admin.promotionOfStudent);
 
 
-router.post('/createCurriculum', verifyToken, singleUpload, admin.createCurriculum);
-router.delete('/deleteCurriculum/:curriculumId', verifyToken, admin.deleteCurriculum);
-router.put('/updateCurriculum/:curriculumId', verifyToken, singleUpload, admin.updateCurriculum);
-router.get('/getAllCurriculum', verifyToken, admin.getAllCurriculum);
-
-router.post('/createAssignment', verifyToken, singleUpload, admin.createAssignment);
-router.delete('/deleteAssignment/:assignmentId', verifyToken, admin.deleteAssignment);
-router.put('/updateAssignment/:assignmentId', verifyToken, singleUpload, admin.updateAssignment);
-router.get('/getAllAssignment', verifyToken, admin.getAllAssignment);
 
 
 
-// APIS FOR THE ADMIN TO FETCH AND QUERY THE EXAMS
-router.get('/exams', verifyToken, admin.getAdminExams);
-router.post('/exams', verifyToken, admin.createAdminExam);
-router.put('/exams/:id', verifyToken, admin.updateAdminExam);
-router.delete('/exams/:id', verifyToken, admin.deleteAdminExam);
-router.get('/exams/:id', verifyToken, admin.getAdminExamById);
 
 
-
-// New admin routes
-router.post('/marks', verifyToken, admin.addAdminMark);
-router.get('/marks', verifyToken, admin.getAdminMarks);
-router.put('/marks/:id', verifyToken, admin.updateAdminMark);
-router.delete('/marks/:id', verifyToken, admin.deleteAdminMark);
-router.get('/marks/student/:studentId', verifyToken, admin.getAdminStudentMarks);
-router.get('/marks/exam/:examId', verifyToken, admin.getAdminExamMarks);
-router.get('/marks/classperformance', verifyToken, admin.getAdminClassPerformance);
-router.post('/marksbulkupload', verifyToken, admin.bulkUploadAdminMarks);
-
-
-module.exports = router 
 
 
 
@@ -193,6 +198,10 @@ module.exports = router
 
 
 // OBSOLETE OR UNNECESSARY CONTROLLERS
+router.delete('/deleteStudentsBySchool', verifyToken, admin.deleteStudentsBySchool)
+router.delete('/deleteStudentsByClass', verifyToken, admin.deleteStudentsByClass)
+router.delete('/deleteStudent', verifyToken, singleUpload, admin.deleteStudent);
+router.get('/students/filter', verifyToken, admin.getStudentsByClassSectionAdmin);
 router.get('/students/lastyear', verifyToken, admin.getStudentsCreatedAfterAprilOfCurrentYear)
 router.get('/students', verifyToken, admin.getAllStudents)
 router.get('/parents', verifyToken, admin.getAllParents);
@@ -202,9 +211,18 @@ router.post('/addSibling', verifyToken, uploads, admin.addSibling);
 router.get('/students/inactive', verifyToken, singleUpload, admin.getDeactivatedStudents);
 router.get('/getRegistration/:registrationNumber', verifyToken, uploads, admin.getRegistrationByNumber);
 router.delete('/deleteRegistration/:registrationNumber', verifyToken, uploads, admin.deleteRegistration);
+router.get('/getAllStudentStatus', verifyToken, admin.getAllStudentStatus)
+router.get('/myKids', verifyToken, admin.getMyKids);
 
 
 
 
 // router.put("/updateAdditionalFees/:feeStructureId", verifyToken, admin.updateAdditionalFee);
+
+// LIBRARY RELATED CONTROLLERS FLOW
+// router.post('/issueBook', verifyToken, admin.issueBook);
+// router.put('/returnBook/:issueId', verifyToken, admin.returnBook);
+// router.get('/getAllIssuedBookStudent', verifyToken, admin.getAllIssuedBookStudent);
+
 // router.delete('/deleteAdditionalFees/:feeStructureId', verifyToken, admin.deleteAdditionalFee)
+module.exports = router 

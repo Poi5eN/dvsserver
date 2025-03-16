@@ -4,19 +4,23 @@ const { v4: uuidv4 } = require('uuid');
 const feeStructureSchema = new mongoose.Schema({
   feeStructureId: {
     type: String,
+    default: uuidv4,
     required: true,
     unique: true,
-    default: uuidv4,
   },
   schoolId: {
     type: String,
-    required: true
+    required: true,
+  },
+  session: {
+    type: String,
+    required: true,
   },
   className: {
-    type: String
+    type: String,
   },
   name: {
-    type: String
+    type: String,
   },
   feeType: {
     type: String,
@@ -24,25 +28,27 @@ const feeStructureSchema = new mongoose.Schema({
   },
   amount: {
     type: Number,
-    required: true
+    required: true,
   },
   additional: {
     type: Boolean,
     required: true,
-    default: false
+    default: false,
   },
-  admissionNumber: { // For student-specific fees
+  studentId: { // Changed from admissionNumber to studentId
     type: String,
-    required: false,
-  },
-  session: { 
-    type: String, 
-    required: true 
+    required: false, // Optional, for student-specific fees
   },
   createdAt: {
     type: Date,
-    default: Date.now
-  }
+    default: Date.now,
+  },
+  updatedAt: {
+    type: Date,
+  },
+  updatedBy: {
+    type: String,
+  },
 });
 
 const FeeStructure = mongoose.model('FeeStructure', feeStructureSchema);

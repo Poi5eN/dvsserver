@@ -27,9 +27,9 @@ const FeeStatus = require("../models/feeStatus");
 // const classModel = require("../models/classModel");
 const classModel = require("../models/classModel");
 const NoticeModel = require("../models/noticeModel");
-const CurriculumModel = require("../models/curriculumModel");
-const AssignmentModel = require("../models/assignmentModel");
-const issueBookModel = require("../models/issueBookModel");
+const Curriculum = require("../models/curriculumModel");
+const Assignment = require("../models/assignmentModel");
+const IssueBook = require("../models/issueBookModel");
 const AdminInfo = require("../models/adminModel");
 const Mark = require("../models/mark");
 const Exam = require("../models/exam");
@@ -592,21 +592,21 @@ exports.getAllTeachers = async (req, res) => {
 // Create a student-specific fee structure
 exports.createStudentSpecificFee = async (req, res) => {
   try {
-    const { admissionNumber, feeType, amount, name, className } = req.body;
+    const { studentId, feeType, amount, name } = req.body; // Removed schoolId, session from body
     const schoolId = req.user.schoolId;
     const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    // Validation
-    if (!schoolId) {
+    if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "School ID is required from authenticated admin.",
+        message: "School ID and session are required from authenticated admin.",
       });
     }
-    if (!admissionNumber) {
+    if (!studentId) {
       return res.status(400).json({
         success: false,
-        message: "Admission number is required for student-specific fees.",
+        message: "Student ID (UUID) is required for student-specific fees.",
       });
     }
     if (!feeType) {
@@ -621,33 +621,22 @@ exports.createStudentSpecificFee = async (req, res) => {
         message: "Valid fee amount is required.",
       });
     }
-    if (!className) {
-      return res.status(400).json({
-        success: false,
-        message: "Class name is required to associate with the student.",
-      });
-    }
 
-    // Check if the student exists
-    const student = await NewStudentModel.findOne({
-      admissionNumber,
-      schoolId,
-    });
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: `Student with admission number ${admissionNumber} not found in this school.`,
+        message: `Student with ID ${studentId} not found in this school and session.`,
       });
     }
 
-    // Check for an existing student-specific fee
     const feesExist = await FeeStructure.findOne({
       schoolId,
-      admissionNumber,
-      feeType,
-      additional: !!name, // if 'name' is provided, treat it as additional
-      ...(name ? { name } : {}),
       session,
+      studentId,
+      feeType,
+      additional: !!name,
+      ...(name ? { name } : {}),
     });
 
     if (feesExist) {
@@ -657,17 +646,16 @@ exports.createStudentSpecificFee = async (req, res) => {
       });
     }
 
-    // Create the student-specific fee structure with feeStructureId and session
     const feeStructure = new FeeStructure({
-      feeStructureId: uuidv4(),
       schoolId,
       session,
-      className: student.class, // Use student's class
+      className: student.class,
       name: name || undefined,
       feeType,
       amount,
       additional: !!name,
-      admissionNumber,
+      studentId,
+      updatedBy,
     });
 
     await feeStructure.save();
@@ -690,17 +678,36 @@ exports.createStudentSpecificFee = async (req, res) => {
 // Create a fee structure for a class (Regular Fee)
 exports.createFeeStructure = async (req, res) => {
   try {
-    const { className, feeType, amount } = req.body;
+    const { className, feeType, amount } = req.body; // Removed schoolId, session from body
     const schoolId = req.user.schoolId;
     const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    // Check if a regular fee already exists for this class and fee type
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!className) {
+      return res.status(400).json({
+        success: false,
+        message: "Class name is required.",
+      });
+    }
+    if (!feeType || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee type and valid amount are required.",
+      });
+    }
+
     const feesExist = await FeeStructure.findOne({
       schoolId,
+      session,
       className,
       feeType,
       additional: false,
-      session,
     });
 
     if (feesExist) {
@@ -711,58 +718,66 @@ exports.createFeeStructure = async (req, res) => {
     }
 
     const feeStructure = new FeeStructure({
-      feeStructureId: uuidv4(),
       schoolId,
       session,
       className,
       feeType,
       amount,
       additional: false,
+      updatedBy,
     });
 
     await feeStructure.save();
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: "Fee structure created successfully",
       data: feeStructure,
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ 
-      success: false,
-      message: error.message 
-    });
+    res.status(500).json({ message: error.message });
   }
 };
 
 // Create an additional fee structure for a class
 exports.createAdditionalFee = async (req, res) => {
   try {
-    const { className, name, feeType, amount } = req.body;
+    const { className, name, feeType, amount } = req.body; // Removed schoolId, session from body
     const schoolId = req.user.schoolId;
     const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    // Check if an additional fee already exists for this class, fee type, and name
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!className || !name || !feeType || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Class name, fee name, fee type, and valid amount are required.",
+      });
+    }
+
     const feesExist = await FeeStructure.findOne({
       schoolId,
+      session,
       className,
       name,
       feeType,
       additional: true,
-      session,
     });
 
     if (feesExist) {
       return res.status(400).json({
         success: false,
-        message:
-          "Additional fee already exists for this class, fee type, and name",
+        message: "Additional fee already exists for this class, fee type, and name",
       });
     }
 
     const feeStructure = new FeeStructure({
-      feeStructureId: uuidv4(),
       schoolId,
       session,
       className,
@@ -770,6 +785,7 @@ exports.createAdditionalFee = async (req, res) => {
       feeType,
       amount,
       additional: true,
+      updatedBy,
     });
 
     await feeStructure.save();
@@ -780,7 +796,7 @@ exports.createAdditionalFee = async (req, res) => {
       data: feeStructure,
     });
   } catch (error) {
-    console.error("Error in createAdditionalFee:", error);
+    console.error(error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -788,17 +804,30 @@ exports.createAdditionalFee = async (req, res) => {
 // Get fee structures for all classes in a school (Regular Fees)
 exports.getAllFeeStructures = async (req, res) => {
   try {
-    // Using req.sessionFilter from the middleware, but we ensure session here as well
+    const { className } = req.query;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
     const filter = {
-      ...req.sessionFilter,
-      schoolId: req.user.schoolId,
+      schoolId,
+      session,
       additional: false,
+      ...(className ? { className } : {}),
     };
 
-    const feeStructures = await FeeStructure.find(filter);
+    const feeStructures = await FeeStructure.find(filter).lean();
+
     res.status(200).json({
       success: true,
-      data: feeStructures
+      message: "Regular fee structures fetched successfully",
+      data: feeStructures,
     });
   } catch (error) {
     console.error(error);
@@ -810,27 +839,31 @@ exports.getAllFeeStructures = async (req, res) => {
 exports.getAllFees = async (req, res) => {
   try {
     const { className } = req.query;
-    const sessionFilter = {
-      ...req.sessionFilter,
-      schoolId: req.user.schoolId,
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const filter = {
+      schoolId,
+      session,
       ...(className ? { className } : {}),
     };
 
-    const regularFees = await FeeStructure.find({
-      ...sessionFilter,
-      additional: false,
-    });
-
-    const additionalFees = await FeeStructure.find({
-      ...sessionFilter,
-      additional: true,
-    });
+    const regularFees = await FeeStructure.find({ ...filter, additional: false }).lean();
+    const additionalFees = await FeeStructure.find({ ...filter, additional: true }).lean();
 
     const allFees = [...regularFees, ...additionalFees];
 
     res.status(200).json({
       success: true,
-      data: allFees
+      message: "All fee structures fetched successfully",
+      data: allFees,
     });
   } catch (error) {
     console.error(error);
@@ -842,23 +875,34 @@ exports.getAllFees = async (req, res) => {
 exports.updateFees = async (req, res) => {
   try {
     const { feeStructureId } = req.params;
+    const schoolId = req.user.schoolId;
     const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body; // No schoolId or session in body
 
-    // Find fee structure by feeStructureId, schoolId, and session
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!feeStructureId) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee structure ID is required in the URL parameter.",
+      });
+    }
+
     const feeStructure = await FeeStructure.findOneAndUpdate(
-      {
-        feeStructureId,
-        schoolId: req.user.schoolId,
-        session,
-      },
-      req.body,
-      { new: true }
+      { feeStructureId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
     );
 
     if (!feeStructure) {
       return res.status(404).json({
         success: false,
-        message: "Fee structure not found",
+        message: "Fee structure not found or does not belong to this school and session.",
       });
     }
 
@@ -877,27 +921,31 @@ exports.updateFees = async (req, res) => {
 exports.deleteFees = async (req, res) => {
   try {
     const { feeStructureId } = req.params;
+    const schoolId = req.user.schoolId;
     const session = req.user.session;
 
-    // Find fee structure by feeStructureId, schoolId, and session
-    const feeStructure = await FeeStructure.findOne({
-      feeStructureId,
-      schoolId: req.user.schoolId,
-      session,
-    });
-
-    if (!feeStructure) {
-      return res.status(404).json({
+    if (!schoolId || !session) {
+      return res.status(400).json({
         success: false,
-        message: "Fee structure not found",
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!feeStructureId) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee structure ID is required in the URL parameter.",
       });
     }
 
-    await FeeStructure.deleteOne({
-      feeStructureId,
-      schoolId: req.user.schoolId,
-      session,
-    });
+    const feeStructure = await FeeStructure.findOne({ feeStructureId, schoolId, session });
+    if (!feeStructure) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee structure not found or does not belong to this school and session.",
+      });
+    }
+
+    await FeeStructure.deleteOne({ feeStructureId, schoolId, session });
 
     res.status(200).json({
       success: true,
@@ -915,20 +963,87 @@ exports.deleteFees = async (req, res) => {
 // Get all additional fees for a school
 exports.getAllAdditionalFee = async (req, res) => {
   try {
-    const filter = {
-      ...req.sessionFilter,
-      schoolId: req.user.schoolId,
-      additional: true,
-    };
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    const feeStructures = await FeeStructure.find(filter);
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const feeStructures = await FeeStructure.find({
+      schoolId,
+      session,
+      additional: true,
+    }).lean();
+
     res.status(200).json({
       success: true,
-      data: feeStructures
+      message: "Additional fee structures fetched successfully",
+      data: feeStructures,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+exports.getFeeStructures = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const {
+      feeStructureId,
+      className,
+      feeType,
+      studentId,
+      additional, // Boolean: true, false, or undefined (all)
+      name,
+    } = req.query; // No schoolId or session in query
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const query = {
+      schoolId,
+      session,
+    };
+
+    if (feeStructureId) query.feeStructureId = feeStructureId;
+    if (className) query.className = className;
+    if (feeType) query.feeType = feeType;
+    if (studentId) query.studentId = studentId;
+    if (additional !== undefined) query.additional = additional === 'true';
+    if (name) query.name = name;
+
+    const feeStructures = await FeeStructure.find(query).lean();
+
+    if (feeStructures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No fee structures found matching the criteria.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Fee structures fetched successfully",
+      data: feeStructures,
+    });
+  } catch (error) {
+    console.error("Error in getFeeStructures:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch fee structures",
+      error: error.message,
+    });
   }
 };
 
@@ -938,35 +1053,42 @@ exports.getAllAdditionalFee = async (req, res) => {
 
 exports.createBookDetails = async (req, res) => {
   try {
-    const { bookName, authorName, quantity, category, className, subject } =
-      req.body;
+    const { bookName, authorName, quantity, category, className, subject } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const existBook = await BookModel.find({
-      schoolId: req.user.schoolID,
-      bookName,
-    });
-    console.log("existBook", existBook);
-    if (existBook.length < 0) {
+    if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "This book is already created",
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const existBook = await BookModel.findOne({ schoolId, session, bookName });
+    if (existBook) {
+      return res.status(400).json({
+        success: false,
+        message: "This book already exists in this school and session.",
       });
     }
 
     const bookDetails = new BookModel({
-      schoolId: req.user.schoolId,
+      schoolId,
+      session,
       bookName,
       authorName,
       quantity,
       category,
       className,
       subject,
+      updatedBy,
     });
     await bookDetails.save();
 
     res.status(201).json({
       success: true,
-      message: "Book Details created successfully",
+      message: "Book details created successfully",
       bookDetails,
     });
   } catch (error) {
@@ -1007,30 +1129,89 @@ exports.getAllBooks = async (req, res) => {
   }
 };
 
-// Delete Book
-exports.deleteBook = async (req, res) => {
+exports.getBooks = async (req, res) => {
   try {
-    const { bookId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { bookId, bookName, authorName, category, className, subject } = req.query;
 
-    const bookData = await BookModel.findById({ _id: bookId });
-
-    if (!bookData) {
-      return res.status(200).json({
-        success: true,
-        Message: "Book Not Exits Please Check",
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
       });
     }
 
-    await BookModel.deleteOne({ _id: bookId });
+    const query = { schoolId, session };
+
+    if (bookId) query.bookId = bookId;
+    if (bookName) query.bookName = { $regex: bookName, $options: "i" }; // Case-insensitive
+    if (authorName) query.authorName = { $regex: authorName, $options: "i" };
+    if (category) query.category = category;
+    if (className) query.className = className;
+    if (subject) query.subject = subject;
+
+    const books = await BookModel.find(query).lean();
+
+    if (books.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No books found matching the criteria.",
+      });
+    }
 
     res.status(200).json({
       success: true,
-      Message: "Book delete successfully",
+      message: "Books fetched successfully",
+      books,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Book details not deleted due to error",
+      message: "Failed to fetch books",
+      error: error.message,
+    });
+  }
+};
+
+// Delete Book
+exports.deleteBook = async (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!bookId) {
+      return res.status(400).json({
+        success: false,
+        message: "Book ID is required in the URL parameter.",
+      });
+    }
+
+    const book = await BookModel.findOne({ bookId, schoolId, session });
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found or does not belong to this school and session.",
+      });
+    }
+
+    await BookModel.deleteOne({ bookId, schoolId, session });
+
+    res.status(200).json({
+      success: true,
+      message: "Book deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Book not deleted due to error",
       error: error.message,
     });
   }
@@ -1039,34 +1220,47 @@ exports.deleteBook = async (req, res) => {
 // update Book
 exports.updateBook = async (req, res) => {
   try {
-    const { ...updateFields } = req.body;
-
     const { bookId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
 
-    const bookData = await BookModel.findById({ _id: bookId });
-
-    if (!bookData) {
-      return res.status(404).json({
-        success: true,
-        Message: "Book Details is not found",
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!bookId) {
+      return res.status(400).json({
+        success: false,
+        message: "Book ID is required in the URL parameter.",
       });
     }
 
-    for (const key in updateFields) {
-      bookData[key] = updateFields[key];
+    const book = await BookModel.findOneAndUpdate(
+      { bookId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
+
+    if (!book) {
+      return res.status(404).json({
+        success: false,
+        message: "Book not found or does not belong to this school and session.",
+      });
     }
 
-    const updatedBookData = await bookData.save();
-
-    res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: "Book Details is updated",
-      updatedBookData,
+      message: "Book details updated successfully",
+      book,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Book details is not update due to error Please fix first",
+      message: "Book details not updated due to error",
       error: error.message,
     });
   }
@@ -1078,38 +1272,98 @@ exports.updateBook = async (req, res) => {
 exports.createItemDetails = async (req, res) => {
   try {
     const { itemName, category, quantity, price } = req.body;
-    // console.log(req.body)
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const ItemExist = await ItemModel.findOne({
-      schoolId: req.user.schoolId,
-      itemName,
-      category,
-    });
-
-    if (ItemExist) {
+    if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "Item already exist",
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!itemName || !category || !quantity || !price) {
+      return res.status(400).json({
+        success: false,
+        message: "Item name, category, quantity, and price are required.",
       });
     }
 
-    const data = await ItemModel.create({
-      schoolId: req.user.schoolId,
+    const itemExist = await ItemModel.findOne({ schoolId, session, itemName, category });
+    if (itemExist) {
+      return res.status(400).json({
+        success: false,
+        message: "Item already exists in this school and session.",
+      });
+    }
+
+    const data = new ItemModel({
+      schoolId,
+      session,
       itemName,
       category,
       quantity,
       price,
+      updatedBy,
     });
+
+    await data.save();
 
     res.status(201).json({
       success: true,
-      message: "Item Details created successfully",
+      message: "Item details created successfully",
       data,
     });
   } catch (error) {
+    console.error("Error in createItemDetails:", error);
     res.status(500).json({
       success: false,
-      message: "Item Not created due to error",
+      message: "Item not created due to error",
+      error: error.message,
+    });
+  }
+};
+
+exports.getItems = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { itemId, itemName, category, minQuantity, maxPrice } = req.query;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const query = { schoolId, session };
+
+    if (itemId) query.itemId = itemId;
+    if (itemName) query.itemName = { $regex: itemName, $options: "i" }; // Case-insensitive search
+    if (category) query.category = category;
+    if (minQuantity) query.quantity = { $gte: parseInt(minQuantity) };
+    if (maxPrice) query.price = { $lte: parseFloat(maxPrice) };
+
+    const items = await ItemModel.find(query).lean();
+
+    if (items.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No items found matching the criteria.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Items fetched successfully",
+      items,
+    });
+  } catch (error) {
+    console.error("Error in getItems:", error);
+    res.status(500).json({
+      success: false,
+      message: "Items not fetched due to error",
       error: error.message,
     });
   }
@@ -1143,29 +1397,110 @@ exports.getAllItems = async (req, res) => {
   }
 };
 
+exports.sellItem = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { quantitySold } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!itemId) {
+      return res.status(400).json({
+        success: false,
+        message: "Item ID is required in the URL parameter.",
+      });
+    }
+    if (!quantitySold || quantitySold <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid quantity sold is required.",
+      });
+    }
+
+    const item = await ItemModel.findOne({ itemId, schoolId, session });
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found or does not belong to this school and session.",
+      });
+    }
+
+    if (item.quantity < quantitySold) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient stock to sell.",
+      });
+    }
+
+    item.quantity -= quantitySold;
+    item.sellQuantity += quantitySold;
+    item.sellAmount += quantitySold * item.price;
+    item.updatedBy = updatedBy;
+    item.updatedAt = new Date();
+
+    await item.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Item sold successfully",
+      item,
+    });
+  } catch (error) {
+    console.error("Error in sellItem:", error);
+    res.status(500).json({
+      success: false,
+      message: "Item not sold due to error",
+      error: error.message,
+    });
+  }
+};
+
 // Delete Item
 exports.deleteItem = async (req, res) => {
   try {
     const { itemId } = req.params;
-    console.log("ItemId", itemId);
-    const itemData = await ItemModel.findById({ _id: itemId });
-    if (!itemData) {
-      return res.status(200).json({
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
         success: false,
-        Message: "Item Not Exits Please Check",
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!itemId) {
+      return res.status(400).json({
+        success: false,
+        message: "Item ID is required in the URL parameter.",
       });
     }
 
-    await ItemModel.deleteOne({ _id: itemId });
+    const item = await ItemModel.findOne({ itemId, schoolId, session });
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found or does not belong to this school and session.",
+      });
+    }
+
+    await ItemModel.deleteOne({ itemId, schoolId, session });
 
     res.status(200).json({
       success: true,
-      Message: "Item delete successfully",
+      message: "Item deleted successfully",
     });
   } catch (error) {
+    console.error("Error in deleteItem:", error);
     res.status(500).json({
       success: false,
-      message: "Item details not deleted due to error",
+      message: "Item not deleted due to error",
       error: error.message,
     });
   }
@@ -1175,30 +1510,48 @@ exports.deleteItem = async (req, res) => {
 
 exports.updateItem = async (req, res) => {
   try {
-    const { ...updateFields } = req.body;
     const { itemId } = req.params;
-    const itemData = await ItemModel.findById({ _id: itemId });
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
 
-    if (!itemData) {
-      return res.status(404).json({
-        success: true,
-        Message: "Item Details is not found",
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
       });
     }
-    for (const key in updateFields) {
-      itemData[key] = updateFields[key];
+    if (!itemId) {
+      return res.status(400).json({
+        success: false,
+        message: "Item ID is required in the URL parameter.",
+      });
     }
 
-    const updatedItemData = await itemData.save();
-    res.status(201).json({
+    const item = await ItemModel.findOneAndUpdate(
+      { itemId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found or does not belong to this school and session.",
+      });
+    }
+
+    res.status(200).json({
       success: true,
-      message: "Item Details is updated",
-      updatedItemData,
+      message: "Item details updated successfully",
+      item,
     });
   } catch (error) {
+    console.error("Error in updateItem:", error);
     res.status(500).json({
       success: false,
-      message: "Item details is not update due to error Please fix first",
+      message: "Item details not updated due to error",
       error: error.message,
     });
   }
@@ -5326,134 +5679,175 @@ exports.deleteStudentsByClass = async (req, res) => {
 
 exports.createEmployee = async (req, res) => {
   try {
-    const { email, password, ...employeeFields } = req.body;
+    const { email, password, staffName, dateOfBirth, qualification, salary, gender, address, contact } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    if (!email || !password) {
+    if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "Please fill the required fields",
+        message: "School ID and session are required from authenticated admin.",
       });
     }
 
-    const employeeExist = await EmployeeModel.findOne({
-      schoolId: req.user.schoolId,
-      email: email,
-    });
-
-    if (employeeExist) {
-      return res.status(404).json({
+    if (!email || !password || !staffName) {
+      return res.status(400).json({
         success: false,
-        message: "Employee Data is Already Exist",
+        message: "Please fill all required fields.",
       });
+    }
+
+    const employeeExist = await EmployeeModel.findOne({ schoolId, session, email });
+    if (employeeExist) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee with this email already exists in this school and session.",
+      });
+    }
+
+    // Check if file (image) is provided, if not, skip the image processing
+    let employeeImage = null;
+    if (req.file) {
+      const fileUri = getDataUri(req.file);
+      const uploadedImage = await cloudinary.v2.uploader.upload(fileUri.content);
+      employeeImage = {
+        public_id: uploadedImage.public_id,
+        url: uploadedImage.url,
+      };
     }
 
     const hashedPassword = await hashPassword(password);
 
-    const file = req.file;
-    const fileUri = getDataUri(file);
-    const employeeImage = await cloudinary.v2.uploader.upload(fileUri.content);
-
-    const employeeData = await EmployeeModel.create({
-      schoolId: req.user.schoolId,
+    const employeeData = new EmployeeModel({
+      schoolId,
+      session,
+      staffName,
       email,
       password: hashedPassword,
-      image: {
-        public_id: employeeImage.public_id,
-        url: employeeImage.url,
-      },
-      ...employeeFields,
+      dateOfBirth,
+      qualification,
+      salary,
+      gender,
+      address,
+      contact,
+      updatedBy,
+      image: employeeImage,  // Image is optional now, can be null
     });
 
-    if (employeeData) {
-      // Fetch school details for email branding
-      const schoolDetails = await AdminInfo.findOne({
-        schoolId: req.user.schoolId,
-      }).select("schoolName image.url");
-      const schoolName = schoolDetails?.schoolName || "Your School";
-      const schoolImageUrl =
-        schoolDetails?.image?.url ||
-        "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-      const softwareLogoUrl =
-        "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    await employeeData.save();
 
-      const employeeEmailContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Employee Account Created</title>
-        </head>
-        <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-            <!-- Header -->
-            <tr>
-              <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
-                <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
-                <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
-                <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Our Team!</p>
-              </td>
-            </tr>
-            <!-- Body -->
-            <tr>
-              <td style="padding: 30px; background-color: #ffffff;">
-                <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, Employee!</h2>
-                <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re excited to have you join ${schoolName} as an employee.</p>
-                <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
-                  <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
-                </div>
-                <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start contributing to our school’s success!</p>
-              </td>
-            </tr>
-            <!-- Footer -->
-            <tr>
-              <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
-                <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
-                <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
-                <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
-                <p style="margin: 5px 0; font-size: 12px; color: #000000;">
-                  Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
-                  <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
-                </p>
-                <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-      `;
+    // Fetch school details for email branding
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+    const schoolName = schoolDetails?.schoolName || "Your School";
+    const schoolImageUrl =
+      schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl =
+      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
-      sendEmail(email, "Employee Login Credentials", employeeEmailContent)
-        .then(() => {
-          console.log(
-            "Employee Created and also send message to employee email Id"
-          );
-        })
-        .catch((error) => {
-          return res.status(500).json({
-            success: false,
-            message: "Mail is not send to Employee Email Address due to error",
-            error: error.message,
-          });
-        });
-    } else {
-      return res.status(500).json({
-        success: true,
-        message: "employee is not created",
-      });
-    }
+    const employeeEmailContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Employee Account Created</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
+              <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
+              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
+              <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Our Team!</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px; background-color: #ffffff;">
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${staffName}!</h2>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re excited to have you join ${schoolName} as an employee.</p>
+              <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
+                <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
+              </div>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start contributing to our school’s success!</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
+              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
+              <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
+              <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #000000;">
+                Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
+                <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
+              </p>
+              <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    await sendEmail(email, "Employee Login Credentials", employeeEmailContent);
 
     res.status(201).json({
       success: true,
-      message: "Employee Data is created",
+      message: "Employee data created successfully",
       employeeData,
     });
   } catch (error) {
+    console.error("Error in createEmployee:", error);
     res.status(500).json({
-      success: "false",
-      message: "Employee Data is not created due to error",
+      success: false,
+      message: "Employee data not created due to error",
+      error: error.message,
+    });
+  }
+};
+
+exports.getEmployees = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { staffId, staffName, email, status, minSalary } = req.query;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const query = { schoolId, session };
+
+    if (staffId) query.staffId = staffId;
+    if (staffName) query.staffName = { $regex: staffName, $options: "i" }; // Case-insensitive
+    if (email) query.email = { $regex: email, $options: "i" };
+    if (status) query.status = status;
+    if (minSalary) query.salary = { $gte: parseFloat(minSalary) };
+
+    const employees = await EmployeeModel.find(query).select("-password").lean();
+
+    if (employees.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No employees found matching the criteria.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Employees fetched successfully",
+      employees,
+    });
+  } catch (error) {
+    console.error("Error in getEmployees:", error);
+    res.status(500).json({
+      success: false,
+      message: "Employees not fetched due to error",
       error: error.message,
     });
   }
@@ -5487,34 +5881,47 @@ exports.getAllEmployees = async (req, res) => {
 
 exports.deactivateEmployee = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { staffId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const Employee = await EmployeeModel.findOneAndUpdate(
-      { schoolId: req.user.schoolId, email: email },
-      {
-        $set: {
-          status: "deactivated",
-        },
-      },
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!staffId) {
+      return res.status(400).json({
+        success: false,
+        message: "Staff ID is required in the URL parameter.",
+      });
+    }
+
+    const employee = await EmployeeModel.findOneAndUpdate(
+      { staffId, schoolId, session },
+      { $set: { status: "deactivated", updatedBy, updatedAt: new Date() } },
       { new: true }
-    );
+    ).select("-password");
 
-    if (!Employee) {
+    if (!employee) {
       return res.status(404).json({
         success: false,
-        message: "Record not found",
+        message: "Employee not found or does not belong to this school and session.",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Employee is deactivated",
-      Employee,
+      message: "Employee deactivated successfully",
+      employee,
     });
   } catch (error) {
+    console.error("Error in deactivateEmployee:", error);
     res.status(500).json({
       success: false,
-      message: "Employee is not deactivated due to error",
+      message: "Employee not deactivated due to error",
       error: error.message,
     });
   }
@@ -5522,50 +5929,125 @@ exports.deactivateEmployee = async (req, res) => {
 
 exports.updateEmployee = async (req, res) => {
   try {
-    const { email, ...employeeFields } = req.body;
-    const employeeData = await EmployeeModel.findOne({
-      schoolId: req.user.schoolId,
-      email: email,
-    });
+    const { staffId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
 
-    if (!employeeData) {
-      return res.status(404).json({
-        status: false,
-        message: "Employee Data is not found",
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
       });
     }
-    const file = req.file;
+    if (!staffId) {
+      return res.status(400).json({
+        success: false,
+        message: "Staff ID is required in the URL parameter.",
+      });
+    }
 
+    const file = req.file;
     if (file) {
       const fileUri = getDataUri(file);
-      const employeeImageResult = await cloudinary.v2.uploader.upload(
-        fileUri.content
-      );
-      employeeData.image = {
+      const employeeImageResult = await cloudinary.v2.uploader.upload(fileUri.content);
+      updateData.image = {
         public_id: employeeImageResult.public_id,
-        url: employeeImageResult.secure_url,
+        url: employeeImageResult.url,
       };
     }
 
-    for (const key in employeeFields) {
-      employeeData[key] = employeeFields[key];
-    }
+    const employee = await EmployeeModel.findOneAndUpdate(
+      { staffId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    ).select("-password");
 
-    const updatedEmployeeData = await employeeData.save();
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found or does not belong to this school and session.",
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: "Employee data is updated",
-      updatedEmployeeData,
+      message: "Employee data updated successfully",
+      employee,
     });
   } catch (error) {
+    console.error("Error in updateEmployee:", error);
     res.status(500).json({
       success: false,
-      message: "Employee data is not updated due to error",
+      message: "Employee data not updated due to error",
       error: error.message,
     });
   }
 };
+
+exports.toggleEmployeeStatus = async (req, res) => {
+  try {
+    const { staffId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    if (!staffId) {
+      return res.status(400).json({
+        success: false,
+        message: "Staff ID is required in the URL parameter.",
+      });
+    }
+
+    // Find the employee based on the staffId, schoolId, and session
+    const employee = await EmployeeModel.findOne({ staffId, schoolId, session });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found or does not belong to this school and session.",
+      });
+    }
+
+    // Toggle the employee's status between 'active' and 'deactivated'
+    const newStatus = employee.status === "active" ? "deactivated" : "active";
+
+    // Update the employee's status
+    const updatedEmployee = await EmployeeModel.findOneAndUpdate(
+      { staffId, schoolId, session },
+      {
+        $set: {
+          status: newStatus,
+          updatedBy,
+          updatedAt: new Date(),
+        },
+      },
+      { new: true }
+    ).select("-password");
+
+    res.status(200).json({
+      success: true,
+      message: `Employee status updated to ${newStatus}`,
+      employee: updatedEmployee,
+    });
+  } catch (error) {
+    console.error("Error in toggleEmployeeStatus:", error);
+    res.status(500).json({
+      success: false,
+      message: "Employee status toggle failed due to error",
+      error: error.message,
+    });
+  }
+};
+
 
 // CLASS CONTROLLERS FOR THE SCHOOL
 
@@ -5777,72 +6259,120 @@ exports.getAllStudentStatus = async (req, res) => {
 
 exports.createNotice = async (req, res) => {
   try {
-    const { title, content } = req.body;
-    const file = req.file;
-    const fileDataUri = getDataUri(file);
-
-    const existNotice = await NoticeModel.findOne({ title: title });
-
-    if (existNotice) {
+    // Debug logs to help troubleshoot
+    console.log("Request body:", req.body);
+    console.log("Request file:", req.file);
+    console.log("Request files:", req.files);
+    
+    const { title, content, class: className, section, role } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    
+    // Check for file in both req.file (single file) and req.files (multiple files)
+    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    
+    // Validate title and content
+    if (!title || title.trim() === '' || !content || content.trim() === '') {
       return res.status(400).json({
         success: false,
-        message: "Title of that notice is already exist",
+        message: "Title and content are required.",
       });
     }
 
-    const noticeFile = await cloudinary.v2.uploader.upload(fileDataUri.content);
+    const existNotice = await NoticeModel.findOne({ schoolId, session, title });
+    if (existNotice) {
+      return res.status(400).json({
+        success: false,
+        message: "Notice with this title already exists.",
+      });
+    }
 
-    const notice = await NoticeModel.create({
-      schoolId: req.user.schoolId,
+    let noticeFile;
+    if (file) {
+      console.log("Processing file:", file.mimetype, file.originalname);
+      try {
+        const fileDataUri = getDataUri(file);
+        noticeFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
+          resource_type: "auto", // Important for PDFs - allows any file type
+          folder: "notices",
+        });
+        console.log("File uploaded successfully:", noticeFile.public_id);
+      } catch (uploadError) {
+        console.error("File upload error:", uploadError);
+        return res.status(400).json({
+          success: false,
+          message: "File upload failed",
+          error: uploadError.message,
+        });
+      }
+    } else {
+      console.log("No file was provided with the request");
+    }
+
+    const notice = new NoticeModel({
+      schoolId,
+      session,
       title,
       content,
-      file: {
-        public_id: noticeFile.public_id,
-        url: noticeFile.secure_url,
-      },
-      class: req.user.classTeacher,
-      section: req.user.section,
-      role: req.user.role,
+      class: className,
+      section,
+      role,
+      updatedBy,
+      ...(noticeFile && {
+        file: { public_id: noticeFile.public_id, url: noticeFile.secure_url },
+      }),
     });
+
+    await notice.save();
 
     res.status(201).json({
       success: true,
-      message: "Notice is successfully created",
+      message: "Notice created successfully",
       notice,
     });
   } catch (error) {
+    console.error("Error in createNotice:", error);
     res.status(500).json({
       success: false,
-      message: "Notice is not created due to error",
+      message: "Notice not created due to error",
       error: error.message,
     });
   }
 };
 
-exports.deleteNotice = async (req, res) => {
+exports.getNotices = async (req, res) => {
   try {
-    const { noticeId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { noticeId, title, class: className, section, role } = req.query;
 
-    const existNotice = await NoticeModel.findById(noticeId);
+    const query = { schoolId, session };
+    if (noticeId) query.noticeId = noticeId;
+    if (title) query.title = { $regex: title, $options: "i" };
+    if (className) query.class = className;
+    if (section) query.section = section;
+    if (role) query.role = role;
 
-    if (!existNotice) {
-      return res.status(400).json({
+    const notices = await NoticeModel.find(query).lean();
+
+    if (notices.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: "Notice does not exist",
+        message: "No notices found matching the criteria.",
       });
     }
 
-    const deletedNotice = await existNotice.deleteOne();
-
     res.status(200).json({
       success: true,
-      message: "Notice deleted successfully",
-      deletedNotice,
+      message: "Notices fetched successfully",
+      notices,
     });
   } catch (error) {
+    console.error("Error in getNotices:", error);
     res.status(500).json({
       success: false,
-      message: "Notice is not deleted due to error",
+      message: "Notices not fetched due to error",
       error: error.message,
     });
   }
@@ -5851,83 +6381,78 @@ exports.deleteNotice = async (req, res) => {
 exports.updateNotice = async (req, res) => {
   try {
     const { noticeId } = req.params;
-    const { ...noticeFields } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
     const file = req.file;
 
-    const existNotice = await NoticeModel.findById(noticeId);
+    let noticeFile;
+    if (file) {
+      const fileDataUri = getDataUri(file);
+      noticeFile = await cloudinary.v2.uploader.upload(fileDataUri.content);
+      updateData.file = { public_id: noticeFile.public_id, url: noticeFile.secure_url };
+    }
 
-    if (!existNotice) {
+    const notice = await NoticeModel.findOneAndUpdate(
+      { noticeId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
+
+    if (!notice) {
       return res.status(404).json({
         success: false,
-        message: "Notice does not exist",
+        message: "Notice not found.",
       });
     }
 
-    if (file) {
-      const fileDataUri = getDataUri(file);
-
-      const noticeFile = await cloudinary.v2.uploader.upload(
-        fileDataUri.content
-      );
-
-      existNotice.file = {
-        public_id: noticeFile.public_id,
-        url: noticeFile.secure_url,
-      };
-    }
-
-    for (let key in noticeFields) {
-      existNotice[key] = noticeFields[key];
-    }
-
-    const updatedNotice = await existNotice.save();
-
     res.status(200).json({
       success: true,
-      message: "Notice is updated successfully",
-      updatedNotice,
+      message: "Notice updated successfully",
+      notice,
     });
   } catch (error) {
+    console.error("Error in updateNotice:", error);
     res.status(500).json({
       success: false,
-      message: "Notice is not updated due to Error",
+      message: "Notice not updated due to error",
       error: error.message,
     });
   }
 };
 
-exports.getAllNotice = async (req, res) => {
+exports.deleteNotice = async (req, res) => {
   try {
-    const { noticeId, className, section, role } = req.query;
+    const { noticeId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    const filter = {
-      ...(noticeId ? { _id: noticeId } : {}),
-      ...(className ? { class: className } : {}),
-      ...(section ? { section: section } : {}),
-      ...(role ? { role: role } : {}),
-      ...req.sessionFilter,
-    };
-
-    console.log("filter", filter);
-
-    const allNotice = await NoticeModel.find({
-      ...filter,
-      schoolId: req.user.schoolId,
-    });
+    const notice = await NoticeModel.findOneAndDelete({ noticeId, schoolId, session });
+    if (!notice) {
+      return res.status(404).json({
+        success: false,
+        message: "Notice not found.",
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: "Notice is fetch is successfully",
-      allNotice,
+      message: "Notice deleted successfully",
     });
   } catch (error) {
+    console.error("Error in deleteNotice:", error);
     res.status(500).json({
       success: false,
-      message: "Notice is not get due to error",
+      message: "Notice not deleted due to error",
       error: error.message,
     });
   }
 };
+
+
+
+
 
 exports.promotionOfStudent = async (req, res) => {
   try {
@@ -6123,6 +6648,402 @@ exports.getAllCurriculum = async (req, res) => {
   }
 };
 
+
+
+
+exports.createSyllabus = async (req, res) => {
+  try {
+    const { className, academicYear } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    // Support both single and multiple file uploads
+    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "File is required.",
+      });
+    }
+
+    console.log("Processing file:", file.mimetype, file.originalname);
+
+    let syllabusFile;
+    try {
+      const fileDataUri = getDataUri(file);
+      syllabusFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
+        resource_type: "auto", // ensures support for PDFs and other file types
+        folder: "syllabi",      // adjust folder name if needed
+      });
+      console.log("File uploaded successfully:", syllabusFile.public_id);
+    } catch (uploadError) {
+      console.error("File upload error:", uploadError);
+      return res.status(400).json({
+        success: false,
+        message: "File upload failed",
+        error: uploadError.message,
+      });
+    }
+
+    const existSyllabus = await Curriculum.findOne({ schoolId, session, className, academicYear });
+    if (existSyllabus) {
+      return res.status(400).json({
+        success: false,
+        message: "Syllabus for this class and academic year already exists.",
+      });
+    }
+
+    const syllabus = new Curriculum({
+      schoolId,
+      session,
+      className,
+      academicYear,
+      updatedBy,
+      file: { public_id: syllabusFile.public_id, url: syllabusFile.secure_url },
+    });
+
+    await syllabus.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Syllabus created successfully",
+      syllabus,
+    });
+  } catch (error) {
+    console.error("Error in createSyllabus:", error);
+    res.status(500).json({
+      success: false,
+      message: "Syllabus not created due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.getSyllabuses = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { syllabusId, className, academicYear } = req.query;
+
+    const query = { schoolId, session };
+    if (syllabusId) query.syllabusId = syllabusId;
+    if (className) query.className = className;
+    if (academicYear) query.academicYear = academicYear;
+
+    const syllabuses = await Curriculum.find(query).lean();
+
+    if (syllabuses.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No syllabuses found matching the criteria.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Syllabuses fetched successfully",
+      syllabuses,
+    });
+  } catch (error) {
+    console.error("Error in getSyllabuses:", error);
+    res.status(500).json({
+      success: false,
+      message: "Syllabuses not fetched due to error",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateSyllabus = async (req, res) => {
+  try {
+    const { syllabusId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
+    // Support both single and multiple file uploads
+    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+
+    if (file) {
+      console.log("Processing file:", file.mimetype, file.originalname);
+      try {
+        const fileDataUri = getDataUri(file);
+        const syllabusFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
+          resource_type: "auto",
+          folder: "syllabi",
+        });
+        updateData.file = { public_id: syllabusFile.public_id, url: syllabusFile.secure_url };
+      } catch (uploadError) {
+        console.error("File upload error:", uploadError);
+        return res.status(400).json({
+          success: false,
+          message: "File upload failed",
+          error: uploadError.message,
+        });
+      }
+    }
+
+    const syllabus = await Curriculum.findOneAndUpdate(
+      { syllabusId: syllabusId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
+
+    if (!syllabus) {
+      return res.status(404).json({
+        success: false,
+        message: "Syllabus not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Syllabus updated successfully",
+      syllabus,
+    });
+  } catch (error) {
+    console.error("Error in updateSyllabus:", error);
+    res.status(500).json({
+      success: false,
+      message: "Syllabus not updated due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.deleteSyllabus = async (req, res) => {
+  try {
+    const { syllabusId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    const syllabus = await Curriculum.findOneAndDelete({ syllabusId, schoolId, session });
+    if (!syllabus) {
+      return res.status(404).json({
+        success: false,
+        message: "Syllabus not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Syllabus deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error in deleteSyllabus:", error);
+    res.status(500).json({
+      success: false,
+      message: "Syllabus not deleted due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+exports.createTask = async (req, res) => {
+  try {
+    const { className, section, title, description, dueDate, subject } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    // Support both single and multiple file uploads
+    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "File is required.",
+      });
+    }
+
+    console.log("Processing file:", file.mimetype, file.originalname);
+    let taskFile;
+    try {
+      const fileDataUri = getDataUri(file);
+      taskFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
+        resource_type: "auto",
+        folder: "tasks", // adjust folder name if needed
+      });
+      console.log("File uploaded successfully:", taskFile.public_id);
+    } catch (uploadError) {
+      console.error("File upload error:", uploadError);
+      return res.status(400).json({
+        success: false,
+        message: "File upload failed",
+        error: uploadError.message,
+      });
+    }
+
+    const existTask = await Assignment.findOne({ schoolId, session, className, section, title });
+    if (existTask) {
+      return res.status(400).json({
+        success: false,
+        message: "Task with this title for this class and section already exists.",
+      });
+    }
+
+    const task = new Assignment({
+      schoolId,
+      session,
+      className,
+      section,
+      title,
+      description,
+      dueDate,
+      subject,
+      updatedBy,
+      file: { public_id: taskFile.public_id, url: taskFile.secure_url },
+    });
+
+    await task.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Task created successfully",
+      task,
+    });
+  } catch (error) {
+    console.error("Error in createTask:", error);
+    res.status(500).json({
+      success: false,
+      message: "Task not created due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.getTasks = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { taskId, className, section, subject, dueDate } = req.query;
+
+    const query = { schoolId, session };
+    if (taskId) query.taskId = taskId;
+    if (className) query.className = className;
+    if (section) query.section = section;
+    if (subject) query.subject = { $regex: subject, $options: "i" };
+    if (dueDate) query.dueDate = { $gte: new Date(dueDate) };
+
+    const tasks = await Assignment.find(query).lean();
+
+    if (tasks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No tasks found matching the criteria.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Tasks fetched successfully",
+      tasks,
+    });
+  } catch (error) {
+    console.error("Error in getTasks:", error);
+    res.status(500).json({
+      success: false,
+      message: "Tasks not fetched due to error",
+      error: error.message,
+    });
+  }
+};
+
+exports.updateTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
+    // Support both single and multiple file uploads
+    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+
+    if (file) {
+      console.log("Processing file:", file.mimetype, file.originalname);
+      try {
+        const fileDataUri = getDataUri(file);
+        const taskFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
+          resource_type: "auto",
+          folder: "tasks",
+        });
+        updateData.file = { public_id: taskFile.public_id, url: taskFile.secure_url };
+      } catch (uploadError) {
+        console.error("File upload error:", uploadError);
+        return res.status(400).json({
+          success: false,
+          message: "File upload failed",
+          error: uploadError.message,
+        });
+      }
+    }
+
+    const task = await Assignment.findOneAndUpdate(
+      { taskId: taskId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Task updated successfully",
+      task,
+    });
+  } catch (error) {
+    console.error("Error in updateTask:", error);
+    res.status(500).json({
+      success: false,
+      message: "Task not updated due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.deleteTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    const task = await Assignment.findOneAndDelete({ taskId, schoolId, session });
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Task deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error in deleteTask:", error);
+    res.status(500).json({
+      success: false,
+      message: "Task not deleted due to error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
 exports.createAssignment = async (req, res) => {
   try {
     const { className, section, title, description, dueDate, subject } =
@@ -6292,60 +7213,75 @@ exports.getAllAssignment = async (req, res) => {
 
 exports.issueBook = async (req, res) => {
   try {
-    const { ...issueBookFields } = req.body;
+    const { studentId, bookId } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const existBook = await BookModel.findById(issueBookFields.bookId);
-
-    if (!existBook) {
-      return res.status(404).json({
+    if (!schoolId || !session) {
+      return res.status(400).json({
         success: false,
-        message: "Book Details is not exist",
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!studentId || !bookId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and Book ID are required.",
       });
     }
 
-    const existStudent = await NewStudentModel.findById(
-      issueBookFields.studentId
-    );
-
-    if (!existStudent) {
+    const book = await BookModel.findOne({ bookId, schoolId, session });
+    if (!book) {
       return res.status(404).json({
         success: false,
-        message: "Student record is not exist",
+        message: "Book not found or does not belong to this school and session.",
       });
     }
 
-    const issuedData = await issueBookModel.findOne({
-      schoolId: req.user.schoolID,
-      bookId: issueBookFields.bookId,
-      studentId: issueBookFields.studentId,
-      bookName: issueBookFields.bookName,
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found or does not belong to this school and session.",
+      });
+    }
+
+    const issuedData = await IssueBook.findOne({
+      schoolId,
+      session,
+      bookId,
+      studentId,
       status: "issued",
     });
 
     if (issuedData) {
       return res.status(400).json({
         success: false,
-        message: "This Book Already issued to this Student",
+        message: "This book is already issued to this student.",
       });
     }
 
-    if (existBook.quantity <= 0) {
+    if (book.quantity <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Stock is not available",
+        message: "Book is out of stock.",
       });
     }
 
-    const issueBookData = await issueBookModel.create({
-      schoolId: req.user.schoolId,
-      ...issueBookFields,
+    const issueBookData = new IssueBook({
+      schoolId,
+      session,
+      studentId,
+      bookId,
+      bookName: book.bookName,
+      updatedBy,
     });
 
-    if (issueBookData) {
-      existBook.quantity = existBook.quantity - 1;
+    await issueBookData.save();
 
-      await existBook.save();
-    }
+    book.quantity -= 1;
+    await book.save();
 
     res.status(201).json({
       success: true,
@@ -6364,36 +7300,59 @@ exports.issueBook = async (req, res) => {
 exports.returnBook = async (req, res) => {
   try {
     const { issueId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
 
-    const issueRecord = await issueBookModel.findById(issueId);
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!issueId) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue ID is required in the URL parameter.",
+      });
+    }
 
+    const issueRecord = await IssueBook.findOne({ issueId, schoolId, session });
     if (!issueRecord) {
       return res.status(404).json({
         success: false,
-        message: "issue Record not found",
+        message: "Issue record not found or does not belong to this school and session.",
+      });
+    }
+
+    if (issueRecord.status === "returned") {
+      return res.status(400).json({
+        success: false,
+        message: "Book has already been returned.",
       });
     }
 
     issueRecord.status = "returned";
-    issueRecord.returnDate = Date.now();
-
+    issueRecord.returnDate = new Date();
+    issueRecord.updatedBy = updatedBy;
+    issueRecord.updatedAt = new Date();
     await issueRecord.save();
 
-    const existBook = await BookModel.findById(issueRecord.bookId);
-
-    existBook.quantity++;
-
-    await existBook.save();
+    const book = await BookModel.findOne({ bookId: issueRecord.bookId, schoolId, session });
+    if (book) {
+      book.quantity += 1;
+      await book.save();
+    }
 
     res.status(200).json({
       success: true,
-      message: "Book Returned Data is successfully Updated",
+      message: "Book returned successfully",
       issueRecord,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Book not Returned due to error",
+      message: "Book not returned due to error",
       error: error.message,
     });
   }
@@ -6457,6 +7416,8 @@ exports.getAllIssuedBookStudent = async (req, res) => {
   }
 };
 
+
+
 exports.getMyKids = async (req, res) => {
   try {
     if (req.user.role !== "parent") {
@@ -6504,42 +7465,93 @@ exports.getAdminBySlug = async (req, res) => {
 };
 
 // API CONTROLLERS FOR THE ADMIN
-exports.getAdminExams = async (req, res) => {
+exports.createAdminExam = async (req, res) => {
   try {
-    // Ensure the user is an admin
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. This endpoint is for admins only.",
+        message: "Access denied. Only admins can create exams.",
       });
     }
 
-    // Build the query dynamically
-    const query = {
-      schoolId: req.user.schoolId,
+    const { name, examType, className, section, subjects, startDate, endDate, resultPublishDate, gradeSystem } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const createdBy = req.user._id;
+    const updatedBy = req.user._id;
+
+    const examData = {
+      schoolId,
+      session,
+      createdBy,
+      name,
+      examType,
+      className,
+      section,
+      subjects,
+      startDate,
+      endDate,
+      resultPublishDate,
+      gradeSystem,
+      updatedBy,
     };
 
-    // Optional filters from query parameters
-    const { className, section } = req.query;
+    const existingExam = await Exam.findOne({
+      schoolId,
+      session,
+      className,
+      section,
+      examType,
+      startDate,
+      endDate,
+    });
 
-    if (className) {
-      query.className = className;
+    if (existingExam) {
+      return res.status(400).json({
+        success: false,
+        message: "An exam with these details already exists.",
+      });
     }
 
-    if (section) {
-      query.section = section;
+    const exam = new Exam(examData);
+    await exam.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Exam created successfully",
+      exam,
+    });
+  } catch (error) {
+    console.error("Error in createAdminExam:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create exam",
+      error: error.message,
+    });
+  }
+};
+
+exports.getAdminExams = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only admins can access exams.",
+      });
     }
 
-    // Log the query for debugging
-    console.log("Admin Exams Query:", query);
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { examId, className, section, examType, startDate } = req.query;
 
-    // Fetch exams with the constructed query
-    const exams = await Exam.find(query)
-      .sort({ startDate: -1 }) // Sort by startDate in descending order
-      .lean(); // Use lean() for better performance if you don’t need Mongoose documents
+    const query = { schoolId, session };
+    if (examId) query.examId = examId;
+    if (className) query.className = className;
+    if (section) query.section = section;
+    if (examType) query.examType = examType;
+    if (startDate) query.startDate = { $gte: new Date(startDate) };
 
-    // Log the result for debugging
-    console.log("Found Exams:", exams);
+    const exams = await Exam.find(query).sort({ startDate: -1 }).lean();
 
     if (exams.length === 0) {
       return res.status(200).json({
@@ -6555,7 +7567,7 @@ exports.getAdminExams = async (req, res) => {
       exams,
     });
   } catch (error) {
-    console.error("Error in getAdminExams:", error.message);
+    console.error("Error in getAdminExams:", error);
     res.status(500).json({
       success: false,
       message: "Failed to retrieve exams",
@@ -6564,26 +7576,67 @@ exports.getAdminExams = async (req, res) => {
   }
 };
 
-// DELETE API CONTROLLER FOR ADMIN
-exports.deleteAdminExam = async (req, res) => {
+exports.updateAdminExam = async (req, res) => {
   try {
-    // Ensure the user is an admin
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. This endpoint is for admins only.",
+        message: "Access denied. Only admins can update exams.",
       });
     }
 
-    const exam = await Exam.findOneAndDelete({
-      _id: req.params.id,
-      schoolId: req.user.schoolId,
-    });
+    const { examId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+    const updateData = req.body;
+
+    const exam = await Exam.findOneAndUpdate(
+      { examId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
 
     if (!exam) {
       return res.status(404).json({
         success: false,
-        message: "Exam not found",
+        message: "Exam not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Exam updated successfully",
+      exam,
+    });
+  } catch (error) {
+    console.error("Error in updateAdminExam:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update exam",
+      error: error.message,
+    });
+  }
+};
+
+exports.deleteAdminExam = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Only admins can delete exams.",
+      });
+    }
+
+    const { examId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    const exam = await Exam.findOneAndDelete({ examId, schoolId, session });
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found.",
       });
     }
 
@@ -6592,114 +7645,10 @@ exports.deleteAdminExam = async (req, res) => {
       message: "Exam deleted successfully",
     });
   } catch (error) {
-    console.error("Error in deleteAdminExam:", error.message);
+    console.error("Error in deleteAdminExam:", error);
     res.status(500).json({
       success: false,
       message: "Failed to delete exam",
-      error: error.message,
-    });
-  }
-};
-
-// CREATE API CONTROLLER FOR ADMIN
-exports.createAdminExam = async (req, res) => {
-  try {
-    // Ensure the user is an admin
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. This endpoint is for admins only.",
-      });
-    }
-
-    const examData = {
-      ...req.body,
-      schoolId: req.user.schoolId,
-      createdBy: req.user._id,
-    };
-
-    // Log exam data for debugging
-    console.log("Admin Exam Data:", examData);
-
-    // Check if exam already exists
-    const existingExam = await Exam.findOne({
-      schoolId: examData.schoolId,
-      className: examData.className,
-      section: examData.section,
-      examType: req.body.examType,
-      startDate: req.body.startDate,
-      endDate: req.body.endDate,
-    });
-
-    if (existingExam) {
-      return res.status(400).json({
-        success: false,
-        message: "An exam with these details already exists",
-      });
-    }
-
-    const exam = new Exam(examData);
-    await exam.save();
-    res.status(201).json({
-      success: true,
-      message: "Exam created successfully",
-      exam,
-    });
-  } catch (error) {
-    console.error("Error in createAdminExam:", error.message);
-    res.status(400).json({
-      success: false,
-      message: "Failed to create exam",
-      error: error.message,
-    });
-  }
-};
-
-// UPDATE API CONTROLLER FOR ADMIN
-exports.updateAdminExam = async (req, res) => {
-  try {
-    // Ensure the user is an admin
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. This endpoint is for admins only.",
-      });
-    }
-
-    const exam = await Exam.findOne({
-      _id: req.params.id,
-      schoolId: req.user.schoolId,
-    });
-
-    if (!exam) {
-      return res.status(404).json({
-        success: false,
-        message: "Exam not found",
-      });
-    }
-
-    // Validate dates if they are being updated
-    if (req.body.startDate || req.body.endDate || req.body.resultPublishDate) {
-      validateExamDates(
-        req.body.startDate || exam.startDate,
-        req.body.endDate || exam.endDate,
-        req.body.resultPublishDate || exam.resultPublishDate
-      );
-    }
-
-    Object.assign(exam, req.body);
-    await exam.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Exam updated successfully",
-      exam,
-    });
-  } catch (error) {
-    console.error("Error in updateAdminExam:", error.message);
-    res.status(400).json({
-      success: false,
-      message: "Failed to update exam",
       error: error.message,
     });
   }
@@ -6841,36 +7790,41 @@ exports.getAdminMarks = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. This endpoint is for admins only.",
+        message: "Access denied. Only admins can access marks.",
       });
     }
 
-    const { studentId, examId, className, section } = req.query;
-    const query = {
-      schoolId: req.user.schoolId,
-    };
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { marksId, examId, studentId, className, section } = req.query;
 
-    if (studentId) query.studentId = studentId;
+    const query = { schoolId, session };
+    if (marksId) query.marksId = marksId;
     if (examId) query.examId = examId;
+    if (studentId) query.studentId = studentId;
     if (className) query.className = className;
     if (section) query.section = section;
 
-    const marks = await Mark.find(query)
-      .populate("studentId", "name rollNo")
-      .populate("examId", "name examType")
-      .sort({ "studentId.rollNo": 1 });
+    const marks = await Mark.find(query).lean();
+
+    if (marks.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No marks found matching the criteria.",
+      });
+    }
 
     res.status(200).json({
       success: true,
       message: "Marks retrieved successfully",
-      count: marks.length,
       marks,
     });
   } catch (error) {
-    console.error("Error in getAdminMarks:", error.message);
+    console.error("Error in getAdminMarks:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to retrieve marks",
+      error: error.message,
     });
   }
 };
@@ -6881,85 +7835,61 @@ exports.updateAdminMark = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. This endpoint is for admins only.",
+        message: "Access denied. Only admins can update marks.",
       });
     }
 
-    const mark = await Mark.findOne({
-      _id: req.params.id,
-      schoolId: req.user.schoolId,
-    });
+    const { marksId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updateData = req.body;
+
+    const mark = await Mark.findOneAndUpdate(
+      { marksId, schoolId, session },
+      { $set: { ...updateData, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
 
     if (!mark) {
       return res.status(404).json({
         success: false,
-        message: "Mark record not found",
+        message: "Mark record not found.",
       });
     }
-
-    // Validate new marks against exam configuration
-    const exam = await Exam.findById(mark.examId);
-    if (!exam) {
-      return res.status(404).json({
-        success: false,
-        message: "Associated exam not found",
-      });
-    }
-
-    if (req.body.marks) {
-      req.body.marks.forEach((newMark) => {
-        const examSubject = exam.subjects.find(
-          (s) => s.name === newMark.subjectName
-        );
-        if (!examSubject) {
-          throw new Error(
-            `Subject ${newMark.subjectName} not found in exam configuration`
-          );
-        }
-        if (newMark.marks > examSubject.totalMarks) {
-          throw new Error(
-            `Marks cannot exceed total marks for ${newMark.subjectName}`
-          );
-        }
-      });
-    }
-
-    Object.assign(mark, req.body);
-    await mark.save();
 
     res.status(200).json({
       success: true,
-      message: "Mark updated successfully",
+      message: "Mark record updated successfully",
       mark,
     });
   } catch (error) {
-    console.error("Error in updateAdminMark:", error.message);
-    res.status(400).json({
+    console.error("Error in updateAdminMark:", error);
+    res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to update mark",
+      error: error.message,
     });
   }
 };
 
-// ADMIN DELETE MARK
 exports.deleteAdminMark = async (req, res) => {
   try {
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. This endpoint is for admins only.",
+        message: "Access denied. Only admins can delete marks.",
       });
     }
 
-    const mark = await Mark.findOneAndDelete({
-      _id: req.params.id,
-      schoolId: req.user.schoolId,
-    });
+    const { marksId } = req.params;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
+    const mark = await Mark.findOneAndDelete({ marksId, schoolId, session });
     if (!mark) {
       return res.status(404).json({
         success: false,
-        message: "Mark record not found",
+        message: "Mark record not found.",
       });
     }
 
@@ -6968,10 +7898,11 @@ exports.deleteAdminMark = async (req, res) => {
       message: "Mark record deleted successfully",
     });
   } catch (error) {
-    console.error("Error in deleteAdminMark:", error.message);
+    console.error("Error in deleteAdminMark:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to delete mark",
+      error: error.message,
     });
   }
 };
@@ -7132,21 +8063,19 @@ exports.bulkUploadAdminMarks = async (req, res) => {
     if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Access denied. This endpoint is for admins only.",
+        message: "Access denied. Only admins can upload marks.",
       });
     }
 
     const { examId, studentsMarks } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
 
-    const exam = await Exam.findOne({
-      _id: examId,
-      schoolId: req.user.schoolId,
-    });
-
+    const exam = await Exam.findOne({ examId, schoolId, session });
     if (!exam) {
       return res.status(404).json({
         success: false,
-        message: "Exam not found or access denied",
+        message: "Exam not found.",
       });
     }
 
@@ -7155,72 +8084,62 @@ exports.bulkUploadAdminMarks = async (req, res) => {
 
     for (const studentData of studentsMarks) {
       try {
-        let studentMark = await Mark.findOne({
-          studentId: studentData.studentId,
+        let mark = await Mark.findOne({
           examId,
-          schoolId: req.user.schoolId,
+          studentId: studentData.studentId,
+          schoolId,
+          session,
         });
 
-        if (studentMark) {
-          studentData.marks.forEach((newSubjectMark) => {
-            const examSubject = exam.subjects.find(
-              (s) => s.name === newSubjectMark.subjectName
-            );
-            if (!examSubject) {
-              throw new Error(
-                `Subject ${newSubjectMark.subjectName} not found in exam configuration`
-              );
-            }
-            if (Number(newSubjectMark.marks) > examSubject.totalMarks) {
-              throw new Error(
-                `Marks cannot exceed total marks for ${newSubjectMark.subjectName}`
-              );
-            }
+        const validatedMarks = studentData.marks.map((m) => {
+          const examSubject = exam.subjects.find((s) => s.name === m.subjectName);
+          if (!examSubject) throw new Error(`Subject ${m.subjectName} not found in exam.`);
+          if (m.marks > examSubject.totalMarks) throw new Error(`Marks exceed total for ${m.subjectName}.`);
+          return {
+            subjectName: m.subjectName,
+            marks: m.marks,
+            totalMarks: examSubject.totalMarks,
+            passingMarks: examSubject.passingMarks,
+            isPassed: m.marks >= examSubject.passingMarks,
+          };
+        });
 
-            const existingSubjectIndex = studentMark.marks.findIndex(
-              (m) => m.subjectName === newSubjectMark.subjectName
-            );
-
-            if (existingSubjectIndex !== -1) {
-              studentMark.marks[existingSubjectIndex] = newSubjectMark;
-            } else {
-              studentMark.marks.push(newSubjectMark);
-            }
-          });
+        if (mark) {
+          mark.marks = validatedMarks;
+          mark.coScholasticMarks = studentData.coScholasticMarks || [];
         } else {
-          studentMark = new Mark({
-            studentId: studentData.studentId,
+          mark = new Mark({
+            schoolId,
+            session,
             examId,
-            schoolId: req.user.schoolId,
+            studentId: studentData.studentId,
             className: exam.className,
             section: exam.section,
-            marks: studentData.marks,
+            marks: validatedMarks,
             coScholasticMarks: studentData.coScholasticMarks || [],
           });
         }
 
-        await studentMark.save();
-        results.push(studentMark);
+        await mark.save();
+        results.push(mark);
       } catch (error) {
-        errors.push({
-          studentId: studentData.studentId,
-          error: error.message,
-        });
+        errors.push({ studentId: studentData.studentId, error: error.message });
       }
     }
 
     res.status(201).json({
       success: true,
-      message: `Successfully processed marks for ${results.length} students`,
+      message: `Processed marks for ${results.length} students`,
       failedCount: errors.length,
       results,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
-    console.error("Error in bulkUploadAdminMarks:", error.message);
+    console.error("Error in bulkUploadAdminMarks:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to upload marks",
+      error: error.message,
     });
   }
 };

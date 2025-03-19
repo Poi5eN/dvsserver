@@ -4758,90 +4758,90 @@ exports.addSibling = async (req, res) => {
   }
 };
 
-exports.getParentWithChildren = async (req, res) => {
-  try {
-    const parentAdmissionNumber = req.params.parentAdmissionNumber;
+// exports.getParentWithChildren = async (req, res) => {
+//   try {
+//     const parentAdmissionNumber = req.params.parentAdmissionNumber;
 
-    if (!parentAdmissionNumber) {
-      return res.status(400).json({
-        success: false,
-        message: "Parent admission number is required",
-      });
-    }
+//     if (!parentAdmissionNumber) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Parent admission number is required",
+//       });
+//     }
 
-    // Find the parent and populate student details
-    const parent = await ParentModel.findOne({
-      admissionNumber: parentAdmissionNumber,
-    }).populate("studentIds"); // Ensure that studentIds field is populated with student details
+//     // Find the parent and populate student details
+//     const parent = await ParentModel.findOne({
+//       admissionNumber: parentAdmissionNumber,
+//     }).populate("studentIds"); // Ensure that studentIds field is populated with student details
 
-    if (!parent) {
-      return res.status(404).json({
-        success: false,
-        message: "Parent not found",
-      });
-    }
+//     if (!parent) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Parent not found",
+//       });
+//     }
 
-    // Get dues for each child based on their admission number
-    const childrenWithDues = await Promise.all(
-      parent.studentIds.map(async (student) => {
-        const feeStatus = await FeeStatus.findOne({
-          admissionNumber: student.admissionNumber,
-        });
-        const totalDues = feeStatus ? feeStatus.dues : 0; // If no fee record, dues are 0 by default
+//     // Get dues for each child based on their admission number
+//     const childrenWithDues = await Promise.all(
+//       parent.studentIds.map(async (student) => {
+//         const feeStatus = await FeeStatus.findOne({
+//           admissionNumber: student.admissionNumber,
+//         });
+//         const totalDues = feeStatus ? feeStatus.dues : 0; // If no fee record, dues are 0 by default
 
-        return {
-          schoolId: student.schoolId,
-          fullName: student.fullName,
-          email: student.email,
-          dateOfBirth: student.dateOfBirth,
-          rollNo: student.rollNo,
-          parentId: student.parentId,
-          status: student.status,
-          gender: student.gender,
-          joiningDate: student.joiningDate,
-          address: student.address,
-          contact: student.contact,
-          class: student.class,
-          section: student.section,
-          country: student.country,
-          subject: student.subject,
-          admissionNumber: student.admissionNumber,
-          image: student.image,
-          createdAt: student.createdAt,
-          dues: totalDues, // Add the dues for the student
-        };
-      })
-    );
+//         return {
+//           schoolId: student.schoolId,
+//           fullName: student.fullName,
+//           email: student.email,
+//           dateOfBirth: student.dateOfBirth,
+//           rollNo: student.rollNo,
+//           parentId: student.parentId,
+//           status: student.status,
+//           gender: student.gender,
+//           joiningDate: student.joiningDate,
+//           address: student.address,
+//           contact: student.contact,
+//           class: student.class,
+//           section: student.section,
+//           country: student.country,
+//           subject: student.subject,
+//           admissionNumber: student.admissionNumber,
+//           image: student.image,
+//           createdAt: student.createdAt,
+//           dues: totalDues, // Add the dues for the student
+//         };
+//       })
+//     );
 
-    // Format the response
-    res.status(200).json({
-      success: true,
-      parent: {
-        schoolId: parent.schoolId,
-        studentIds: parent.studentIds.map((student) => student._id.toString()), // Return student IDs
-        studentName: parent.studentName,
-        fullName: parent.fullName,
-        motherName: parent.motherName,
-        email: parent.email,
-        contact: parent.contact,
-        admissionNumber: parent.admissionNumber,
-        income: parent.income,
-        qualification: parent.qualification,
-        image: parent.image,
-        status: parent.status,
-        role: parent.role,
-        createdAt: parent.createdAt,
-      },
-      children: childrenWithDues, // Return children with dues included
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error retrieving parent with children",
-      error: error.message,
-    });
-  }
-};
+//     // Format the response
+//     res.status(200).json({
+//       success: true,
+//       parent: {
+//         schoolId: parent.schoolId,
+//         studentIds: parent.studentIds.map((student) => student._id.toString()), // Return student IDs
+//         studentName: parent.studentName,
+//         fullName: parent.fullName,
+//         motherName: parent.motherName,
+//         email: parent.email,
+//         contact: parent.contact,
+//         admissionNumber: parent.admissionNumber,
+//         income: parent.income,
+//         qualification: parent.qualification,
+//         image: parent.image,
+//         status: parent.status,
+//         role: parent.role,
+//         createdAt: parent.createdAt,
+//       },
+//       children: childrenWithDues, // Return children with dues included
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error retrieving parent with children",
+//       error: error.message,
+//     });
+//   }
+// };
 
 exports.getDataByAdmissionNumber = async (req, res) => {
   try {
@@ -4902,8 +4902,7 @@ exports.getParentWithChildren = async (req, res) => {
       });
     }
 
-    // Instead of relying on parent's studentIds array,
-    // query the NewStudentModel to find children with the matching parentId.
+    // Query the NewStudentModel to find children with the matching parentId
     const children = await NewStudentModel.find({ parentId });
 
     // Get dues for each child based on their admission number
@@ -4915,12 +4914,19 @@ exports.getParentWithChildren = async (req, res) => {
         const totalDues = feeStatus ? feeStatus.dues : 0; // defaults to 0 if no fee record
 
         return {
+          studentId: student.studentId,
           schoolId: student.schoolId,
-          fullName: student.fullName,
+          session: student.session,
+          studentName: student.studentName,
           email: student.email,
           dateOfBirth: student.dateOfBirth,
+          motherName: student.motherName,
+          fatherName: student.fatherName,
+          parentContact: student.parentContact,
+          role: student.role,
           rollNo: student.rollNo,
           parentId: student.parentId,
+          parentAdmissionNumber: student.parentAdmissionNumber,
           status: student.status,
           gender: student.gender,
           joiningDate: student.joiningDate,
@@ -4930,22 +4936,39 @@ exports.getParentWithChildren = async (req, res) => {
           section: student.section,
           country: student.country,
           subject: student.subject,
+          guardianName: student.guardianName,
+          remarks: student.remarks,
+          transport: student.transport,
           admissionNumber: student.admissionNumber,
-          image: student.image,
+          isGenerated: student.isGenerated,
+          religion: student.religion,
+          caste: student.caste,
+          nationality: student.nationality,
+          pincode: student.pincode,
+          state: student.state,
+          city: student.city,
+          approvalStatus: student.approvalStatus,
+          assignedThirdParty: student.assignedThirdParty,
           createdAt: student.createdAt,
+          studentImage: student.studentImage,
+          fatherImage: student.fatherImage,
+          motherImage: student.motherImage,
+          guardianImage: student.guardianImage,
+          udisePlusDetails: student.udisePlusDetails,
           dues: totalDues,
         };
       })
     );
 
-    // Format the parent response.
-    // Note: Adjust the returned fields based on what is actually stored in your ParentModel.
+    // Format the parent response
     res.status(200).json({
       success: true,
       parent: {
         parentId: parent.parentId,
         schoolId: parent.schoolId,
-        studentIds: parent.studentIds, // if needed
+        session: parent.session,
+        studentIds: parent.studentIds,
+        studentNames: parent.studentNames,
         fatherName: parent.fatherName,
         motherName: parent.motherName,
         email: parent.email,
@@ -4954,9 +4977,14 @@ exports.getParentWithChildren = async (req, res) => {
         income: parent.income,
         qualification: parent.qualification,
         parentImage: parent.parentImage,
+        fatherImage: parent.fatherImage,
+        motherImage: parent.motherImage,
+        guardianImage: parent.guardianImage,
+        base64: parent.base64,
+        createdBy: parent.createdBy,
+        createdAt: parent.createdAt,
         status: parent.status,
         role: parent.role,
-        createdAt: parent.createdAt,
       },
       children: childrenWithDues,
     });
@@ -4968,6 +4996,7 @@ exports.getParentWithChildren = async (req, res) => {
     });
   }
 };
+
 
 
 exports.getAllParentsWithChildren = async (req, res) => {

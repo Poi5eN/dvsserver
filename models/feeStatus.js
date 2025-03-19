@@ -54,8 +54,10 @@ const feeHistorySchema = new mongoose.Schema(
       get: (date) =>
         new Date(date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
     },
-    status: {
+    status: { // New field to track active/canceled status
       type: String,
+      enum: ["active", "canceled"],
+      default: "active",
       required: true,
     },
     regularFees: [regularFeeHistorySchema],

@@ -191,7 +191,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
             status: "Not Applicable",
           };
         }
-
         const feeAmount = feeMap[isRegular ? "Monthly" : entry.name] || 0;
         const previousPaidAmount = isRegular
           ? existingRegularFees.find(fee => fee.month === entry.month)?.paidAmount || 0
@@ -224,7 +223,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
     const newFeeHistory = {
       date: formattedDate,
-      status: totalPaidAmount > 0 ? (pastDuesPaid + regularFees.length + additionalFees.length > 0 ? "Partial Payment" : "Paid") : "Unpaid",
+      status: "active", // Default to active
       regularFees: updatedRegularFees,
       additionalFees: updatedAdditionalFees,
       pastDuesPaid,
@@ -280,7 +279,8 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
 
-      const remainingPastDues = Math.max(0, pastDues - pastDuesPaid);
+      const activeFeeHistory = existingFeePayment.feeHistory.filter(fee => fee.status === "active");
+      const remainingPastDues = Math.max(0, pastDues - activeFeeHistory.reduce((sum, fee) => sum + (fee.pastDuesPaid || 0), 0));
       existingFeePayment.pastDues = remainingPastDues;
 
       const totalRegularDues = existingFeePayment.monthlyDues.regularDues.reduce((sum, due) => sum + due.dueAmount, 0);
@@ -299,13 +299,11 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           contact: student.contact,
           joiningDate: student.joiningDate,
         },
-        parentDetails: parent
-          ? {
-              fullName: `${parent.fatherName} & ${parent.motherName || ''}`,
-              contact: parent.contact,
-              email: parent.email,
-            }
-          : null,
+        parentDetails: parent ? {
+          fullName: `${parent.fatherName} & ${parent.motherName || ''}`,
+          contact: parent.contact,
+          email: parent.email,
+        } : null,
       };
       res.status(201).json({
         success: true,
@@ -352,7 +350,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
             status: entry.status,
           })),
         },
-        session: "2023-2024", // Assuming a default session; adjust as needed
+        session: "2023-2024",
       });
 
       const savedFeePayment = await newFeePayment.save();
@@ -367,13 +365,11 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           contact: student.contact,
           joiningDate: student.joiningDate,
         },
-        parentDetails: parent
-          ? {
-              fullName: `${parent.fatherName} & ${parent.motherName || ''}`,
-              contact: parent.contact,
-              email: parent.email,
-            }
-          : null,
+        parentDetails: parent ? {
+          fullName: `${parent.fatherName} & ${parent.motherName || ''}`,
+          contact: parent.contact,
+          email: parent.email,
+        } : null,
       };
       res.status(201).json({
         success: true,
@@ -382,7 +378,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Error in createOrUpdateFeePayment:', error);
+    console.error('Error in createOrUpdateFeePayment:', error.message);
     res.status(400).json({
       success: false,
       message: "Fee Status is not created Successfully",
@@ -391,7 +387,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
   }
 };
 
-// Get fee status
+// Get fee status (updated to exclude canceled fees in calculations)
 exports.getFeeStatus = async (req, res) => {
   try {
     const { studentId } = req.query;
@@ -416,8 +412,16 @@ exports.getFeeStatus = async (req, res) => {
         ? await ParentModel.findOne({ schoolId: req.user.schoolId, parentId: student.parentId }).lean()
         : null;
 
+      // Filter active fee history for calculations
+      const activeFeeHistory = feeStatus.feeHistory.filter(fee => fee.status === "active");
+      const totalPastDuesPaid = activeFeeHistory.reduce((sum, fee) => sum + (fee.pastDuesPaid || 0), 0);
+      const calculatedDues = feeStatus.monthlyDues.regularDues.reduce((sum, due) => sum + due.dueAmount, 0) +
+                            feeStatus.monthlyDues.additionalDues.reduce((sum, due) => sum + due.dueAmount, 0) +
+                            Math.max(0, feeStatus.pastDues - totalPastDuesPaid);
+
       return {
         ...feeStatus,
+        dues: calculatedDues, // Override with active-only calculation
         student: student ? { ...student, parentContact: parent?.contact || null } : null,
       };
     });
@@ -431,10 +435,88 @@ exports.getFeeStatus = async (req, res) => {
       data: detailedFeeStatus,
     });
   } catch (error) {
-    console.error('Error in getFeeStatus:', error);
+    console.error('Error in getFeeStatus:', error.message);
     res.status(500).json({
       success: false,
       message: "Failed to retrieve fee status",
+      error: error.message,
+    });
+  }
+};
+
+
+// New endpoint to cancel a fee payment
+exports.cancelFeePayment = async (req, res) => {
+  try {
+    const { studentId, feeReceiptNumber } = req.body;
+    const schoolId = req.user.schoolId;
+
+    console.log('cancelFeePayment called with:', { studentId, feeReceiptNumber, schoolId });
+
+    if (!schoolId) {
+      return res.status(400).json({ success: false, message: "School ID is required." });
+    }
+    if (!studentId || !feeReceiptNumber) {
+      return res.status(400).json({ success: false, message: "Student ID and Fee Receipt Number are required." });
+    }
+
+    const feeStatus = await FeeStatus.findOne({ schoolId, studentId });
+    if (!feeStatus) {
+      return res.status(404).json({ success: false, message: "Fee status not found for this student." });
+    }
+
+    const feeToCancel = feeStatus.feeHistory.find(fee => fee.feeReceiptNumber === feeReceiptNumber);
+    if (!feeToCancel) {
+      return res.status(404).json({ success: false, message: "Fee receipt number not found." });
+    }
+    if (feeToCancel.status === "canceled") {
+      return res.status(400).json({ success: false, message: "Fee is already canceled." });
+    }
+
+    // Mark the fee as canceled
+    feeToCancel.status = "canceled";
+
+    // Reverse the effects of this fee on monthlyDues
+    feeToCancel.regularFees.forEach(canceledFee => {
+      const regularDue = feeStatus.monthlyDues.regularDues.find(due => due.month === canceledFee.month);
+      if (regularDue) {
+        regularDue.paidAmount = Math.max(0, (regularDue.paidAmount || 0) - canceledFee.paidAmount);
+        regularDue.dueAmount += canceledFee.paidAmount; // Revert paid amount to dues
+        regularDue.status = regularDue.dueAmount > 0 ? (regularDue.paidAmount > 0 ? "Partial Payment" : "Unpaid") : "Paid";
+      }
+    });
+
+    feeToCancel.additionalFees.forEach(canceledFee => {
+      const additionalDue = feeStatus.monthlyDues.additionalDues.find(due => due.name === canceledFee.name && due.month === (canceledFee.month || "N/A"));
+      if (additionalDue) {
+        additionalDue.paidAmount = Math.max(0, (additionalDue.paidAmount || 0) - canceledFee.paidAmount);
+        additionalDue.dueAmount += canceledFee.paidAmount; // Revert paid amount to dues
+        additionalDue.status = additionalDue.dueAmount > 0 ? (additionalDue.paidAmount > 0 ? "Partial Payment" : "Unpaid") : "Paid";
+      }
+    });
+
+    // Recalculate pastDues and total dues based only on active fees
+    const activeFeeHistory = feeStatus.feeHistory.filter(fee => fee.status === "active");
+    const totalPastDuesPaid = activeFeeHistory.reduce((sum, fee) => sum + (fee.pastDuesPaid || 0), 0);
+    feeStatus.pastDues = Math.max(0, feeStatus.pastDues - totalPastDuesPaid + feeToCancel.pastDuesPaid);
+
+    const totalRegularDues = feeStatus.monthlyDues.regularDues.reduce((sum, due) => sum + due.dueAmount, 0);
+    const totalAdditionalDues = feeStatus.monthlyDues.additionalDues.reduce((sum, due) => sum + due.dueAmount, 0);
+    feeStatus.dues = totalRegularDues + totalAdditionalDues + feeStatus.pastDues;
+
+    const updatedFeeStatus = await feeStatus.save();
+    console.log(`Fee ${feeReceiptNumber} canceled successfully`);
+
+    res.status(200).json({
+      success: true,
+      message: "Fee payment canceled successfully",
+      data: updatedFeeStatus.toObject(),
+    });
+  } catch (error) {
+    console.error('Error in cancelFeePayment:', error.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel fee payment",
       error: error.message,
     });
   }

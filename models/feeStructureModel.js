@@ -1,3 +1,4 @@
+// models/feeStructure.js
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 
@@ -35,9 +36,15 @@ const feeStructureSchema = new mongoose.Schema({
     required: true,
     default: false,
   },
-  studentId: { // Changed from admissionNumber to studentId
+  studentId: {
     type: String,
-    required: false, // Optional, for student-specific fees
+    required: false,
+  },
+  lateFineDueDay: { // New field for late fine due date (e.g., 10 for 10th of the month)
+    type: Number,
+    min: 1,
+    max: 31,
+    required: false,
   },
   createdAt: {
     type: Date,

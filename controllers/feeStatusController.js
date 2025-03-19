@@ -129,14 +129,13 @@ async function getFeesForClass(schoolId, className, studentId = null) {
 }
 
 // Create or update fee payment
-// Create or update fee payment
 exports.createOrUpdateFeePayment = async (req, res) => {
   try {
-    const { studentId, className, feeHistory } = req.body;
+    const { studentId, className, feeHistory, excludeLateFine = false } = req.body; // Added excludeLateFine option
     const schoolId = req.user.schoolId;
     const year = new Date().getFullYear().toString();
 
-    console.log('createOrUpdateFeePayment called with:', { studentId, className, feeHistory, schoolId });
+    console.log('createOrUpdateFeePayment called with:', { studentId, className, feeHistory, schoolId, excludeLateFine });
 
     if (!schoolId) {
       return res.status(400).json({ success: false, message: "School ID is required." });
@@ -154,22 +153,24 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     const parent = student.parentId
       ? await ParentModel.findOne({ schoolId, parentId: student.parentId }).lean()
       : null;
-    const joiningMonthIndex = new Date(student.joiningDate).getMonth();
     const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
     const fees = await getFeesForClass(schoolId, className, studentId);
     const regularFeeMap = {};
     const additionalFeeMap = {};
+    let lateFineFee = null;
     fees.forEach(fee => {
-      if (fee.additional) {
+      if (fee.feeType === "LateFine" && fee.additional) {
+        lateFineFee = fee; // Store late fine fee structure
+      } else if (fee.additional) {
         additionalFeeMap[fee.name] = fee.amount || 0;
       } else {
         regularFeeMap[fee.feeType] = fee.amount || 0;
       }
     });
 
-    const regularFees = feeHistory.regularFees || [];
-    const additionalFees = feeHistory.additionalFees || [];
+    let regularFees = feeHistory.regularFees || [];
+    let additionalFees = feeHistory.additionalFees || [];
     const pastDuesPaid = feeHistory.pastDuesPaid || 0;
 
     let existingFeePayment = await FeeStatus.findOne({ schoolId, studentId, year });
@@ -177,14 +178,30 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     const existingRegularFees = existingFeePayment ? existingFeePayment.monthlyDues.regularDues : [];
     const existingAdditionalFees = existingFeePayment ? existingFeePayment.monthlyDues.additionalDues : [];
 
+    // Check for late fine applicability
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate();
+    const currentMonth = months[currentDate.getMonth()];
+    if (lateFineFee && !excludeLateFine && currentDay > lateFineFee.lateFineDueDay) {
+      const unpaidRegularDues = existingRegularFees.some(fee => fee.month === currentMonth && fee.dueAmount > 0);
+      if (!existingFeePayment || unpaidRegularDues) {
+        // Apply late fine if dues remain unpaid past the due day
+        const lateFineEntry = {
+          name: "Late Fine",
+          month: currentMonth,
+          paidAmount: 0, // Admin can pay it in this transaction if desired
+        };
+        additionalFees.push(lateFineEntry);
+        additionalFeeMap["Late Fine"] = lateFineFee.amount;
+      }
+    }
+
     let totalPaidAmount = pastDuesPaid;
     regularFees.forEach(entry => totalPaidAmount += entry.paidAmount || 0);
     additionalFees.forEach(entry => totalPaidAmount += entry.paidAmount || 0);
 
     const calculateFees = (entries, feeMap, isRegular) => {
       return entries.map(entry => {
-        const monthIndex = months.indexOf(entry.month);
-        // Remove joiningMonthIndex check to allow payments for any specified month
         const feeAmount = feeMap[isRegular ? "Monthly" : entry.name] || 0;
         const previousPaidAmount = isRegular
           ? existingRegularFees.find(fee => fee.month === entry.month)?.paidAmount || 0
@@ -306,7 +323,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       });
     } else {
       console.log('Creating new fee payment');
-      // Initialize monthlyDues only for the months specified in the request
       const initialRegularDues = regularFees.map(entry => ({
         month: entry.month,
         dueAmount: regularFeeMap["Monthly"] || 0,

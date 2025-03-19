@@ -7,13 +7,6 @@ exports.createEvent = async (req, res) => {
     try {
         const { Subject, Location, StartTime, EndTime, Description, } = req.body.updatedData
 
-        //     const startTime = new Date(StartTime).toLocaleString('en-US', {
-        //         timeZone: 'Asia/Kolkata', // Use the desired time zone
-        //       });
-
-        //   const endTime = new Date(EndTime).toLocaleString('en-US', {
-        //     timeZone: 'Asia/Kolkata', // Use the desired time zone
-        //   });
         const newEvent = await Event.create({
             schoolId: req.user.schoolId,
             Subject: Subject,

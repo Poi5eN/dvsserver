@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const ContactUs = require('../models/ContactUs'); 
 const sendEmail = require('../utils/email');
-// const nodemailer = require('nodemailer');
 
 
 exports.contactUs = async (req, res) => {
@@ -19,25 +18,7 @@ exports.contactUs = async (req, res) => {
         });
     
         await newContactUs.save();
-    
-        // const transporter = nodemailer.createTransport({
-        //   service: 'Gmail',
-        //   auth: {
-        //     user: 'your@email.com',
-        //     pass: 'yourpassword',
-        //   },
-        // });
-    
-        // const mailOptions = {
-        //   from: 'your@email.com',
-        //   to: 'recipient@email.com',
-        //   subject: 'New Contact Us Submission',
-        //   text: `Name: ${name}\nEmail: ${email}\nContact: ${contact}\nSchool Name: ${schoolName || 'Not provided'}\nMessage: ${message}`,
-        // };
-    
-        // await transporter.sendMail(mailOptions);
-
-
+        
         const subject = `New Inquiry from [Client Name ${name}]`;
 
         const content = `

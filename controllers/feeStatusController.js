@@ -7,7 +7,6 @@ const ParentModel = require('../models/parentModel');
 const { generateStructuredNumber } = require('../utils/numberGenerator'); // Adjust path as needed
 
 // Helper function to generate a structured fee receipt number (e.g., DI1000)
-// Helper function to generate a structured fee receipt number (e.g., DI1000)
 const generateFeeReceiptNumber = async (schoolId) => {
   return generateStructuredNumber(schoolId, FeeStatus, 'feeHistory.feeReceiptNumber');
 };

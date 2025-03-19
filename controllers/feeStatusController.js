@@ -116,7 +116,6 @@ async function getFeesForClass(schoolId, className, studentId = null) {
     } else {
       fees = await FeeStructure.find({ schoolId, className, studentId: { $exists: false } });
     }
-
     if (fees.length === 0) {
       const additionalMessage = studentId ? ` or student ${studentId}` : '';
       throw new Error(`No fee structure found for class ${className}${additionalMessage}`);
@@ -124,10 +123,12 @@ async function getFeesForClass(schoolId, className, studentId = null) {
     console.log(`Found fees: ${fees.length} entries`);
     return fees;
   } catch (error) {
-    throw new Error(`Failed to fetch fees: ${error.message}`);
+    console.error('Error in getFeesForClass:', error.message);
+    throw error;
   }
 }
 
+// Create or update fee payment
 // Create or update fee payment
 exports.createOrUpdateFeePayment = async (req, res) => {
   try {
@@ -183,14 +184,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     const calculateFees = (entries, feeMap, isRegular) => {
       return entries.map(entry => {
         const monthIndex = months.indexOf(entry.month);
-        if (isRegular && monthIndex < joiningMonthIndex) {
-          return {
-            month: entry.month,
-            dueAmount: 0,
-            paidAmount: 0,
-            status: "Not Applicable",
-          };
-        }
+        // Remove joiningMonthIndex check to allow payments for any specified month
         const feeAmount = feeMap[isRegular ? "Monthly" : entry.name] || 0;
         const previousPaidAmount = isRegular
           ? existingRegularFees.find(fee => fee.month === entry.month)?.paidAmount || 0
@@ -223,7 +217,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
     const newFeeHistory = {
       date: formattedDate,
-      status: "active", // Default to active
+      status: "active",
       regularFees: updatedRegularFees,
       additionalFees: updatedAdditionalFees,
       pastDuesPaid,
@@ -252,7 +246,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           regularDue.dueAmount = entry.dueAmount;
           regularDue.paidAmount = (regularDue.paidAmount || 0) + entry.paidAmount;
           regularDue.status = entry.status;
-        } else if (months.indexOf(entry.month) >= joiningMonthIndex) {
+        } else {
           existingFeePayment.monthlyDues.regularDues.push({
             month: entry.month,
             dueAmount: entry.dueAmount,
@@ -312,8 +306,9 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       });
     } else {
       console.log('Creating new fee payment');
-      const initialRegularDues = months.slice(joiningMonthIndex).map(month => ({
-        month,
+      // Initialize monthlyDues only for the months specified in the request
+      const initialRegularDues = regularFees.map(entry => ({
+        month: entry.month,
         dueAmount: regularFeeMap["Monthly"] || 0,
         paidAmount: 0,
         status: "Unpaid",
@@ -328,8 +323,25 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
 
+      const initialAdditionalDues = additionalFees.map(entry => ({
+        name: entry.name,
+        month: entry.month || "N/A",
+        dueAmount: additionalFeeMap[entry.name] || 0,
+        paidAmount: 0,
+        status: "Unpaid",
+      }));
+
+      updatedAdditionalFees.forEach(entry => {
+        const due = initialAdditionalDues.find(d => d.name === entry.name && d.month === (entry.month || "N/A"));
+        if (due) {
+          due.dueAmount = entry.dueAmount;
+          due.paidAmount = entry.paidAmount;
+          due.status = entry.status;
+        }
+      });
+
       const totalRegularDues = initialRegularDues.reduce((sum, due) => sum + due.dueAmount, 0);
-      const totalAdditionalDues = updatedAdditionalFees.reduce((sum, due) => sum + due.dueAmount, 0);
+      const totalAdditionalDues = initialAdditionalDues.reduce((sum, due) => sum + due.dueAmount, 0);
       const remainingPastDues = Math.max(0, pastDues - pastDuesPaid);
       const totalDues = totalRegularDues + totalAdditionalDues + remainingPastDues;
 
@@ -342,13 +354,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         feeHistory: [newFeeHistory],
         monthlyDues: {
           regularDues: initialRegularDues,
-          additionalDues: updatedAdditionalFees.map(entry => ({
-            name: entry.name,
-            month: entry.month || "N/A",
-            dueAmount: entry.dueAmount,
-            paidAmount: entry.paidAmount,
-            status: entry.status,
-          })),
+          additionalDues: initialAdditionalDues,
         },
         session: "2023-2024",
       });

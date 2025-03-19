@@ -163,7 +163,7 @@ const feeStatus = new mongoose.Schema({
     type: String,
     required: true,
   },
-  admissionNumber: {
+  studentId: {
     type: String,
     required: true,
   },

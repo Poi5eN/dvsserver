@@ -58,7 +58,7 @@ router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents)
 // PARENT RELATED CONTROLLER FLOW
 router.put('/parents/:parentId', verifyToken, singleUpload, admin.updateParent);
 router.put('/parents/:parentId/toggle', verifyToken, admin.toggleParentStatus);
-router.get('/parentandchild/:parentAdmissionNumber', verifyToken, uploads, admin.getParentWithChildren);
+router.get('/parentandchild/:parentId', verifyToken, uploads, admin.getParentWithChildren);
 
 
 

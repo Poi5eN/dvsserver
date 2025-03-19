@@ -4848,6 +4848,94 @@ exports.getDataByAdmissionNumber = async (req, res) => {
   }
 };
 
+exports.getParentWithChildren = async (req, res) => {
+  try {
+    // Use parentId from request params
+    const { parentId } = req.params;
+    if (!parentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Parent id is required",
+      });
+    }
+
+    // Find the parent by parentId (no populate needed)
+    const parent = await ParentModel.findOne({ parentId });
+    if (!parent) {
+      return res.status(404).json({
+        success: false,
+        message: "Parent not found",
+      });
+    }
+
+    // Instead of relying on parent's studentIds array,
+    // query the NewStudentModel to find children with the matching parentId.
+    const children = await NewStudentModel.find({ parentId });
+
+    // Get dues for each child based on their admission number
+    const childrenWithDues = await Promise.all(
+      children.map(async (student) => {
+        const feeStatus = await FeeStatus.findOne({
+          admissionNumber: student.admissionNumber,
+        });
+        const totalDues = feeStatus ? feeStatus.dues : 0; // defaults to 0 if no fee record
+
+        return {
+          schoolId: student.schoolId,
+          fullName: student.fullName,
+          email: student.email,
+          dateOfBirth: student.dateOfBirth,
+          rollNo: student.rollNo,
+          parentId: student.parentId,
+          status: student.status,
+          gender: student.gender,
+          joiningDate: student.joiningDate,
+          address: student.address,
+          contact: student.contact,
+          class: student.class,
+          section: student.section,
+          country: student.country,
+          subject: student.subject,
+          admissionNumber: student.admissionNumber,
+          image: student.image,
+          createdAt: student.createdAt,
+          dues: totalDues,
+        };
+      })
+    );
+
+    // Format the parent response.
+    // Note: Adjust the returned fields based on what is actually stored in your ParentModel.
+    res.status(200).json({
+      success: true,
+      parent: {
+        parentId: parent.parentId,
+        schoolId: parent.schoolId,
+        studentIds: parent.studentIds, // if needed
+        fatherName: parent.fatherName,
+        motherName: parent.motherName,
+        email: parent.email,
+        contact: parent.contact,
+        admissionNumber: parent.admissionNumber,
+        income: parent.income,
+        qualification: parent.qualification,
+        parentImage: parent.parentImage,
+        status: parent.status,
+        role: parent.role,
+        createdAt: parent.createdAt,
+      },
+      children: childrenWithDues,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving parent with children",
+      error: error.message,
+    });
+  }
+};
+
+
 exports.getAllParentsWithChildren = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;

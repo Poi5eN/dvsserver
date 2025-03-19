@@ -2968,7 +2968,8 @@ exports.createBulkStudentParent = async (req, res) => {
     if (!req.body || !req.body.students || !Array.isArray(req.body.students)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid request format. Please provide an array of students in the 'students' field.",
+        message:
+          "Invalid request format. Please provide an array of students in the 'students' field.",
       });
     }
 
@@ -2982,7 +2983,8 @@ exports.createBulkStudentParent = async (req, res) => {
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
+        message:
+          "School ID and session are required from authenticated admin.",
       });
     }
     if (!createdBy) {
@@ -2992,6 +2994,7 @@ exports.createBulkStudentParent = async (req, res) => {
       });
     }
 
+    // Process each student record in bulk
     for (const student of studentsData) {
       const {
         studentFullName,
@@ -3033,8 +3036,8 @@ exports.createBulkStudentParent = async (req, res) => {
         gender: studentUdiseGender,
         DOB,
         mother_name,
-        father_name,
-        guardian_name,
+        father_name: udiseFatherName,
+        guardian_name: udiseGuardianName,
         aadhar_no,
         aadhar_name,
         paddress,
@@ -3083,49 +3086,68 @@ exports.createBulkStudentParent = async (req, res) => {
       } = student;
 
       try {
-        if (!studentFullName) throw new Error("Student full name is required.");
-        if (!studentEmail) throw new Error("Student email is required.");
-        if (!studentPassword) throw new Error("Student password is required.");
-        if (!fatherName) throw new Error("Father's name is required.");
-        if (!studentJoiningDate) throw new Error("Student joining date is required.");
-        if (!studentClass) throw new Error("Student class is required.");
-        if (!parentEmail && !parentAdmissionNumber) {
+        // Validate only the required fields as per your schema
+        if (!studentFullName)
+          throw new Error("Student full name is required.");
+        if (!studentEmail)
+          throw new Error("Student email is required.");
+        if (!studentPassword)
+          throw new Error("Student password is required.");
+        if (!fatherName)
+          throw new Error("Father's name is required.");
+        if (!studentJoiningDate)
+          throw new Error("Student joining date is required.");
+        if (!studentClass)
+          throw new Error("Student class is required.");
+        if (!parentEmail && !parentAdmissionNumber)
           throw new Error("Parent email or admission number is required.");
-        }
-        if (!parentPassword && !parentAdmissionNumber) {
-          throw new Error("Parent password is required when creating a new parent.");
-        }
+        if (!parentPassword && !parentAdmissionNumber)
+          throw new Error(
+            "Parent password is required when creating a new parent."
+          );
 
+        // Check for duplicate student record in same school/session
         const studentExist = await NewStudentModel.findOne({
           email: studentEmail,
           schoolId,
           session,
         });
-        if (studentExist) {
-          throw new Error(`Student with email ${studentEmail} already exists in this school and session.`);
-        }
+        if (studentExist)
+          throw new Error(
+            `Student with email ${studentEmail} already exists in this school and session.`
+          );
 
+        // Find parent if exists based on parentAdmissionNumber or parentEmail
         const parentExist = parentAdmissionNumber
-          ? await ParentModel.findOne({ admissionNumber: parentAdmissionNumber, schoolId, session })
+          ? await ParentModel.findOne({
+              admissionNumber: parentAdmissionNumber,
+              schoolId,
+              session,
+            })
           : parentEmail
           ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
           : null;
 
-        if (parentAdmissionNumber && !parentExist) {
-          throw new Error(`Parent with admission number ${parentAdmissionNumber} does not exist in this school and session.`);
-        }
-        if (!parentAdmissionNumber && parentEmail && parentExist) {
-          throw new Error(`Parent with email ${parentEmail} already exists in this school and session.`);
-        }
+        if (parentAdmissionNumber && !parentExist)
+          throw new Error(
+            `Parent with admission number ${parentAdmissionNumber} does not exist in this school and session.`
+          );
+        if (!parentAdmissionNumber && parentEmail && parentExist)
+          throw new Error(
+            `Parent with email ${parentEmail} already exists in this school and session.`
+          );
 
         const studentHashPassword = await hashPassword(studentPassword);
-        const parentHashPassword = parentPassword ? await hashPassword(parentPassword) : undefined;
+        const parentHashPassword = parentPassword
+          ? await hashPassword(parentPassword)
+          : undefined;
 
         const studentAdmissionNumberToUse =
           admissionNumber && admissionNumber.trim() !== ""
             ? admissionNumber
             : await generateAdmissionNumber(schoolId, NewStudentModel);
 
+        // Create the student record
         const studentData = await NewStudentModel.create({
           schoolId,
           session,
@@ -3134,7 +3156,11 @@ exports.createBulkStudentParent = async (req, res) => {
           password: studentHashPassword,
           dateOfBirth: studentDateOfBirth,
           rollNo: (
-            (await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1
+            (await NewStudentModel.countDocuments({
+              schoolId,
+              class: studentClass,
+              section: studentSection,
+            })) + 1
           ).toString(),
           gender: studentGender,
           joiningDate: studentJoiningDate,
@@ -3168,8 +3194,8 @@ exports.createBulkStudentParent = async (req, res) => {
             gender: studentUdiseGender,
             DOB,
             mother_name,
-            father_name,
-            guardian_name,
+            father_name: udiseFatherName,
+            guardian_name: udiseGuardianName,
             aadhar_no,
             aadhar_name,
             paddress,
@@ -3220,21 +3246,23 @@ exports.createBulkStudentParent = async (req, res) => {
 
         let parentData = null;
         if (parentAdmissionNumber) {
+          // Update existing parent with the new student record
           parentData = await ParentModel.findOneAndUpdate(
             { admissionNumber: parentAdmissionNumber, schoolId, session },
             {
-              $push: { studentIds: studentData.studentId }, // Using studentId instead of _id
+              $push: { studentIds: studentData.studentId },
               $addToSet: { studentNames: studentFullName },
             },
             { new: true }
           );
         } else if (parentEmail && parentPassword) {
+          // Create a new parent record
           parentData = await ParentModel.create({
             schoolId,
             session,
-            studentIds: [studentData.studentId], // Using studentId instead of _id
+            studentIds: [studentData.studentId],
             studentNames: [studentFullName],
-            fatherName: fatherName,
+            fatherName,
             motherName,
             guardianName,
             email: parentEmail,
@@ -3246,6 +3274,7 @@ exports.createBulkStudentParent = async (req, res) => {
             createdBy,
           });
 
+          // Optionally, send parent email credentials
           const parentEmailContent = `<p>Your EmailID: ${parentEmail}</p><p>Your Password: ${parentPassword}</p><p>Your Parent ID: ${parentData.parentId}</p>`;
           await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
         } else {
@@ -3253,7 +3282,7 @@ exports.createBulkStudentParent = async (req, res) => {
         }
 
         if (parentData) {
-          studentData.parentId = parentData._id || parentExist._id;
+          studentData.parentId = parentData.parentId || (parentExist && parentExist.parentId);
           studentData.parentAdmissionNumber = parentAdmissionNumber || parentData.admissionNumber;
           await studentData.save();
         } else {
@@ -3262,7 +3291,10 @@ exports.createBulkStudentParent = async (req, res) => {
 
         createdStudents.push(studentData);
       } catch (error) {
-        errors.push({ studentEmail: studentEmail || "unknown", error: error.message });
+        errors.push({
+          studentEmail: studentEmail || "unknown",
+          error: error.message,
+        });
       }
     }
 
@@ -3275,11 +3307,13 @@ exports.createBulkStudentParent = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Bulk student and parent creation failed due to an unexpected error.",
+      message:
+        "Bulk student and parent creation failed due to an unexpected error.",
       error: error.message,
     });
   }
 };
+
 
 // editStudentParent controller
 exports.editStudentParent = async (req, res) => {

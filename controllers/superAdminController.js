@@ -240,11 +240,15 @@ exports.getAdminsBySuperAdmin = async (req, res) => {
 // Modified createThirdPartyUser to include createdBy
 exports.createThirdPartyUser = async (req, res) => {
   try {
-    const { name, email, password, assignedSchools, superAdminId } = req.body;
+    const { name, email, password, assignedSchools, session, superAdminId } = req.body;
     const file = req.file;
 
-    if (!name || !email || !password || !assignedSchools || !superAdminId) {
-      return res.status(400).json({ success: false, message: 'Please provide all required fields' });
+    // Updated validation to include session
+    if (!name || !email || !password || !assignedSchools || !session || !superAdminId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide all required fields: name, email, password, assignedSchools, session, and superAdminId' 
+      });
     }
 
     const userExists = await ThirdPartyUser.findOne({ email });
@@ -284,6 +288,7 @@ exports.createThirdPartyUser = async (req, res) => {
       email,
       password: hashedPassword,
       assignedSchools: parsedAssignedSchools,
+      session, // Assign the session from the request body
       image: imageObj,
       createdBy: superAdminId,
     });
@@ -299,7 +304,6 @@ exports.createThirdPartyUser = async (req, res) => {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
               <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi" style="max-width: 120px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -307,7 +311,6 @@ exports.createThirdPartyUser = async (req, res) => {
               <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Your Registration Handler Role Begins</p>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
               <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${name}!</h2>
@@ -317,13 +320,13 @@ exports.createThirdPartyUser = async (req, res) => {
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>User ID:</strong> ${userId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Session:</strong> ${session}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Assigned Schools:</strong></p>
                 ${thirdPartyUser.assignedSchools.map((school) => `<p style="margin: 5px 0 0 20px; font-size: 16px;">- ${school.schoolName}</p>`).join('')}
               </div>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start handling registrations for your assigned schools!</p>
             </td>
           </tr>
-          <!-- Footer -->
           <tr>
             <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
               <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -485,7 +488,7 @@ exports.getThirdPartyUser = async (req, res) => {
 exports.updateThirdPartyUser = async (req, res) => {
   try {
     const { userId, superAdminId } = req.params;
-    const { name, email, password, assignedSchools } = req.body;
+    const { name, email, password, assignedSchools, session } = req.body;
     const file = req.file;
 
     const thirdPartyUser = await ThirdPartyUser.findOne({ userId, createdBy: superAdminId });
@@ -496,6 +499,7 @@ exports.updateThirdPartyUser = async (req, res) => {
     if (name) thirdPartyUser.name = name;
     if (email) thirdPartyUser.email = email;
     if (password) thirdPartyUser.password = await hashPassword(password);
+    if (session) thirdPartyUser.session = session; // Update session if provided
     if (assignedSchools) {
       try {
         const parsedAssignedSchools = JSON.parse(assignedSchools);

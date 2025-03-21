@@ -1,5 +1,5 @@
 // models/thirdPartyModel.js
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const thirdPartySchema = new mongoose.Schema({
   userId: {
@@ -21,37 +21,45 @@ const thirdPartySchema = new mongoose.Schema({
     required: true,
     select: false,
   },
-  assignedSchools: [{
-    schoolId: {
-      type: String,
-      required: true,
+  assignedSchools: [
+    {
+      schoolId: {
+        type: String,
+        required: true,
+      },
+      schoolName: {
+        type: String,
+        required: true,
+      },
     },
-    schoolName: {
-      type: String,
-      required: true,
-    },
-  }],
-  image: { // Added image field
+  ],
+  image: {
+    // Added image field
     public_id: {
       type: String,
-      default: '',
+      default: "",
     },
     url: {
       type: String,
-      default: '',
+      default: "",
     },
   },
   status: {
     type: String,
-    enum: ['active', 'inactive'],
-    default: 'active',
+    enum: ["active", "inactive"],
+    default: "active",
   },
   role: {
     type: String,
     required: true,
     default: "thirdparty",
-},
-// session: { type: String, required: true },
+  },
+  session: {
+    // Added session field
+    type: String,
+    required: true, // Make it required to ensure every third-party user has a session
+  },
+  // session: { type: String, required: true },
   createdBy: {
     type: String,
     required: true,
@@ -62,5 +70,5 @@ const thirdPartySchema = new mongoose.Schema({
   },
 });
 
-const ThirdPartyUser = mongoose.model('ThirdPartyUser', thirdPartySchema);
+const ThirdPartyUser = mongoose.model("ThirdPartyUser", thirdPartySchema);
 module.exports = ThirdPartyUser;

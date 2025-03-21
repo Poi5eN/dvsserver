@@ -46,9 +46,11 @@ router.put('/linkStudentToParent', verifyToken,uploads, admin.linkStudentToParen
 
 
 // STUDENT RELATED CONTROLLER FLOW
+router.post('/students', verifyToken, uploads, admin.createStudentOnly);
 router.put('/students/:studentId', verifyToken, uploads, admin.editStudentParent);
-router.get('/students/:studentId', verifyToken, admin.getStudentAndParent);
+router.get('/students/:studentId', verifyToken, admin.getStudentParent);
 router.put('/students/:studentId/toggle', verifyToken, admin.toggleStudentStatus);
+router.put('/students/:studentId/toggle-admission', admin.toggleAdmissionStatus);
 router.put('/students/update/:studentId', verifyToken, singleUpload, admin.updateStudent);
 router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents);
 
@@ -56,7 +58,8 @@ router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents)
 
 
 // PARENT RELATED CONTROLLER FLOW
-router.put('/parents/:parentId', verifyToken, singleUpload, admin.updateParent);
+router.post('/parents', verifyToken, uploads, admin.createParentOnly);
+router.put('/parents/:parentId', verifyToken, uploads, admin.updateParent);
 router.put('/parents/:parentId/toggle', verifyToken, admin.toggleParentStatus);
 router.get('/parentandchild/:parentId', verifyToken, uploads, admin.getParentWithChildren);
 

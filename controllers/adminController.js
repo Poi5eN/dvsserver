@@ -2539,7 +2539,8 @@ const generateAdmissionNumber = async (schoolId, Model) => {
   return generateStructuredNumber(schoolId, Model, "admissionNumber");
 };
 
-exports.createStudentParent = async (req, res) => {
+// Create Student Only (New Endpoint)
+exports.createStudentOnly = async (req, res) => {
   try {
     const {
       studentFullName,
@@ -2559,11 +2560,6 @@ exports.createStudentParent = async (req, res) => {
       guardianName,
       remarks,
       transport,
-      parentEmail,
-      parentPassword,
-      parentContact,
-      parentIncome,
-      parentQualification,
       religion,
       caste,
       nationality,
@@ -2571,8 +2567,7 @@ exports.createStudentParent = async (req, res) => {
       state,
       city,
       admissionNumber,
-      parentAdmissionNumber,
-      // UDISE+ fields
+      // UDISE+ fields (same as createStudentParent)
       stu_id,
       class: studentUdiseClass,
       section: studentUdiseSection,
@@ -2634,47 +2629,25 @@ exports.createStudentParent = async (req, res) => {
     const session = req.user.session;
     const createdBy = req.user._id;
 
-    if (!schoolId || !session) {
+    if (!schoolId || !session || !createdBy) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!createdBy) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required from authenticated admin.",
+        message: "School ID, session, and user ID are required.",
       });
     }
 
-    if (!studentFullName) {
-      return res.status(400).json({ success: false, message: "Student full name is required." });
-    }
-    if (!studentEmail) {
-      return res.status(400).json({ success: false, message: "Student email is required." });
-    }
-    if (!studentPassword) {
-      return res.status(400).json({ success: false, message: "Student password is required." });
-    }
-    if (!fatherName) {
-      return res.status(400).json({ success: false, message: "Father's name is required." });
-    }
-    if (!studentJoiningDate) {
-      return res.status(400).json({ success: false, message: "Student joining date is required." });
-    }
-    if (!studentClass) {
-      return res.status(400).json({ success: false, message: "Student class is required." });
-    }
-    if (!parentEmail && !parentAdmissionNumber) {
+    if (!studentFullName || !studentEmail || !studentPassword || !studentJoiningDate || !studentClass) {
       return res.status(400).json({
         success: false,
-        message: "Parent email or admission number is required.",
+        message: "Required student fields are missing.",
       });
     }
-    if (!parentPassword && !parentAdmissionNumber) {
+
+    const studentExist = await NewStudentModel.findOne({ email: studentEmail, schoolId, session });
+    if (studentExist) {
       return res.status(400).json({
         success: false,
-        message: "Parent password is required when creating a new parent.",
+        message: `Student with email ${studentEmail} already exists.`,
       });
     }
 
@@ -2684,97 +2657,35 @@ exports.createStudentParent = async (req, res) => {
     const motherFile = files.find((f) => f.fieldname === "motherImage");
     const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
-    const studentExist = await NewStudentModel.findOne({
-      email: studentEmail,
-      schoolId,
-      session,
-    });
-    if (studentExist) {
-      return res.status(400).json({
-        success: false,
-        message: `Student with email ${studentEmail} already exists in this school and session.`,
-      });
-    }
-
-    const parentExist = parentAdmissionNumber
-      ? await ParentModel.findOne({ admissionNumber: parentAdmissionNumber, schoolId, session })
-      : parentEmail
-      ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
-      : null;
-
-    if (parentAdmissionNumber && !parentExist) {
-      return res.status(400).json({
-        success: false,
-        message: `Parent with admission number ${parentAdmissionNumber} does not exist in this school and session.`,
-      });
-    }
-    if (!parentAdmissionNumber && parentEmail && parentExist) {
-      return res.status(400).json({
-        success: false,
-        message: `Parent with email ${parentEmail} already exists in this school and session.`,
-      });
-    }
-
     const studentHashPassword = await hashPassword(studentPassword);
-    const parentHashPassword = parentPassword ? await hashPassword(parentPassword) : undefined;
+    let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
 
-    let studentImageResult = {},
-      fatherImageResult = {},
-      motherImageResult = {},
-      guardianImageResult = {};
     if (studentFile) {
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
-      const params = {
-        Bucket: process.env.MINIO_BUCKET,
-        Key: fileKey,
-        Body: studentFile.buffer,
-        ContentType: studentFile.mimetype,
-        ACL: "public-read",
-      };
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
       const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = {
-        Bucket: process.env.MINIO_BUCKET,
-        Key: fileKey,
-        Body: fatherFile.buffer,
-        ContentType: fatherFile.mimetype,
-        ACL: "public-read",
-      };
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
       const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = {
-        Bucket: process.env.MINIO_BUCKET,
-        Key: fileKey,
-        Body: motherFile.buffer,
-        ContentType: motherFile.mimetype,
-        ACL: "public-read",
-      };
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
       const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = {
-        Bucket: process.env.MINIO_BUCKET,
-        Key: fileKey,
-        Body: guardianFile.buffer,
-        ContentType: guardianFile.mimetype,
-        ACL: "public-read",
-      };
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const studentAdmissionNumberToUse =
-      admissionNumber && admissionNumber.trim() !== ""
-        ? admissionNumber
-        : await generateAdmissionNumber(schoolId, NewStudentModel);
+    const studentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, NewStudentModel);
 
     const studentData = await NewStudentModel.create({
       schoolId,
@@ -2783,9 +2694,7 @@ exports.createStudentParent = async (req, res) => {
       email: studentEmail,
       password: studentHashPassword,
       dateOfBirth: studentDateOfBirth,
-      rollNo: (
-        (await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1
-      ).toString(),
+      rollNo: ((await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1).toString(),
       gender: studentGender,
       joiningDate: studentJoiningDate,
       address: studentAddress,
@@ -2806,6 +2715,7 @@ exports.createStudentParent = async (req, res) => {
       pincode,
       state,
       city,
+      isNewAdmission: true,
       createdBy,
       studentImage: studentImageResult.url ? studentImageResult : undefined,
       fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
@@ -2814,61 +2724,316 @@ exports.createStudentParent = async (req, res) => {
       approvalStatus: "approved",
       assignedThirdParty: null,
       udisePlusDetails: {
-        stu_id,
-        class: studentUdiseClass,
-        section: studentUdiseSection,
-        roll_no,
-        student_name,
-        gender: studentUdiseGender,
-        DOB,
-        mother_name,
-        father_name,
-        guardian_name,
-        aadhar_no,
-        aadhar_name,
-        paddress,
-        pincode: udisePlusPincode,
-        mobile_no,
-        alt_mobile_no,
-        email_id,
-        mothere_tougue,
-        category,
-        minority,
-        is_bpl,
-        is_aay,
-        ews_aged_group,
-        is_cwsn,
-        cwsn_imp_type,
-        ind_national,
-        mainstramed_child,
-        adm_no,
-        adm_date,
-        stu_stream,
-        pre_year_schl_status,
-        pre_year_class,
-        stu_ward,
-        pre_class_exam_app,
-        result_pre_exam,
-        perc_pre_class,
-        att_pre_class,
-        fac_free_uniform,
-        fac_free_textbook,
-        received_central_scholarship,
-        name_central_scholarship,
-        received_state_scholarship,
-        received_other_scholarship,
-        scholarship_amount,
-        fac_provided_cwsn,
-        SLD_type,
-        aut_spec_disorder,
-        ADHD,
-        inv_ext_curr_activity,
-        vocational_course,
-        trade_sector_id,
-        job_role_id,
-        pre_app_exam_vocationalsubject,
-        bpl_card_no,
-        ann_card_no,
+        stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no, student_name, gender: studentUdiseGender, DOB, mother_name, father_name, guardian_name, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
+      },
+    });
+
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+    const schoolName = schoolDetails?.schoolName || "Your School";
+    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+
+    const studentEmailContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admission Confirmation</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
+              <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
+              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
+              <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your Learning Journey!</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px; background-color: #ffffff;">
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
+              <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
+                <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData.studentId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
+              </div>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Get ready for an amazing adventure with us! Your journey starts on ${studentJoiningDate}.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
+              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
+              <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
+              <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #000000;">
+                Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> |
+                <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
+              </p>
+              <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+    await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
+
+    res.status(201).json({
+      success: true,
+      message: "Student created successfully, email sent.",
+      student: studentData,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Student creation failed due to an error.",
+      error: error.message,
+    });
+  }
+};
+
+// Create Parent Only (New Endpoint)
+exports.createParentOnly = async (req, res) => {
+  try {
+    const {
+      fatherName,
+      motherName,
+      guardianName,
+      parentEmail,
+      parentPassword,
+      parentContact,
+      parentIncome,
+      parentQualification,
+      admissionNumber,
+    } = req.body;
+
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const createdBy = req.user._id;
+
+    if (!schoolId || !session || !createdBy) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID, session, and user ID are required.",
+      });
+    }
+
+    if (!fatherName || !parentEmail || !parentPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Required parent fields are missing.",
+      });
+    }
+
+    const parentExist = await ParentModel.findOne({ email: parentEmail, schoolId, session });
+    if (parentExist) {
+      return res.status(400).json({
+        success: false,
+        message: `Parent with email ${parentEmail} already exists.`,
+      });
+    }
+
+    const files = req.files || [];
+    const parentFile = files.find((f) => f.fieldname === "parentImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
+
+    const parentHashPassword = await hashPassword(parentPassword);
+    let parentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+
+    if (parentFile) {
+      const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      parentImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (fatherFile) {
+      const fileKey = `parents/father/${Date.now()}-${fatherFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      fatherImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (motherFile) {
+      const fileKey = `parents/mother/${Date.now()}-${motherFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      motherImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (guardianFile) {
+      const fileKey = `parents/guardian/${Date.now()}-${guardianFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      guardianImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+
+    const parentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, ParentModel);
+
+    const parentData = await ParentModel.create({
+      schoolId,
+      session,
+      studentIds: [],
+      studentNames: [],
+      fatherName,
+      motherName,
+      guardianName,
+      email: parentEmail,
+      password: parentHashPassword,
+      contact: parentContact,
+      admissionNumber: parentAdmissionNumberToUse,
+      income: parentIncome,
+      qualification: parentQualification,
+      createdBy,
+      parentImage: parentImageResult.url ? parentImageResult : undefined,
+      fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
+      motherImage: motherImageResult.url ? motherImageResult : undefined,
+      guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
+    });
+
+    const parentEmailContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Parent Account Created</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
+              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">Welcome, Parent!</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px; background-color: #ffffff;">
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Your Credentials</h2>
+              <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${parentEmail}</p>
+              <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${parentPassword}</p>
+              <p style="margin: 5px 0; font-size: 16px;"><strong>Parent ID:</strong> ${parentData.parentId}</p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+    await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
+
+    res.status(201).json({
+      success: true,
+      message: "Parent created successfully, email sent.",
+      parent: parentData,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Parent creation failed due to an error.",
+      error: error.message,
+    });
+  }
+};
+
+// Existing createStudentParent (Unchanged except for minor refactoring)
+exports.createStudentParent = async (req, res) => {
+  try {
+    const {
+      studentFullName, studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
+      studentAddress, studentContact, studentClass, studentSection, studentCountry, studentSubject,
+      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
+      parentIncome, parentQualification, religion, caste, nationality, pincode, state, city, admissionNumber,
+      parentAdmissionNumber, stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no,
+      student_name, gender: studentUdiseGender, DOB, mother_name, father_name, guardian_name, aadhar_no,
+      aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue,
+      category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national,
+      mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward,
+      pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook,
+      received_central_scholarship, name_central_scholarship, received_state_scholarship,
+      received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder,
+      ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject,
+      bpl_card_no, ann_card_no,
+    } = req.body;
+
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const createdBy = req.user._id;
+
+    if (!schoolId || !session || !createdBy) {
+      return res.status(400).json({ success: false, message: "School ID, session, and user ID are required." });
+    }
+
+    if (!studentFullName || !studentEmail || !studentPassword || !fatherName || !studentJoiningDate || !studentClass || (!parentEmail && !parentAdmissionNumber) || (!parentPassword && !parentAdmissionNumber)) {
+      return res.status(400).json({ success: false, message: "Required fields are missing." });
+    }
+
+    const files = req.files || [];
+    const studentFile = files.find((f) => f.fieldname === "studentImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
+
+    const studentExist = await NewStudentModel.findOne({ email: studentEmail, schoolId, session });
+    if (studentExist) {
+      return res.status(400).json({ success: false, message: `Student with email ${studentEmail} already exists.` });
+    }
+
+    const parentExist = parentAdmissionNumber ? await ParentModel.findOne({ admissionNumber: parentAdmissionNumber, schoolId, session }) : parentEmail ? await ParentModel.findOne({ email: parentEmail, schoolId, session }) : null;
+    if (parentAdmissionNumber && !parentExist) {
+      return res.status(400).json({ success: false, message: `Parent with admission number ${parentAdmissionNumber} does not exist.` });
+    }
+    if (!parentAdmissionNumber && parentEmail && parentExist) {
+      return res.status(400).json({ success: false, message: `Parent with email ${parentEmail} already exists.` });
+    }
+
+    const studentHashPassword = await hashPassword(studentPassword);
+    const parentHashPassword = parentPassword ? await hashPassword(parentPassword) : undefined;
+
+    let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+    if (studentFile) {
+      const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      studentImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (fatherFile) {
+      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      fatherImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (motherFile) {
+      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      motherImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (guardianFile) {
+      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      guardianImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+
+    const studentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, NewStudentModel);
+
+    const studentData = await NewStudentModel.create({
+      schoolId, session, studentName: studentFullName, email: studentEmail, password: studentHashPassword,
+      dateOfBirth: studentDateOfBirth, rollNo: ((await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1).toString(),
+      gender: studentGender, joiningDate: studentJoiningDate, address: studentAddress, contact: studentContact,
+      class: studentClass, fatherName, motherName, guardianName, remarks, transport, section: studentSection,
+      country: studentCountry, subject: studentSubject, admissionNumber: studentAdmissionNumberToUse,
+      religion, caste, nationality, pincode, state, city, createdBy,
+      studentImage: studentImageResult.url ? studentImageResult : undefined,
+      fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
+      motherImage: motherImageResult.url ? motherImageResult : undefined,
+      guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
+      approvalStatus: "approved", assignedThirdParty: null,
+      udisePlusDetails: {
+        stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no, student_name, gender: studentUdiseGender, DOB, mother_name, father_name, guardian_name, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
       },
     });
 
@@ -2876,43 +3041,23 @@ exports.createStudentParent = async (req, res) => {
     if (parentAdmissionNumber) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId, session },
-        {
-          $push: { studentIds: studentData.studentId },
-          studentNames: studentFullName,
-        },
+        { $push: { studentIds: studentData.studentId }, studentNames: studentFullName },
         { new: true }
       );
     } else if (parentEmail && parentPassword) {
-      const parentImageResult =
-        files.find((f) => f.fieldname === "parentImage") || fatherFile || motherFile || guardianFile;
+      const parentImageResult = files.find((f) => f.fieldname === "parentImage") || fatherFile || motherFile || guardianFile;
       let parentImageData = {};
       if (parentImageResult) {
         const fileKey = `parents/${Date.now()}-${parentImageResult.originalname}`;
-        const params = {
-          Bucket: process.env.MINIO_BUCKET,
-          Key: fileKey,
-          Body: parentImageResult.buffer,
-          ContentType: parentImageResult.mimetype,
-          ACL: "public-read",
-        };
+        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentImageResult.buffer, ContentType: parentImageResult.mimetype, ACL: "public-read" };
         const minioData = await s3.upload(params).promise();
         parentImageData = { public_id: fileKey, url: minioData.Location };
       }
       parentData = await ParentModel.create({
-        schoolId,
-        session,
-        studentIds: [studentData.studentId], // Using studentId instead of _id
-        studentNames: [studentFullName],
-        fatherName: fatherName,
-        motherName,
-        guardianName,
-        email: parentEmail,
-        password: parentHashPassword,
-        contact: parentContact,
-        admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
-        income: parentIncome,
-        qualification: parentQualification,
-        createdBy,
+        schoolId, session, studentIds: [studentData.studentId], studentNames: [studentFullName],
+        fatherName, motherName, guardianName, email: parentEmail, password: parentHashPassword,
+        contact: parentContact, admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
+        income: parentIncome, qualification: parentQualification, createdBy,
         parentImage: parentImageData.url ? parentImageData : undefined,
         fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
         motherImage: motherImageResult.url ? motherImageResult : undefined,
@@ -2947,34 +3092,18 @@ exports.createStudentParent = async (req, res) => {
         </html>
       `;
       await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Parent details are required when creating a new parent.",
-      });
     }
 
     if (parentData) {
-      // Change this line:
       studentData.parentId = parentData.parentId || parentExist.parentId;
       studentData.parentAdmissionNumber = parentAdmissionNumber || parentData.admissionNumber;
       await studentData.save();
-      
-    } else {
-      return res.status(500).json({
-        success: false,
-        message: "Parent creation failed due to an error.",
-      });
     }
-    
 
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
     const schoolName = schoolDetails?.schoolName || "Your School";
-    const schoolImageUrl =
-      schoolDetails?.image?.url ||
-      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-    const softwareLogoUrl =
-      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -3041,14 +3170,11 @@ exports.createStudentParent = async (req, res) => {
   }
 };
 
+// Existing createBulkStudentParent (Unchanged)
 exports.createBulkStudentParent = async (req, res) => {
   try {
     if (!req.body || !req.body.students || !Array.isArray(req.body.students)) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Invalid request format. Please provide an array of students in the 'students' field.",
-      });
+      return res.status(400).json({ success: false, message: "Invalid request format." });
     }
 
     const studentsData = req.body.students;
@@ -3058,321 +3184,84 @@ exports.createBulkStudentParent = async (req, res) => {
     const createdStudents = [];
     const errors = [];
 
-    if (!schoolId || !session) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!createdBy) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required from authenticated admin.",
-      });
+    if (!schoolId || !session || !createdBy) {
+      return res.status(400).json({ success: false, message: "School ID, session, and user ID are required." });
     }
 
-    // Process each student record in bulk
     for (const student of studentsData) {
       const {
-        studentFullName,
-        studentEmail,
-        studentPassword,
-        studentDateOfBirth,
-        studentGender,
-        studentJoiningDate,
-        studentAddress,
-        studentContact,
-        studentClass,
-        studentSection,
-        studentCountry,
-        studentSubject,
-        fatherName,
-        motherName,
-        guardianName,
-        remarks,
-        transport,
-        parentEmail,
-        parentPassword,
-        parentContact,
-        parentIncome,
-        parentQualification,
-        religion,
-        caste,
-        nationality,
-        pincode,
-        state,
-        city,
-        admissionNumber,
-        parentAdmissionNumber,
-        // UDISE+ fields
-        stu_id,
-        class: studentUdiseClass,
-        section: studentUdiseSection,
-        roll_no,
-        student_name,
-        gender: studentUdiseGender,
-        DOB,
-        mother_name,
-        father_name: udiseFatherName,
-        guardian_name: udiseGuardianName,
-        aadhar_no,
-        aadhar_name,
-        paddress,
-        pincode: udisePlusPincode,
-        mobile_no,
-        alt_mobile_no,
-        email_id,
-        mothere_tougue,
-        category,
-        minority,
-        is_bpl,
-        is_aay,
-        ews_aged_group,
-        is_cwsn,
-        cwsn_imp_type,
-        ind_national,
-        mainstramed_child,
-        adm_no,
-        adm_date,
-        stu_stream,
-        pre_year_schl_status,
-        pre_year_class,
-        stu_ward,
-        pre_class_exam_app,
-        result_pre_exam,
-        perc_pre_class,
-        att_pre_class,
-        fac_free_uniform,
-        fac_free_textbook,
-        received_central_scholarship,
-        name_central_scholarship,
-        received_state_scholarship,
-        received_other_scholarship,
-        scholarship_amount,
-        fac_provided_cwsn,
-        SLD_type,
-        aut_spec_disorder,
-        ADHD,
-        inv_ext_curr_activity,
-        vocational_course,
-        trade_sector_id,
-        job_role_id,
-        pre_app_exam_vocationalsubject,
-        bpl_card_no,
-        ann_card_no,
+        studentFullName, studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
+        studentAddress, studentContact, studentClass, studentSection, studentCountry, studentSubject,
+        fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
+        parentIncome, parentQualification, religion, caste, nationality, pincode, state, city, admissionNumber,
+        parentAdmissionNumber, stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no,
+        student_name, gender: studentUdiseGender, DOB, mother_name, father_name: udiseFatherName,
+        guardian_name: udiseGuardianName, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode,
+        mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group,
+        is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream,
+        pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class,
+        att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship,
+        received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type,
+        aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id,
+        pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
       } = student;
 
       try {
-        // Validate only the required fields as per your schema
-        if (!studentFullName)
-          throw new Error("Student full name is required.");
-        if (!studentEmail)
-          throw new Error("Student email is required.");
-        if (!studentPassword)
-          throw new Error("Student password is required.");
-        if (!fatherName)
-          throw new Error("Father's name is required.");
-        if (!studentJoiningDate)
-          throw new Error("Student joining date is required.");
-        if (!studentClass)
-          throw new Error("Student class is required.");
-        if (!parentEmail && !parentAdmissionNumber)
-          throw new Error("Parent email or admission number is required.");
-        if (!parentPassword && !parentAdmissionNumber)
-          throw new Error(
-            "Parent password is required when creating a new parent."
-          );
+        if (!studentFullName || !studentEmail || !studentPassword || !fatherName || !studentJoiningDate || !studentClass || (!parentEmail && !parentAdmissionNumber) || (!parentPassword && !parentAdmissionNumber)) {
+          throw new Error("Required fields are missing.");
+        }
 
-        // Check for duplicate student record in same school/session
-        const studentExist = await NewStudentModel.findOne({
-          email: studentEmail,
-          schoolId,
-          session,
-        });
-        if (studentExist)
-          throw new Error(
-            `Student with email ${studentEmail} already exists in this school and session.`
-          );
+        const studentExist = await NewStudentModel.findOne({ email: studentEmail, schoolId, session });
+        if (studentExist) throw new Error(`Student with email ${studentEmail} already exists.`);
 
-        // Find parent if exists based on parentAdmissionNumber or parentEmail
-        const parentExist = parentAdmissionNumber
-          ? await ParentModel.findOne({
-              admissionNumber: parentAdmissionNumber,
-              schoolId,
-              session,
-            })
-          : parentEmail
-          ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
-          : null;
-
-        if (parentAdmissionNumber && !parentExist)
-          throw new Error(
-            `Parent with admission number ${parentAdmissionNumber} does not exist in this school and session.`
-          );
-        if (!parentAdmissionNumber && parentEmail && parentExist)
-          throw new Error(
-            `Parent with email ${parentEmail} already exists in this school and session.`
-          );
+        const parentExist = parentAdmissionNumber ? await ParentModel.findOne({ admissionNumber: parentAdmissionNumber, schoolId, session }) : parentEmail ? await ParentModel.findOne({ email: parentEmail, schoolId, session }) : null;
+        if (parentAdmissionNumber && !parentExist) throw new Error(`Parent with admission number ${parentAdmissionNumber} does not exist.`);
+        if (!parentAdmissionNumber && parentEmail && parentExist) throw new Error(`Parent with email ${parentEmail} already exists.`);
 
         const studentHashPassword = await hashPassword(studentPassword);
-        const parentHashPassword = parentPassword
-          ? await hashPassword(parentPassword)
-          : undefined;
+        const parentHashPassword = parentPassword ? await hashPassword(parentPassword) : undefined;
 
-        const studentAdmissionNumberToUse =
-          admissionNumber && admissionNumber.trim() !== ""
-            ? admissionNumber
-            : await generateAdmissionNumber(schoolId, NewStudentModel);
+        const studentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, NewStudentModel);
 
-        // Create the student record
         const studentData = await NewStudentModel.create({
-          schoolId,
-          session,
-          studentName: studentFullName,
-          email: studentEmail,
-          password: studentHashPassword,
-          dateOfBirth: studentDateOfBirth,
-          rollNo: (
-            (await NewStudentModel.countDocuments({
-              schoolId,
-              class: studentClass,
-              section: studentSection,
-            })) + 1
-          ).toString(),
-          gender: studentGender,
-          joiningDate: studentJoiningDate,
-          address: studentAddress,
-          contact: studentContact,
-          class: studentClass,
-          fatherName,
-          motherName,
-          guardianName,
-          remarks,
-          transport,
-          section: studentSection,
-          country: studentCountry,
-          subject: studentSubject,
-          admissionNumber: studentAdmissionNumberToUse,
-          religion,
-          caste,
-          nationality,
-          pincode,
-          state,
-          city,
-          createdBy,
-          approvalStatus: "approved",
-          assignedThirdParty: null,
+          schoolId, session, studentName: studentFullName, email: studentEmail, password: studentHashPassword,
+          dateOfBirth: studentDateOfBirth, rollNo: ((await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1).toString(),
+          gender: studentGender, joiningDate: studentJoiningDate, address: studentAddress, contact: studentContact,
+          class: studentClass, fatherName, motherName, guardianName, remarks, transport, section: studentSection,
+          country: studentCountry, subject: studentSubject, admissionNumber: studentAdmissionNumberToUse,
+          religion, caste, nationality, pincode, state, city, createdBy, approvalStatus: "approved", assignedThirdParty: null,
           udisePlusDetails: {
-            stu_id,
-            class: studentUdiseClass,
-            section: studentUdiseSection,
-            roll_no,
-            student_name,
-            gender: studentUdiseGender,
-            DOB,
-            mother_name,
-            father_name: udiseFatherName,
-            guardian_name: udiseGuardianName,
-            aadhar_no,
-            aadhar_name,
-            paddress,
-            pincode: udisePlusPincode,
-            mobile_no,
-            alt_mobile_no,
-            email_id,
-            mothere_tougue,
-            category,
-            minority,
-            is_bpl,
-            is_aay,
-            ews_aged_group,
-            is_cwsn,
-            cwsn_imp_type,
-            ind_national,
-            mainstramed_child,
-            adm_no,
-            adm_date,
-            stu_stream,
-            pre_year_schl_status,
-            pre_year_class,
-            stu_ward,
-            pre_class_exam_app,
-            result_pre_exam,
-            perc_pre_class,
-            att_pre_class,
-            fac_free_uniform,
-            fac_free_textbook,
-            received_central_scholarship,
-            name_central_scholarship,
-            received_state_scholarship,
-            received_other_scholarship,
-            scholarship_amount,
-            fac_provided_cwsn,
-            SLD_type,
-            aut_spec_disorder,
-            ADHD,
-            inv_ext_curr_activity,
-            vocational_course,
-            trade_sector_id,
-            job_role_id,
-            pre_app_exam_vocationalsubject,
-            bpl_card_no,
-            ann_card_no,
+            stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no, student_name, gender: studentUdiseGender, DOB, mother_name, father_name: udiseFatherName, guardian_name: udiseGuardianName, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
           },
         });
 
         let parentData = null;
         if (parentAdmissionNumber) {
-          // Update existing parent with the new student record
           parentData = await ParentModel.findOneAndUpdate(
             { admissionNumber: parentAdmissionNumber, schoolId, session },
-            {
-              $push: { studentIds: studentData.studentId },
-              $addToSet: { studentNames: studentFullName },
-            },
+            { $push: { studentIds: studentData.studentId }, $addToSet: { studentNames: studentFullName } },
             { new: true }
           );
         } else if (parentEmail && parentPassword) {
-          // Create a new parent record
           parentData = await ParentModel.create({
-            schoolId,
-            session,
-            studentIds: [studentData.studentId],
-            studentNames: [studentFullName],
-            fatherName,
-            motherName,
-            guardianName,
-            email: parentEmail,
-            password: parentHashPassword,
-            contact: parentContact,
-            admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
-            income: parentIncome,
-            qualification: parentQualification,
-            createdBy,
+            schoolId, session, studentIds: [studentData.studentId], studentNames: [studentFullName],
+            fatherName, motherName, guardianName, email: parentEmail, password: parentHashPassword,
+            contact: parentContact, admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
+            income: parentIncome, qualification: parentQualification, createdBy,
           });
-
-          // Optionally, send parent email credentials
           const parentEmailContent = `<p>Your EmailID: ${parentEmail}</p><p>Your Password: ${parentPassword}</p><p>Your Parent ID: ${parentData.parentId}</p>`;
           await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
-        } else {
-          throw new Error("Parent details are required when creating a new parent.");
         }
 
         if (parentData) {
           studentData.parentId = parentData.parentId || (parentExist && parentExist.parentId);
           studentData.parentAdmissionNumber = parentAdmissionNumber || parentData.admissionNumber;
           await studentData.save();
-        } else {
-          throw new Error("Parent creation failed due to an error.");
         }
 
         createdStudents.push(studentData);
       } catch (error) {
-        errors.push({
-          studentEmail: studentEmail || "unknown",
-          error: error.message,
-        });
+        errors.push({ studentEmail: studentEmail || "unknown", error: error.message });
       }
     }
 
@@ -3385,131 +3274,62 @@ exports.createBulkStudentParent = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      message:
-        "Bulk student and parent creation failed due to an unexpected error.",
+      message: "Bulk creation failed due to an unexpected error.",
       error: error.message,
     });
   }
 };
 
-
-// editStudentParent controller
+// Updated editStudentParent (Enhanced to support linking)
 exports.editStudentParent = async (req, res) => {
   try {
-    const studentId = req.params.studentId; // Now using UUID
+    const studentId = req.params.studentId;
     const formData = req.body;
     const files = req.files || [];
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
 
-    console.log("Input Data:", { studentId, schoolId, session });
-
-    if (!schoolId || !session) {
+    // Essential identifiers must be present
+    if (!schoolId || !session || !studentId) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!studentId) {
-      return res.status(400).json({
-        success: false,
-        message: "Student ID (UUID) is required in the URL parameter.",
+        message: "School ID, session, and student ID are required."
       });
     }
 
+    // Find the student
     const student = await NewStudentModel.findOne({ studentId, schoolId, session });
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found or does not belong to this school and session.",
-      });
+      return res.status(404).json({ success: false, message: "Student not found or does not belong to this school and session." });
     }
 
-    if (formData.studentName !== undefined && !formData.studentName) {
-      return res.status(400).json({
-        success: false,
-        message: "Student full name is required and cannot be empty.",
-      });
-    }
-    if (formData.email !== undefined) {
-      if (!formData.email) {
-        return res.status(400).json({
-          success: false,
-          message: "Student email is required and cannot be empty.",
-        });
-      }
+    // If an email is provided and is non-empty, check its format
+    if (formData.email !== undefined && formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
         return res.status(400).json({ success: false, message: "Invalid email format." });
       }
     }
-    if (formData.fatherName !== undefined && !formData.fatherName) {
-      return res.status(400).json({
-        success: false,
-        message: "Father's name is required and cannot be empty.",
-      });
-    }
-    if (formData.joiningDate !== undefined && !formData.joiningDate) {
-      return res.status(400).json({
-        success: false,
-        message: "Joining date is required and cannot be empty.",
-      });
-    }
-    if (formData.class !== undefined && !formData.class) {
-      return res.status(400).json({
-        success: false,
-        message: "Class is required and cannot be empty.",
-      });
-    }
-    if (formData.dateOfBirth !== undefined) {
-      if (!formData.dateOfBirth) {
-        return res.status(400).json({ success: false, message: "Date of birth cannot be empty." });
-      }
+
+    // If dateOfBirth is provided and non-empty, ensure it's not in the future
+    if (formData.dateOfBirth !== undefined && formData.dateOfBirth) {
       const dob = new Date(formData.dateOfBirth);
       if (dob > new Date()) {
-        return res.status(400).json({
-          success: false,
-          message: "Date of birth cannot be in the future.",
-        });
-      }
-    }
-    if (
-      formData.transport !== undefined &&
-      !["yes", "no", "school_bus", "private"].includes(formData.transport)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Transport must be one of: 'yes', 'no', 'school_bus', 'private'.",
-      });
-    }
-    if (formData.admissionNumber !== undefined) {
-      if (!formData.admissionNumber) {
-        return res.status(400).json({
-          success: false,
-          message: "Admission number is required and cannot be empty.",
-        });
-      }
-      if (!/^[A-Z]{2}\d{4}$/.test(formData.admissionNumber)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000).",
-        });
+        return res.status(400).json({ success: false, message: "Date of birth cannot be in the future." });
       }
     }
 
+    // Student password handling: only update if provided and of acceptable length
     let studentHashPassword = student.password;
     if (formData.password) {
       if (formData.password.length < 8) {
-        return res.status(400).json({
-          success: false,
-          message: "Student password must be at least 8 characters long.",
-        });
+        return res.status(400).json({ success: false, message: "Student password must be at least 8 characters long." });
       }
       studentHashPassword = await hashPassword(formData.password);
     }
 
+    // Handle file uploads for student images (if provided)
     let studentImageResult = student.studentImage;
     let fatherImageResult = student.fatherImage;
     let motherImageResult = student.motherImage;
@@ -3521,10 +3341,10 @@ exports.editStudentParent = async (req, res) => {
     const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     if (studentFile) {
-      if (student.studentImage.public_id) {
+      if (student.studentImage && student.studentImage.public_id) {
         await s3.deleteObject({
           Bucket: process.env.MINIO_BUCKET,
-          Key: student.studentImage.public_id,
+          Key: student.studentImage.public_id
         }).promise();
       }
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
@@ -3533,16 +3353,16 @@ exports.editStudentParent = async (req, res) => {
         Key: fileKey,
         Body: studentFile.buffer,
         ContentType: studentFile.mimetype,
-        ACL: "public-read",
+        ACL: "public-read"
       };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
-      if (student.fatherImage.public_id) {
+      if (student.fatherImage && student.fatherImage.public_id) {
         await s3.deleteObject({
           Bucket: process.env.MINIO_BUCKET,
-          Key: student.fatherImage.public_id,
+          Key: student.fatherImage.public_id
         }).promise();
       }
       const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
@@ -3551,16 +3371,16 @@ exports.editStudentParent = async (req, res) => {
         Key: fileKey,
         Body: fatherFile.buffer,
         ContentType: fatherFile.mimetype,
-        ACL: "public-read",
+        ACL: "public-read"
       };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
-      if (student.motherImage.public_id) {
+      if (student.motherImage && student.motherImage.public_id) {
         await s3.deleteObject({
           Bucket: process.env.MINIO_BUCKET,
-          Key: student.motherImage.public_id,
+          Key: student.motherImage.public_id
         }).promise();
       }
       const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
@@ -3569,16 +3389,16 @@ exports.editStudentParent = async (req, res) => {
         Key: fileKey,
         Body: motherFile.buffer,
         ContentType: motherFile.mimetype,
-        ACL: "public-read",
+        ACL: "public-read"
       };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      if (student.guardianImage.public_id) {
+      if (student.guardianImage && student.guardianImage.public_id) {
         await s3.deleteObject({
           Bucket: process.env.MINIO_BUCKET,
-          Key: student.guardianImage.public_id,
+          Key: student.guardianImage.public_id
         }).promise();
       }
       const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
@@ -3587,179 +3407,181 @@ exports.editStudentParent = async (req, res) => {
         Key: fileKey,
         Body: guardianFile.buffer,
         ContentType: guardianFile.mimetype,
-        ACL: "public-read",
+        ACL: "public-read"
       };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
+    // Linking logic for parent/student relations (if linking data is provided)
+    if (formData.parentId || formData.parentAdmissionNumber || formData.linkStudentId) {
+      let parent;
+      // Link student to parent using parentId or parentAdmissionNumber
+      if (formData.parentId || formData.parentAdmissionNumber) {
+        const parentQuery = formData.parentId ? { parentId: formData.parentId } : { admissionNumber: formData.parentAdmissionNumber };
+        parent = await ParentModel.findOne({ ...parentQuery, schoolId, session });
+        if (!parent) {
+          return res.status(404).json({ success: false, message: "Parent not found." });
+        }
+        // Update student with parent details
+        student.parentId = parent.parentId;
+        student.parentAdmissionNumber = parent.admissionNumber;
+        // Also update parent's studentIds and studentNames if not already linked
+        if (!parent.studentIds.includes(studentId)) {
+          parent.studentIds.push(studentId);
+          parent.studentNames.push(student.studentName);
+          await parent.save();
+        }
+      }
+
+      // Reverse linking: Link parent to another student (if provided)
+      if (formData.linkStudentId) {
+        const targetStudent = await NewStudentModel.findOne({ studentId: formData.linkStudentId, schoolId, session });
+        if (!targetStudent) {
+          return res.status(404).json({ success: false, message: "Target student not found." });
+        }
+        parent = await ParentModel.findOne({ parentId: student.parentId, schoolId, session }) || 
+                 await ParentModel.findOne({ studentIds: { $in: [studentId] }, schoolId, session });
+        if (!parent) {
+          return res.status(404).json({ success: false, message: "Parent not found for reverse linking." });
+        }
+        if (!parent.studentIds.includes(formData.linkStudentId)) {
+          parent.studentIds.push(formData.linkStudentId);
+          parent.studentNames.push(targetStudent.studentName);
+          await parent.save();
+        }
+        targetStudent.parentId = parent.parentId;
+        targetStudent.parentAdmissionNumber = parent.admissionNumber;
+        await targetStudent.save();
+      }
+    }
+
+    // Update student document using only provided fields (others remain unchanged)
     const updateStudentFields = {
       studentName: formData.studentName || student.studentName,
-      email: formData.email || student.email,
+      email: formData.email !== undefined ? formData.email : student.email,
       password: studentHashPassword,
       dateOfBirth: formData.dateOfBirth || student.dateOfBirth,
-      motherName: formData.motherName || student.motherName,
-      fatherName: formData.fatherName || student.fatherName,
-      guardianName: formData.guardianName || student.guardianName,
-      remarks: formData.remarks || student.remarks,
-      transport: formData.transport || student.transport,
-      parentContact: formData.parentContact || student.parentContact,
-      rollNo: formData.rollNo || student.rollNo,
-      parentId: formData.parentId || student.parentId,
-      parentAdmissionNumber: formData.parentAdmissionNumber || student.parentAdmissionNumber,
-      gender: formData.gender || student.gender,
+      motherName: formData.motherName !== undefined ? formData.motherName : student.motherName,
+      fatherName: formData.fatherName !== undefined ? formData.fatherName : student.fatherName,
+      guardianName: formData.guardianName !== undefined ? formData.guardianName : student.guardianName,
+      remarks: formData.remarks !== undefined ? formData.remarks : student.remarks,
+      transport: formData.transport !== undefined ? formData.transport : student.transport, // simple string update
+      parentContact: formData.parentContact !== undefined ? formData.parentContact : student.parentContact,
+      rollNo: formData.rollNo !== undefined ? formData.rollNo : student.rollNo,
+      parentId: student.parentId, // updated via linking logic if applicable
+      parentAdmissionNumber: student.parentAdmissionNumber, // updated via linking logic if applicable
+      gender: formData.gender !== undefined ? formData.gender : student.gender,
       joiningDate: formData.joiningDate || student.joiningDate,
-      address: formData.address || student.address,
-      contact: formData.contact || student.contact,
-      class: formData.class || student.class,
-      section: formData.section || student.section,
-      country: formData.country || student.country,
-      subject: formData.subject || student.subject,
+      address: formData.address !== undefined ? formData.address : student.address,
+      contact: formData.contact !== undefined ? formData.contact : student.contact,
+      class: formData.class !== undefined ? formData.class : student.class,
+      section: formData.section !== undefined ? formData.section : student.section,
+      country: formData.country !== undefined ? formData.country : student.country,
+      subject: formData.subject !== undefined ? formData.subject : student.subject,
       studentImage: studentImageResult.url ? studentImageResult : student.studentImage,
       fatherImage: fatherImageResult.url ? fatherImageResult : student.fatherImage,
       motherImage: motherImageResult.url ? motherImageResult : student.motherImage,
       guardianImage: guardianImageResult.url ? guardianImageResult : student.guardianImage,
-      admissionNumber: formData.admissionNumber || student.admissionNumber,
-      religion: formData.religion || student.religion,
-      caste: formData.caste || student.caste,
-      nationality: formData.nationality || student.nationality,
-      pincode: formData.pincode || student.pincode,
-      state: formData.state || student.state,
-      city: formData.city || student.city,
+      admissionNumber: formData.admissionNumber !== undefined ? formData.admissionNumber : student.admissionNumber,
+      religion: formData.religion !== undefined ? formData.religion : student.religion,
+      caste: formData.caste !== undefined ? formData.caste : student.caste,
+      nationality: formData.nationality !== undefined ? formData.nationality : student.nationality,
+      pincode: formData.pincode !== undefined ? formData.pincode : student.pincode,
+      state: formData.state !== undefined ? formData.state : student.state,
+      city: formData.city !== undefined ? formData.city : student.city,
       udisePlusDetails: {
-        stu_id: formData.stu_id || student.udisePlusDetails?.stu_id,
-        class: formData.studentUdiseClass || student.udisePlusDetails?.class,
-        section: formData.studentUdiseSection || student.udisePlusDetails?.section,
-        roll_no: formData.roll_no || student.udisePlusDetails?.roll_no,
-        student_name: formData.student_name || student.udisePlusDetails?.student_name,
-        gender: formData.studentUdiseGender || student.udisePlusDetails?.gender,
-        DOB: formData.DOB || student.udisePlusDetails?.DOB,
-        mother_name: formData.mother_name || student.udisePlusDetails?.mother_name,
-        father_name: formData.father_name || student.udisePlusDetails?.father_name,
-        guardian_name: formData.guardian_name || student.udisePlusDetails?.guardian_name,
-        aadhar_no: formData.aadhar_no || student.udisePlusDetails?.aadhar_no,
-        aadhar_name: formData.aadhar_name || student.udisePlusDetails?.aadhar_name,
-        paddress: formData.paddress || student.udisePlusDetails?.paddress,
-        pincode: formData.udisePlusPincode || student.udisePlusDetails?.pincode,
-        mobile_no: formData.mobile_no || student.udisePlusDetails?.mobile_no,
-        alt_mobile_no: formData.alt_mobile_no || student.udisePlusDetails?.alt_mobile_no,
-        email_id: formData.email_id || student.udisePlusDetails?.email_id,
-        mothere_tougue: formData.mothere_tougue || student.udisePlusDetails?.mothere_tougue,
-        category: formData.category || student.udisePlusDetails?.category,
-        minority: formData.minority || student.udisePlusDetails?.minority,
-        is_bpl: formData.is_bpl || student.udisePlusDetails?.is_bpl,
-        is_aay: formData.is_aay || student.udisePlusDetails?.is_aay,
-        ews_aged_group: formData.ews_aged_group || student.udisePlusDetails?.ews_aged_group,
-        is_cwsn: formData.is_cwsn || student.udisePlusDetails?.is_cwsn,
-        cwsn_imp_type: formData.cwsn_imp_type || student.udisePlusDetails?.cwsn_imp_type,
-        ind_national: formData.ind_national || student.udisePlusDetails?.ind_national,
-        mainstramed_child: formData.mainstramed_child || student.udisePlusDetails?.mainstramed_child,
-        adm_no: formData.adm_no || student.udisePlusDetails?.adm_no,
-        adm_date: formData.adm_date || student.udisePlusDetails?.adm_date,
-        stu_stream: formData.stu_stream || student.udisePlusDetails?.stu_stream,
-        pre_year_schl_status: formData.pre_year_schl_status || student.udisePlusDetails?.pre_year_schl_status,
-        pre_year_class: formData.pre_year_class || student.udisePlusDetails?.pre_year_class,
-        stu_ward: formData.stu_ward || student.udisePlusDetails?.stu_ward,
-        pre_class_exam_app: formData.pre_class_exam_app || student.udisePlusDetails?.pre_class_exam_app,
-        result_pre_exam: formData.result_pre_exam || student.udisePlusDetails?.result_pre_exam,
-        perc_pre_class: formData.perc_pre_class || student.udisePlusDetails?.perc_pre_class,
-        att_pre_class: formData.att_pre_class || student.udisePlusDetails?.att_pre_class,
-        fac_free_uniform: formData.fac_free_uniform || student.udisePlusDetails?.fac_free_uniform,
-        fac_free_textbook: formData.fac_free_textbook || student.udisePlusDetails?.fac_free_textbook,
-        received_central_scholarship: formData.received_central_scholarship || student.udisePlusDetails?.received_central_scholarship,
-        name_central_scholarship: formData.name_central_scholarship || student.udisePlusDetails?.name_central_scholarship,
-        received_state_scholarship: formData.received_state_scholarship || student.udisePlusDetails?.received_state_scholarship,
-        received_other_scholarship: formData.received_other_scholarship || student.udisePlusDetails?.received_other_scholarship,
-        scholarship_amount: formData.scholarship_amount || student.udisePlusDetails?.scholarship_amount,
-        fac_provided_cwsn: formData.fac_provided_cwsn || student.udisePlusDetails?.fac_provided_cwsn,
-        SLD_type: formData.SLD_type || student.udisePlusDetails?.SLD_type,
-        aut_spec_disorder: formData.aut_spec_disorder || student.udisePlusDetails?.aut_spec_disorder,
-        ADHD: formData.ADHD || student.udisePlusDetails?.ADHD,
-        inv_ext_curr_activity: formData.inv_ext_curr_activity || student.udisePlusDetails?.inv_ext_curr_activity,
-        vocational_course: formData.vocational_course || student.udisePlusDetails?.vocational_course,
-        trade_sector_id: formData.trade_sector_id || student.udisePlusDetails?.trade_sector_id,
-        job_role_id: formData.job_role_id || student.udisePlusDetails?.job_role_id,
-        pre_app_exam_vocationalsubject: formData.pre_app_exam_vocationalsubject || student.udisePlusDetails?.pre_app_exam_vocationalsubject,
-        bpl_card_no: formData.bpl_card_no || student.udisePlusDetails?.bpl_card_no,
-        ann_card_no: formData.ann_card_no || student.udisePlusDetails?.ann_card_no,
+        stu_id: formData.stu_id !== undefined ? formData.stu_id : student.udisePlusDetails?.stu_id,
+        class: formData.studentUdiseClass !== undefined ? formData.studentUdiseClass : student.udisePlusDetails?.class,
+        section: formData.studentUdiseSection !== undefined ? formData.studentUdiseSection : student.udisePlusDetails?.section,
+        roll_no: formData.roll_no !== undefined ? formData.roll_no : student.udisePlusDetails?.roll_no,
+        student_name: formData.student_name !== undefined ? formData.student_name : student.udisePlusDetails?.student_name,
+        gender: formData.studentUdiseGender !== undefined ? formData.studentUdiseGender : student.udisePlusDetails?.gender,
+        DOB: formData.DOB !== undefined ? formData.DOB : student.udisePlusDetails?.DOB,
+        mother_name: formData.mother_name !== undefined ? formData.mother_name : student.udisePlusDetails?.mother_name,
+        father_name: formData.father_name !== undefined ? formData.father_name : student.udisePlusDetails?.father_name,
+        guardian_name: formData.guardian_name !== undefined ? formData.guardian_name : student.udisePlusDetails?.guardian_name,
+        aadhar_no: formData.aadhar_no !== undefined ? formData.aadhar_no : student.udisePlusDetails?.aadhar_no,
+        aadhar_name: formData.aadhar_name !== undefined ? formData.aadhar_name : student.udisePlusDetails?.aadhar_name,
+        paddress: formData.paddress !== undefined ? formData.paddress : student.udisePlusDetails?.paddress,
+        pincode: formData.udisePlusPincode !== undefined ? formData.udisePlusPincode : student.udisePlusDetails?.pincode,
+        mobile_no: formData.mobile_no !== undefined ? formData.mobile_no : student.udisePlusDetails?.mobile_no,
+        alt_mobile_no: formData.alt_mobile_no !== undefined ? formData.alt_mobile_no : student.udisePlusDetails?.alt_mobile_no,
+        email_id: formData.email_id !== undefined ? formData.email_id : student.udisePlusDetails?.email_id,
+        mothere_tougue: formData.mothere_tougue !== undefined ? formData.mothere_tougue : student.udisePlusDetails?.mothere_tougue,
+        category: formData.category !== undefined ? formData.category : student.udisePlusDetails?.category,
+        minority: formData.minority !== undefined ? formData.minority : student.udisePlusDetails?.minority,
+        is_bpl: formData.is_bpl !== undefined ? formData.is_bpl : student.udisePlusDetails?.is_bpl,
+        is_aay: formData.is_aay !== undefined ? formData.is_aay : student.udisePlusDetails?.is_aay,
+        ews_aged_group: formData.ews_aged_group !== undefined ? formData.ews_aged_group : student.udisePlusDetails?.ews_aged_group,
+        is_cwsn: formData.is_cwsn !== undefined ? formData.is_cwsn : student.udisePlusDetails?.is_cwsn,
+        cwsn_imp_type: formData.cwsn_imp_type !== undefined ? formData.cwsn_imp_type : student.udisePlusDetails?.cwsn_imp_type,
+        ind_national: formData.ind_national !== undefined ? formData.ind_national : student.udisePlusDetails?.ind_national,
+        mainstramed_child: formData.mainstramed_child !== undefined ? formData.mainstramed_child : student.udisePlusDetails?.mainstramed_child,
+        adm_no: formData.adm_no !== undefined ? formData.adm_no : student.udisePlusDetails?.adm_no,
+        adm_date: formData.adm_date !== undefined ? formData.adm_date : student.udisePlusDetails?.adm_date,
+        stu_stream: formData.stu_stream !== undefined ? formData.stu_stream : student.udisePlusDetails?.stu_stream,
+        pre_year_schl_status: formData.pre_year_schl_status !== undefined ? formData.pre_year_schl_status : student.udisePlusDetails?.pre_year_schl_status,
+        pre_year_class: formData.pre_year_class !== undefined ? formData.pre_year_class : student.udisePlusDetails?.pre_year_class,
+        stu_ward: formData.stu_ward !== undefined ? formData.stu_ward : student.udisePlusDetails?.stu_ward,
+        pre_class_exam_app: formData.pre_class_exam_app !== undefined ? formData.pre_class_exam_app : student.udisePlusDetails?.pre_class_exam_app,
+        result_pre_exam: formData.result_pre_exam !== undefined ? formData.result_pre_exam : student.udisePlusDetails?.result_pre_exam,
+        perc_pre_class: formData.perc_pre_class !== undefined ? formData.perc_pre_class : student.udisePlusDetails?.perc_pre_class,
+        att_pre_class: formData.att_pre_class !== undefined ? formData.att_pre_class : student.udisePlusDetails?.att_pre_class,
+        fac_free_uniform: formData.fac_free_uniform !== undefined ? formData.fac_free_uniform : student.udisePlusDetails?.fac_free_uniform,
+        fac_free_textbook: formData.fac_free_textbook !== undefined ? formData.fac_free_textbook : student.udisePlusDetails?.fac_free_textbook,
+        received_central_scholarship: formData.received_central_scholarship !== undefined ? formData.received_central_scholarship : student.udisePlusDetails?.received_central_scholarship,
+        name_central_scholarship: formData.name_central_scholarship !== undefined ? formData.name_central_scholarship : student.udisePlusDetails?.name_central_scholarship,
+        received_state_scholarship: formData.received_state_scholarship !== undefined ? formData.received_state_scholarship : student.udisePlusDetails?.received_state_scholarship,
+        received_other_scholarship: formData.received_other_scholarship !== undefined ? formData.received_other_scholarship : student.udisePlusDetails?.received_other_scholarship,
+        scholarship_amount: formData.scholarship_amount !== undefined ? formData.scholarship_amount : student.udisePlusDetails?.scholarship_amount,
+        fac_provided_cwsn: formData.fac_provided_cwsn !== undefined ? formData.fac_provided_cwsn : student.udisePlusDetails?.fac_provided_cwsn,
+        SLD_type: formData.SLD_type !== undefined ? formData.SLD_type : student.udisePlusDetails?.SLD_type,
+        aut_spec_disorder: formData.aut_spec_disorder !== undefined ? formData.aut_spec_disorder : student.udisePlusDetails?.aut_spec_disorder,
+        ADHD: formData.ADHD !== undefined ? formData.ADHD : student.udisePlusDetails?.ADHD,
+        inv_ext_curr_activity: formData.inv_ext_curr_activity !== undefined ? formData.inv_ext_curr_activity : student.udisePlusDetails?.inv_ext_curr_activity,
+        vocational_course: formData.vocational_course !== undefined ? formData.vocational_course : student.udisePlusDetails?.vocational_course,
+        trade_sector_id: formData.trade_sector_id !== undefined ? formData.trade_sector_id : student.udisePlusDetails?.trade_sector_id,
+        job_role_id: formData.job_role_id !== undefined ? formData.job_role_id : student.udisePlusDetails?.job_role_id,
+        pre_app_exam_vocationalsubject: formData.pre_app_exam_vocationalsubject !== undefined ? formData.pre_app_exam_vocationalsubject : student.udisePlusDetails?.pre_app_exam_vocationalsubject,
+        bpl_card_no: formData.bpl_card_no !== undefined ? formData.bpl_card_no : student.udisePlusDetails?.bpl_card_no,
+        ann_card_no: formData.ann_card_no !== undefined ? formData.ann_card_no : student.udisePlusDetails?.ann_card_no,
       },
+      updatedBy // track who updated the record
     };
 
+    // Update the student document
     const updatedStudent = await NewStudentModel.findOneAndUpdate(
       { studentId, schoolId, session },
       updateStudentFields,
       { new: true, runValidators: true }
     );
 
+    // If parent info is provided, update the parent document (only minimal checks are done)
     if (formData.parentId) {
       const parent = await ParentModel.findOne({ parentId: formData.parentId, schoolId, session });
       if (!parent) {
-        return res.status(404).json({
-          success: false,
-          message: "Parent not found or does not belong to this school and session.",
-        });
+        return res.status(404).json({ success: false, message: "Parent not found or does not belong to this school and session." });
       }
 
-      if (formData.fatherName !== undefined && !formData.fatherName) {
-        return res.status(400).json({
-          success: false,
-          message: "Parent's father name is required and cannot be empty.",
-        });
-      }
-      if (formData.email !== undefined) {
-        if (!formData.email) {
-          return res.status(400).json({
-            success: false,
-            message: "Parent's email is required and cannot be empty.",
-          });
-        }
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(formData.email)) {
-          return res.status(400).json({ success: false, message: "Invalid parent email format." });
-        }
-      }
-      if (formData.contact !== undefined && !formData.contact) {
-        return res.status(400).json({
-          success: false,
-          message: "Parent contact is required and cannot be empty.",
-        });
-      }
-      if (formData.admissionNumber !== undefined) {
-        if (!formData.admissionNumber) {
-          return res.status(400).json({
-            success: false,
-            message: "Parent admission number is required and cannot be empty.",
-          });
-        }
-        if (!/^[A-Z]{2}\d{4}$/.test(formData.admissionNumber)) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Parent admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000).",
-          });
-        }
-      }
-
+      // Update parent's password if provided
       let parentHashPassword = parent.password;
       if (formData.parentPassword) {
         if (formData.parentPassword.length < 8) {
-          return res.status(400).json({
-            success: false,
-            message: "Parent password must be at least 8 characters long.",
-          });
+          return res.status(400).json({ success: false, message: "Parent password must be at least 8 characters long." });
         }
         parentHashPassword = await hashPassword(formData.parentPassword);
       }
 
+      // Handle parent file uploads
       let parentImageResult = parent.parentImage;
       let pFatherImageResult = parent.fatherImage;
       let pMotherImageResult = parent.motherImage;
       let pGuardianImageResult = parent.guardianImage;
 
       const parentFile = files.find((f) => f.fieldname === "parentImage");
-
       if (parentFile) {
-        if (parent.parentImage.public_id) {
+        if (parent.parentImage && parent.parentImage.public_id) {
           await s3.deleteObject({
             Bucket: process.env.MINIO_BUCKET,
             Key: parent.parentImage.public_id,
@@ -3777,7 +3599,7 @@ exports.editStudentParent = async (req, res) => {
         parentImageResult = { public_id: fileKey, url: minioData.Location };
       }
       if (fatherFile) {
-        if (parent.fatherImage.public_id) {
+        if (parent.fatherImage && parent.fatherImage.public_id) {
           await s3.deleteObject({
             Bucket: process.env.MINIO_BUCKET,
             Key: parent.fatherImage.public_id,
@@ -3795,7 +3617,7 @@ exports.editStudentParent = async (req, res) => {
         pFatherImageResult = { public_id: fileKey, url: minioData.Location };
       }
       if (motherFile) {
-        if (parent.motherImage.public_id) {
+        if (parent.motherImage && parent.motherImage.public_id) {
           await s3.deleteObject({
             Bucket: process.env.MINIO_BUCKET,
             Key: parent.motherImage.public_id,
@@ -3813,7 +3635,7 @@ exports.editStudentParent = async (req, res) => {
         pMotherImageResult = { public_id: fileKey, url: minioData.Location };
       }
       if (guardianFile) {
-        if (parent.guardianImage.public_id) {
+        if (parent.guardianImage && parent.guardianImage.public_id) {
           await s3.deleteObject({
             Bucket: process.env.MINIO_BUCKET,
             Key: parent.guardianImage.public_id,
@@ -3832,19 +3654,19 @@ exports.editStudentParent = async (req, res) => {
       }
 
       const updateParentFields = {
-        fatherName: formData.fatherName || parent.fatherName,
-        motherName: formData.motherName || parent.motherName,
-        guardianName: formData.guardianName || parent.guardianName,
-        email: formData.email || parent.email,
+        fatherName: formData.fatherName !== undefined ? formData.fatherName : parent.fatherName,
+        motherName: formData.motherName !== undefined ? formData.motherName : parent.motherName,
+        guardianName: formData.guardianName !== undefined ? formData.guardianName : parent.guardianName,
+        email: formData.email !== undefined ? formData.email : parent.email,
         password: parentHashPassword,
-        contact: formData.contact || parent.contact,
-        income: formData.income || parent.income,
-        qualification: formData.qualification || parent.qualification,
+        contact: formData.contact !== undefined ? formData.contact : parent.contact,
+        income: formData.income !== undefined ? formData.income : parent.income,
+        qualification: formData.qualification !== undefined ? formData.qualification : parent.qualification,
         parentImage: parentImageResult.url ? parentImageResult : parent.parentImage,
         fatherImage: pFatherImageResult.url ? pFatherImageResult : parent.fatherImage,
         motherImage: pMotherImageResult.url ? pMotherImageResult : parent.motherImage,
         guardianImage: pGuardianImageResult.url ? pGuardianImageResult : parent.guardianImage,
-        admissionNumber: formData.admissionNumber || parent.admissionNumber,
+        admissionNumber: formData.admissionNumber !== undefined ? formData.admissionNumber : parent.admissionNumber,
       };
 
       await ParentModel.findOneAndUpdate(
@@ -3869,291 +3691,126 @@ exports.editStudentParent = async (req, res) => {
   }
 };
 
+
 exports.getStudentParent = async (req, res) => {
   try {
-    // Get schoolId and session from authenticated user
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
     if (!schoolId || !session) {
-      return res.status(400).json({
-        success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
+      return res.status(400).json({ success: false, message: "School ID and session are required." });
     }
 
-    // Extract query parameters
     const {
-      studentId,
-      parentId,
-      admissionNumber,
-      parentAdmissionNumber,
-      email,
-      class: studentClass,
-      section,
-      gender,
-      status, // New parameter for filtering by status (active or deactivated)
-      fetchAllStudents,
-      fetchAllParents,
-      fetchParentsWithMultipleChildren,
-      limit = 10,
-      page = 1,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
+      studentId, parentId, admissionNumber, parentAdmissionNumber, email, class: studentClass, section, gender, status,
+      fetchAllStudents, fetchNewAdmissions, fetchAllParents, fetchParentsWithMultipleChildren, limit = 10, page = 1,
+      sortBy = 'createdAt', sortOrder = 'desc', studentName, contact, rollNo, religion, caste, nationality, pincode,
+      state, city, approvalStatus, createdBy, joiningDateStart, joiningDateEnd, dateOfBirthStart, dateOfBirthEnd,
     } = req.query;
 
-    // Base query objects
     let studentQuery = { schoolId, session };
     let parentQuery = { schoolId, session };
 
-    // Build student query - use studentId field instead of _id
+    // Enhanced Student Query
     if (studentId) studentQuery.studentId = studentId;
     if (admissionNumber) studentQuery.admissionNumber = admissionNumber;
     if (email) studentQuery.email = email;
     if (studentClass) studentQuery.class = studentClass;
     if (section) studentQuery.section = section;
     if (gender) studentQuery.gender = gender;
-    if (status) studentQuery.status = status; // Add status filter for students
+    if (status) studentQuery.status = status;
+    if (studentName) studentQuery.studentName = { $regex: studentName, $options: 'i' };
+    if (contact) studentQuery.contact = contact;
+    if (rollNo) studentQuery.rollNo = rollNo;
+    if (religion) studentQuery.religion = religion;
+    if (caste) studentQuery.caste = caste;
+    if (nationality) studentQuery.nationality = nationality;
+    if (pincode) studentQuery.pincode = pincode;
+    if (state) studentQuery.state = state;
+    if (city) studentQuery.city = city;
+    if (approvalStatus) studentQuery.approvalStatus = approvalStatus;
+    if (createdBy) studentQuery.createdBy = createdBy;
+    if (joiningDateStart || joiningDateEnd) {
+      studentQuery.joiningDate = {};
+      if (joiningDateStart) studentQuery.joiningDate.$gte = new Date(joiningDateStart);
+      if (joiningDateEnd) studentQuery.joiningDate.$lte = new Date(joiningDateEnd);
+    }
+    if (dateOfBirthStart || dateOfBirthEnd) {
+      studentQuery.dateOfBirth = {};
+      if (dateOfBirthStart) studentQuery.dateOfBirth.$gte = new Date(dateOfBirthStart);
+      if (dateOfBirthEnd) studentQuery.dateOfBirth.$lte = new Date(dateOfBirthEnd);
+    }
 
-    // Build parent query - use parentId field instead of _id
+    // Add filter for new admissions
+    if (fetchNewAdmissions === 'true') {
+      studentQuery.isNewAdmission = true;
+    }
+
+    // Enhanced Parent Query
     if (parentId) parentQuery.parentId = parentId;
     if (parentAdmissionNumber) parentQuery.admissionNumber = parentAdmissionNumber;
     if (email) parentQuery.email = email;
-    if (status) parentQuery.status = status; // Add status filter for parents
 
-    // Pagination
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-    // Execute queries based on what's requested
     let responseData = {};
 
-    // If specific studentId is provided, fetch only that student
     if (studentId) {
       const student = await NewStudentModel.findOne(studentQuery).lean();
-      
-      if (!student) {
-        return res.status(404).json({
-          success: false,
-          message: `Student with ID ${studentId} not found`,
-        });
-      }
-      
-      let parentData = null;
-      if (student.parentId) {
-        parentData = await ParentModel.findOne({ 
-          parentId: student.parentId, 
-          schoolId, 
-          session,
-          ...(status ? { status } : {}) // Apply status filter if provided
-        }).lean();
-      }
-      
-      responseData.student = {
-        ...student,
-        parentDetails: parentData
-      };
-    }
-    // If specific parentId is provided, fetch that parent with all children
-    else if (parentId) {
+      if (!student) return res.status(404).json({ success: false, message: `Student with ID ${studentId} not found` });
+      const parentData = student.parentId ? await ParentModel.findOne({ parentId: student.parentId, schoolId, session }).lean() : null;
+      responseData.student = { ...student, parentDetails: parentData };
+    } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
-      
-      if (!parent) {
-        return res.status(404).json({
-          success: false,
-          message: `Parent with ID ${parentId} not found`,
-        });
-      }
-      
-      const students = await NewStudentModel.find({
-        parentId: parent.parentId,
-        schoolId,
-        session,
-        ...(status ? { status } : {}) // Apply status filter if provided
-      }).lean();
-      
-      // Check if parent has multiple children
-      const hasMultipleChildren = students.length > 1;
-      
-      responseData.parent = {
-        ...parent,
-        studentDetails: students,
-        hasMultipleChildren: hasMultipleChildren,
-        totalChildren: students.length
-      };
-    }
-    // Fetch all parents with multiple children
-    else if (fetchParentsWithMultipleChildren === 'true') {
-      const parents = await ParentModel.find({ schoolId, session, ...(status ? { status } : {}) })
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-
-      // Filter parents with multiple children and fetch their students
+      if (!parent) return res.status(404).json({ success: false, message: `Parent with ID ${parentId} not found` });
+      const students = await NewStudentModel.find({ parentId: parent.parentId, schoolId, session }).lean();
+      responseData.parent = { ...parent, studentDetails: students, hasMultipleChildren: students.length > 1, totalChildren: students.length };
+    } else if (fetchParentsWithMultipleChildren === 'true') {
+      const parents = await ParentModel.find(parentQuery).sort(sort).lean();
       const parentsWithMultipleChildren = [];
       for (const parent of parents) {
-        const students = await NewStudentModel.find({
-          parentId: parent.parentId,
-          schoolId,
-          session,
-          ...(status ? { status } : {}) // Apply status filter if provided
-        }).lean();
-        
-        if (students.length > 1) {
-          parentsWithMultipleChildren.push({
-            ...parent,
-            studentDetails: students,
-            totalChildren: students.length
-          });
-        }
+        const students = await NewStudentModel.find({ parentId: parent.parentId, schoolId, session }).lean();
+        if (students.length > 1) parentsWithMultipleChildren.push({ ...parent, studentDetails: students, totalChildren: students.length });
       }
-
       const totalParentsWithMultiple = parentsWithMultipleChildren.length;
-
       responseData.parentsWithMultipleChildren = {
         data: parentsWithMultipleChildren.slice(skip, skip + parseInt(limit)),
-        pagination: {
-          total: totalParentsWithMultiple,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(totalParentsWithMultiple / limit),
-        },
+        pagination: { total: totalParentsWithMultiple, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParentsWithMultiple / limit) },
       };
-    }
-    // Fetch all students only (no filters)
-    else if (fetchAllStudents === 'true') {
-      const students = await NewStudentModel.find({ schoolId, session, ...(status ? { status } : {}) })
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-
-      const totalStudents = await NewStudentModel.countDocuments({ schoolId, session, ...(status ? { status } : {}) });
-
-      responseData.students = {
-        data: students,
-        pagination: {
-          total: totalStudents,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(totalStudents / limit),
-        },
-      };
-    }
-    // Fetch all parents only (no filters)
-    else if (fetchAllParents === 'true') {
-      const parents = await ParentModel.find({ schoolId, session, ...(status ? { status } : {}) })
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-
-      const totalParents = await ParentModel.countDocuments({ schoolId, session, ...(status ? { status } : {}) });
-
-      responseData.parents = {
-        data: parents,
-        pagination: {
-          total: totalParents,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(totalParents / limit),
-        },
-      };
-    }
-    // Fetch all students with filters
-    else if (Object.keys(studentQuery).length > 2 || studentClass || section || gender) {
-      const students = await NewStudentModel.find(studentQuery)
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-
+    } else if (fetchAllStudents === 'true') {
+      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-
-      responseData.students = {
-        data: students,
-        pagination: {
-          total: totalStudents,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(totalStudents / limit),
-        },
-      };
-    }
-    // Fetch all parents with filters
-    else if (parentAdmissionNumber || (Object.keys(parentQuery).length > 2)) {
-      const parents = await ParentModel.find(parentQuery)
-        .sort(sort)
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
-
+      responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
+    } else if (fetchNewAdmissions === 'true') {
+      const newStudents = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
+      responseData.newAdmissions = { data: newStudents, pagination: { total: totalNewStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalNewStudents / limit) } };
+    } else if (fetchAllParents === 'true') {
+      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
-
-      responseData.parents = {
-        data: parents,
-        pagination: {
-          total: totalParents,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(totalParents / limit),
-        },
-      };
-    }
-    // Default: fetch both students and parents
-    else {
-      const [students, parents] = await Promise.all([
-        NewStudentModel.find(studentQuery)
-          .sort(sort)
-          .skip(skip)
-          .limit(parseInt(limit))
-          .lean(),
-        ParentModel.find(parentQuery)
-          .sort(sort)
-          .skip(skip)
-          .limit(parseInt(limit))
-          .lean(),
-      ]);
-
-      const [totalStudents, totalParents] = await Promise.all([
-        NewStudentModel.countDocuments(studentQuery),
-        ParentModel.countDocuments(parentQuery),
-      ]);
-
-      responseData = {
-        students: {
-          data: students,
-          pagination: {
-            total: totalStudents,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            totalPages: Math.ceil(totalStudents / limit),
-          },
-        },
-        parents: {
-          data: parents,
-          pagination: {
-            total: totalParents,
-            page: parseInt(page),
-            limit: parseInt(limit),
-            totalPages: Math.ceil(totalParents / limit),
-          },
-        },
-      };
+      responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
+    } else if (Object.keys(studentQuery).length > 2 || studentClass || section || gender || studentName || contact || rollNo || religion || caste || nationality || pincode || state || city || approvalStatus || createdBy || joiningDateStart || joiningDateEnd || dateOfBirthStart || dateOfBirthEnd) {
+      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const totalStudents = await NewStudentModel.countDocuments(studentQuery);
+      responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
+    } else if (parentAdmissionNumber || Object.keys(parentQuery).length > 2) {
+      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const totalParents = await ParentModel.countDocuments(parentQuery);
+      responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
+    } else {
+      return res.status(400).json({ success: false, message: "No valid query parameters provided." });
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      message: "Data fetched successfully",
-      data: responseData,
+      message: "Data retrieved successfully.",
+      ...responseData,
     });
-
   } catch (error) {
-    console.error("Error in getStudentParent:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: "Failed to fetch data",
+      message: "Error retrieving student and parent data.",
       error: error.message,
     });
   }
@@ -4201,6 +3858,62 @@ exports.getStudentAndParent = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error retrieving Student and Parent details",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.toggleAdmissionStatus = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { isNewAdmission } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    // Validation
+    if (!schoolId || !session || !studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID, session, and student ID are required.",
+      });
+    }
+
+    if (isNewAdmission === undefined || typeof isNewAdmission !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "isNewAdmission must be provided as a boolean value (true or false).",
+      });
+    }
+
+    // Find the student
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: `Student with ID ${studentId} not found.`,
+      });
+    }
+
+    // Update the isNewAdmission field
+    student.isNewAdmission = isNewAdmission;
+    await student.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Student admission status updated to ${isNewAdmission ? "new" : "existing"} successfully.`,
+      student: {
+        studentId: student.studentId,
+        studentName: student.studentName,
+        isNewAdmission: student.isNewAdmission,
+        schoolId: student.schoolId,
+        session: student.session,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error toggling admission status.",
       error: error.message,
     });
   }

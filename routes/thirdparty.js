@@ -17,4 +17,10 @@ router.put('/admissions/:studentId', verifyToken, uploads, thirdpartyAdmissionCo
 router.get('/my-students/school', verifyToken, thirdpartyAdmissionController.getMyStudentsBySchool);
 router.get('/classes', verifyToken, thirdpartyAdmissionController.getClassesForSchool);
 
+
+
+
+// NEW UPDATED THIRD PARTY ADMISSION ROUTES
+router.post('/students', verifyToken, uploads, thirdpartyAdmissionController.createStudentOnlyThirdParty);
+
 module.exports = router;

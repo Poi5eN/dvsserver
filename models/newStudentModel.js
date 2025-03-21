@@ -91,6 +91,7 @@ const studentSchema = new mongoose.Schema({
     enum: ["pending", "approved", "rejected"],
     default: "pending",
   },
+  isNewAdmission: { type: Boolean, default: true },
   assignedThirdParty: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
   udisePlusDetails: {

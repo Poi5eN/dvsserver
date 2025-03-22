@@ -1,78 +1,19 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const marksSchema = new mongoose.Schema({
-  subjectName: {
-    type: String,
-    required: true
-  },
-  marksObtained: {
-    type: Number,
-    required: true
-  },
-  totalMarks: {
-    type: Number,
-    required: true
-  },
-  grade: String,
-  remarks: String
-});
-
-const examResultSchema = new mongoose.Schema({
-  examId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Exam',
-    required: true
-  },
-  studentId: {
-    type: String,
-    required: true
-  },
-  rollNumber: {
-    type: String,
-    required: true
-  },
-  className: {
-    type: String,
-    required: true
-  },
-  section: {
-    type: String,
-    required: true
-  },
-  marks: [marksSchema],
-  totalMarks: {
-    type: Number,
-    required: true
-  },
-  percentage: {
-    type: Number,
-    required: true
-  },
-  grade: String,
-  rank: Number,
-  attendance: {
-    type: Number,
-    default: 100
-  },
-  status: {
-    type: String,
-    enum: ['PASS', 'FAIL', 'ABSENT'],
-    required: true
-  },
-  remarks: String,
+const ResultsSchema = new mongoose.Schema({
+  schoolId: { type: String, required: true },
+  studentId: { type: String, required: true },
+  studentName: { type: String, required: true },
+  rollNo: { type: String, required: true },
+  examName: { type: String, required: true },
+  className: { type: String, required: true },
+  section: { type: String, required: true },
+  subjects: [{
+    subjectName: { type: String, required: true },
+    marks: { type: Number, required: true }
+  }],
   session: { type: String, required: true },
-  createdBy: {
-    type: String,
-    required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+  createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model("ExamResult", examResultSchema);
+module.exports = mongoose.model('Results', ResultsSchema);

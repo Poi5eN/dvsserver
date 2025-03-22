@@ -117,14 +117,14 @@ exports.createAdmission = async (req, res) => {
       dateOfBirth: studentDateOfBirth,
       motherName,
       fatherName,
-      parentContact: Number(studentContact), // Added for schema
+      parentContact: parentContact, // Added for schema
       role: "student", // Default per schema
       rollNo,
       status: "active", // Default per schema
       gender: studentGender,
       joiningDate: studentJoiningDate,
       address: studentAddress,
-      contact: Number(studentContact),
+      contact: studentContact,
       class: studentClass,
       section: studentSection,
       country: studentCountry,
@@ -345,7 +345,7 @@ exports.createAdmission = async (req, res) => {
  */
 exports.editAdmission = async (req, res) => {
   try {
-    const { studentId } = req.params;
+    const { studentId } = req.params; // Now studentId is UUID
     const { schoolId } = req.body;
 
     const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
@@ -356,7 +356,7 @@ exports.editAdmission = async (req, res) => {
       });
     }
 
-    const student = await NewStudentModel.findById(studentId);
+    const student = await NewStudentModel.findOne({ studentId });
     if (!student) {
       return res.status(404).json({ success: false, message: "Student not found." });
     }
@@ -524,14 +524,14 @@ exports.editAdmission = async (req, res) => {
       },
     };
 
-    const updatedStudent = await NewStudentModel.findByIdAndUpdate(
-      studentId,
+    const updatedStudent = await NewStudentModel.findOneAndUpdate(
+      { studentId },
       updateStudentFields,
       { new: true, runValidators: true }
     );
 
     if (formData.parentId) {
-      const parent = await ParentModel.findById(formData.parentId);
+      const parent = await ParentModel.findOne({ parentId: formData.parentId });
       if (!parent) {
         return res.status(404).json({ success: false, message: "Parent not found." });
       }
@@ -606,24 +606,21 @@ exports.editAdmission = async (req, res) => {
         guardianImage: pGuardianImageResult,
       };
 
-      await ParentModel.findByIdAndUpdate(formData.parentId, updateParentFields, {
-        new: true,
-        runValidators: true,
-      });
+      await ParentModel.findOneAndUpdate(
+        { parentId: formData.parentId },
+        updateParentFields,
+        { new: true, runValidators: true }
+      );
     }
 
     res.status(200).json({
       success: true,
-      message: "Admission updated successfully.",
+      message: "Admission updated successfully",
       student: updatedStudent,
     });
   } catch (error) {
     console.error("Error in editAdmission:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update admission.",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Failed to update admission.", error: error.message });
   }
 };
 
@@ -663,7 +660,6 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
       .select(
         'studentId schoolId session studentName email dateOfBirth motherName fatherName parentContact rollNo parentId parentAdmissionNumber status gender joiningDate address contact class section country subject guardianName remarks transport base64 studentImage fatherImage motherImage guardianImage admissionNumber isGenerated religion caste nationality pincode state city approvalStatus isNewAdmission assignedThirdParty createdAt udisePlusDetails'
       )
-      .populate('parentId', 'parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt')
       .sort({ createdAt: -1 });
 
     if (limit) {
@@ -674,6 +670,18 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
     const totalStudents = await NewStudentModel.countDocuments({
       schoolId: { $in: filterSchoolIds },
     });
+
+    // Manually fetch parent data for each student
+    for (let student of students) {
+      if (student.parentId) {
+        const parent = await ParentModel.findOne({ parentId: student.parentId }).select(
+          'parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt'
+        ).lean();
+        student.parent = parent || null; // Add parent data or null if not found
+      } else {
+        student.parent = null;
+      }
+    }
 
     const count = limit ? students.length : totalStudents;
 
@@ -851,7 +859,7 @@ exports.updateMyStudent = async (req, res) => {
     const { studentId } = req.params;
     const updateData = req.body;
 
-    const student = await NewStudentModel.findById(studentId);
+    const student = await NewStudentModel.findOne({studentId});
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -930,15 +938,12 @@ exports.updateMyStudent = async (req, res) => {
  */
 exports.updateAnyStudent = async (req, res) => {
   try {
-    const { studentId } = req.params;
+    const { studentId } = req.params; // UUID
     const updateData = req.body;
 
-    const student = await NewStudentModel.findById(studentId);
+    const student = await NewStudentModel.findOne({ studentId });
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: 'Student not found',
-      });
+      return res.status(404).json({ success: false, message: "Student not found" });
     }
 
     const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
@@ -1410,11 +1415,11 @@ exports.createParentOnlyThirdParty = async (req, res) => {
  */
 exports.linkStudentToParentThirdParty = async (req, res) => {
   try {
-    const { studentId, parentId } = req.body;
+    const { studentId, parentId } = req.body; // UUIDs
     const session = req.user.session;
 
-    const student = await NewStudentModel.findById(studentId);
-    const parent = await ParentModel.findById(parentId);
+    const student = await NewStudentModel.findOne({ studentId });
+    const parent = await ParentModel.findOne({ parentId });
 
     if (!student || !parent) {
       return res.status(404).json({ success: false, message: "Student or parent not found." });
@@ -1422,46 +1427,28 @@ exports.linkStudentToParentThirdParty = async (req, res) => {
 
     const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
     if (!assignedSchoolIds.includes(student.schoolId) || !assignedSchoolIds.includes(parent.schoolId)) {
-      return res.status(403).json({
-        success: false,
-        message: "You do not have access to link students or parents from this school.",
-      });
+      return res.status(403).json({ success: false, message: "You do not have access to link students or parents from this school." });
     }
 
     if (student.session !== session || parent.session !== session) {
-      return res.status(400).json({
-        success: false,
-        message: "Student and parent must belong to the same session as the third-party user.",
-      });
+      return res.status(400).json({ success: false, message: "Student and parent must belong to the same session." });
     }
 
     if (student.parentId) {
-      return res.status(400).json({
-        success: false,
-        message: "Student is already linked to a parent.",
-      });
+      return res.status(400).json({ success: false, message: "Student is already linked to a parent." });
     }
 
-    student.parentId = parent._id.toString();
+    student.parentId = parentId; // Use parentId (UUID)
     student.parentAdmissionNumber = parent.admissionNumber;
     await student.save();
 
-    parent.studentIds.push(student._id);
-    parent.studentNames.push(student.studentName); // Changed from fullName
+    parent.studentIds.push(studentId); // Use studentId (UUID)
+    parent.studentNames.push(student.studentName);
     await parent.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Student linked to parent successfully.",
-      student,
-      parent,
-    });
+    return res.status(200).json({ success: true, message: "Student linked to parent successfully", student, parent });
   } catch (error) {
     console.error("Error in linkStudentToParentThirdParty:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to link student to parent.",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Failed to link student to parent.", error: error.message });
   }
 };

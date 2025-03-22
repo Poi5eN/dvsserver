@@ -1,4 +1,3 @@
-// models/thirdPartyModel.js
 const mongoose = require("mongoose");
 
 const thirdPartySchema = new mongoose.Schema({
@@ -34,7 +33,6 @@ const thirdPartySchema = new mongoose.Schema({
     },
   ],
   image: {
-    // Added image field
     public_id: {
       type: String,
       default: "",
@@ -55,11 +53,9 @@ const thirdPartySchema = new mongoose.Schema({
     default: "thirdparty",
   },
   session: {
-    // Added session field
     type: String,
-    required: true, // Make it required to ensure every third-party user has a session
+    required: true,
   },
-  // session: { type: String, required: true },
   createdBy: {
     type: String,
     required: true,

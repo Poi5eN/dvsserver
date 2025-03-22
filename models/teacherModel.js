@@ -1,5 +1,5 @@
-const mongoose = require('mongoose');
-const { v4: uuidv4 } = require('uuid');
+const mongoose = require("mongoose");
+const { v4: uuidv4 } = require("uuid");
 
 const teacherSchema = new mongoose.Schema({
   teacherId: {
@@ -85,12 +85,12 @@ const teacherSchema = new mongoose.Schema({
     public_id: {
       type: String,
       required: true,
-      default: '', // Provide default if necessary
+      default: "",
     },
     url: {
       type: String,
       required: true,
-      default: '', // Provide default if necessary
+      default: "",
     },
   },
   role: {

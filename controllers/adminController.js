@@ -283,7 +283,7 @@ function generateEmployeeId() {
 // Create a new teacher
 exports.createTeacher = async (req, res) => {
   try {
-    const { email, password, ...userFields } = req.body;
+    const { email, password, session, ...userFields } = req.body;
     const file = req.file;
 
     if (!email || !password) {
@@ -293,18 +293,26 @@ exports.createTeacher = async (req, res) => {
       });
     }
 
+    // Use session from request body if provided, otherwise fallback to admin's session
+    const assignedSession = session || req.user.session;
+    if (!assignedSession) {
+      return res.status(400).json({
+        success: false,
+        message: "Session is required to create a teacher",
+      });
+    }
+
     // Check if teacher already exists by email, school, and session
     const userExist = await Teacher.findOne({
       email,
       schoolId: req.user.schoolId,
-      session: req.user.session,
+      session: assignedSession,
     });
 
     if (userExist) {
       return res.status(400).send({
         success: false,
-        message:
-          "Teacher already exists with this email for the current session",
+        message: "Teacher already exists with this email for the specified session",
       });
     }
 
@@ -320,24 +328,21 @@ exports.createTeacher = async (req, res) => {
       };
     }
 
-    // Generate unique teacherId and employeeId
     const teacherId = uuidv4();
     const employeeId = generateEmployeeId();
 
     const teacherData = await Teacher.create({
       teacherId,
       schoolId: req.user.schoolId,
-      session: req.user.session, // attach session from logged-in admin
-      email: email,
+      session: assignedSession,
+      email,
       password: hashedPassword,
       employeeId,
       image: fileData,
       ...userFields,
     });
 
-    // If teacher created successfully, send email using template
     if (teacherData) {
-      // Fetch school details for email branding
       const schoolDetails = await AdminInfo.findOne({
         schoolId: req.user.schoolId,
       }).select("schoolName image.url");
@@ -358,7 +363,6 @@ exports.createTeacher = async (req, res) => {
         </head>
         <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
           <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-            <!-- Header -->
             <tr>
               <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
                 <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
@@ -366,22 +370,21 @@ exports.createTeacher = async (req, res) => {
                 <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Our Faculty!</p>
               </td>
             </tr>
-            <!-- Body -->
             <tr>
               <td style="padding: 30px; background-color: #ffffff;">
                 <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, Teacher!</h2>
-                <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to have you join ${schoolName} as a teacher.</p>
+                <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to have you join ${schoolName} as a teacher for session ${assignedSession}.</p>
                 <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                   <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
                   <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
                   <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
                   <p style="margin: 5px 0; font-size: 16px;"><strong>Employee ID:</strong> ${employeeId}</p>
                   <p style="margin: 5px 0; font-size: 16px;"><strong>Teacher ID:</strong> ${teacherId}</p>
+                  <p style="margin: 5px 0; font-size: 16px;"><strong>Session:</strong> ${assignedSession}</p>
                 </div>
                 <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start shaping young minds with us!</p>
               </td>
             </tr>
-            <!-- Footer -->
             <tr>
               <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
                 <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -410,16 +413,16 @@ exports.createTeacher = async (req, res) => {
           });
         });
     } else {
-      return res
-        .status(500)
-        .json({ success: false, message: "Teacher is not created" });
+      return res.status(500).json({
+        success: false,
+        message: "Teacher is not created",
+      });
     }
 
-    // Send back the full teacher data in the response
     res.status(201).send({
       success: true,
       message: "Teacher created successfully",
-      teacher: teacherData, // Return the entire teacher object
+      teacher: teacherData,
     });
   } catch (err) {
     res.status(500).send({ error: err.message });
@@ -429,7 +432,7 @@ exports.createTeacher = async (req, res) => {
 // Deactivate a teacher using teacherId
 exports.deactivateTeacher = async (req, res) => {
   try {
-    const { teacherId } = req.body; // Now using teacherId instead of email
+    const { teacherId } = req.body;
 
     const deactivateTeacher = await Teacher.findOneAndUpdate(
       {
@@ -465,16 +468,14 @@ exports.deactivateTeacher = async (req, res) => {
 // Toggle teacher status
 exports.toggleTeacherStatus = async (req, res) => {
   try {
-    const { teacherId } = req.body; // Using teacherId to identify the teacher
+    const { teacherId } = req.body;
 
-    // Find the teacher by teacherId, schoolId, and session
     const teacher = await Teacher.findOne({
       teacherId,
       schoolId: req.user.schoolId,
       session: req.user.session,
     });
 
-    // Check if the teacher exists
     if (!teacher) {
       return res.status(404).json({
         success: false,
@@ -482,17 +483,14 @@ exports.toggleTeacherStatus = async (req, res) => {
       });
     }
 
-    // Toggle the status based on the current status
     const newStatus = teacher.status === "active" ? "deactivated" : "active";
 
-    // Update the teacher's status
     const updatedTeacher = await Teacher.findOneAndUpdate(
       { teacherId, schoolId: req.user.schoolId, session: req.user.session },
       { $set: { status: newStatus } },
       { new: true }
     );
 
-    // Send appropriate message based on the new status
     const message =
       newStatus === "active"
         ? "Teacher has been reactivated"
@@ -501,7 +499,7 @@ exports.toggleTeacherStatus = async (req, res) => {
     res.json({
       success: true,
       message,
-      teacher: updatedTeacher, // Return the updated teacher data
+      teacher: updatedTeacher,
     });
   } catch (error) {
     console.error(error);
@@ -515,11 +513,10 @@ exports.toggleTeacherStatus = async (req, res) => {
 // Update a teacher using teacherId
 exports.updateTeacher = async (req, res) => {
   try {
-    const { teacherId } = req.params; // Get teacherId from the URL parameter
-    const updateFields = req.body; // Get update fields from the request body
-    const file = req.file; // Handle file upload if any
+    const { teacherId } = req.params;
+    const { session, ...updateFields } = req.body;
+    const file = req.file;
 
-    // Find the teacher by teacherId, schoolId, and session
     const existingTeacher = await Teacher.findOne({
       teacherId,
       schoolId: req.user.schoolId,
@@ -533,7 +530,6 @@ exports.updateTeacher = async (req, res) => {
       });
     }
 
-    // If a file (image) is provided, upload it to Cloudinary and update the teacher's image
     if (file) {
       const fileUri = getDataUri(file);
       const mycloud = await cloudinary.v2.uploader.upload(fileUri.content);
@@ -543,18 +539,18 @@ exports.updateTeacher = async (req, res) => {
       };
     }
 
-    // Update the fields provided in the request body
+    if (session) {
+      existingTeacher.session = session;
+    }
+
     for (const key in updateFields) {
-      // Prevent overwriting sensitive fields like password
       if (key !== "password") {
         existingTeacher[key] = updateFields[key];
       }
     }
 
-    // Save the updated teacher data
     const updatedTeacher = await existingTeacher.save();
 
-    // Respond with the updated teacher data
     res.json({
       success: true,
       message: "Teacher updated successfully",

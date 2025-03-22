@@ -36,7 +36,7 @@ const studentSchema = new mongoose.Schema({
   parentContact: { type: Number },
   role: { type: String, required: true, default: "student" },
   rollNo: { type: String },
-  parentId: { type: String, ref: "ParentModel" },
+  parentId: { type: String },
   parentAdmissionNumber: { type: String },
   status: { type: String, required: true, default: "active" },
   gender: { type: String },

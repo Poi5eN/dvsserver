@@ -3786,16 +3786,24 @@ exports.getStudentParent = async (req, res) => {
       const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
       responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
-    } else if (Object.keys(studentQuery).length > 2 || studentClass || section || gender || studentName || contact || rollNo || religion || caste || nationality || pincode || state || city || approvalStatus || createdBy || joiningDateStart || joiningDateEnd || dateOfBirthStart || dateOfBirthEnd) {
+    } else if (Object.keys(studentQuery).length > 2 || Object.keys(parentQuery).length > 2) {
+      // Fetch all students and parents if no specific query parameters
       const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
       responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
-    } else if (parentAdmissionNumber || Object.keys(parentQuery).length > 2) {
+      
       const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
       responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
     } else {
-      return res.status(400).json({ success: false, message: "No valid query parameters provided." });
+      // No query params, return all data
+      const students = await NewStudentModel.find({ schoolId, session }).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const totalStudents = await NewStudentModel.countDocuments({ schoolId, session });
+      responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
+
+      const parents = await ParentModel.find({ schoolId, session }).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const totalParents = await ParentModel.countDocuments({ schoolId, session });
+      responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
     }
 
     res.status(200).json({
@@ -3811,6 +3819,7 @@ exports.getStudentParent = async (req, res) => {
     });
   }
 };
+
 
 exports.getStudentAndParent = async (req, res) => {
   try {

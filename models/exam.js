@@ -5,25 +5,25 @@ const ExamSchema = new mongoose.Schema({
   examId: { type: String, default: uuidv4, required: true, unique: true },
   schoolId: { type: String, required: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  name: { type: String, required: true }, // e.g., "Term 1 Exam"
-  examType: { type: String, required: true }, // e.g., "Term Exam"
-  className: { type: String, required: true }, // e.g., "7"
-  section: { type: String, required: true }, // e.g., "A"
-  term: { type: String, required: true }, // e.g., "Term 1", "Term 2"
+  name: { type: String, required: true },
+  examType: { type: String, required: true },
+  classNames: [{ type: String, required: true }],
+  sections: [{ type: String, required: true }],
+  term: { type: String, required: true },
   subjects: [{
-    name: { type: String, required: true }, // e.g., "Hindi"
+    name: { type: String, required: true },
     assessments: [{
-      name: { type: String, required: true }, // e.g., "pt", "pf", "hye"
-      totalMarks: { type: Number, required: true }, // e.g., 10, 60
+      name: { type: String, required: true },
+      totalMarks: { type: Number, required: true },
       passingMarks: { type: Number, default: 0 }
     }],
-    totalMarks: { type: Number, required: true } // Sum of assessment totalMarks
+    totalMarks: { type: Number, required: true }
   }],
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   resultPublishDate: { type: Date, required: true },
   gradeSystem: { type: String, default: "Standard" },
-  session: { type: String, required: true }, // e.g., "2023-2024"
+  session: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date }
 });

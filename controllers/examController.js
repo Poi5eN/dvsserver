@@ -1,6 +1,7 @@
-const Exam = require("../models/exam");
-const Mark = require("../models/mark");
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
+const Mark = require('../models/mark');
+const NewStudentModel = require('../models/newStudentModel');
+const Exam = require('../models/exam'); // Import Exam model
 
 exports.createExam = async (req, res) => {
   try {
@@ -120,64 +121,95 @@ exports.generateReportCard = async (req, res) => {
 };
 
 exports.generateFullReportCard = async (req, res) => {
-  try {
-    const { studentId } = req.params;
-    const { session = req.user.session } = req.query;
-
-    const student = await mongoose.model("Student").findById(studentId);
-    if (!student) return res.status(404).json({ success: false, message: "Student not found" });
-
-    const marks = await Mark.find({
-      studentId,
-      schoolId: req.user.schoolId,
-      session,
-    }).populate("examId", "term name");
-
-    if (!marks.length) return res.status(404).json({ success: false, message: "No marks found" });
-
-    const subjects = {};
-    marks.forEach((mark) => {
-      const term = mark.examId.term.toLowerCase().replace(" ", "");
-      mark.marks.forEach((subjectMark) => {
-        if (!subjects[subjectMark.subjectName]) subjects[subjectMark.subjectName] = {};
-        const assessments = {};
-        subjectMark.assessments.forEach((a) => {
-          assessments[a.assessmentName] = a.marksObtained;
-        });
-        subjects[subjectMark.subjectName][term] = {
-          ...assessments,
-          total: subjectMark.total,
-          grade: subjectMark.grade,
-        };
+    try {
+      const { studentId } = req.params;
+      const { session = req.user.session } = req.query;
+  
+      // Fetch student
+      const student = await NewStudentModel.findOne({ studentId });
+      if (!student) {
+        return res.status(404).json({ success: false, message: 'Student not found' });
+      }
+  
+      // Fetch marks
+      const marks = await Mark.find({
+        studentId,
+        schoolId: req.user.schoolId,
+        session,
       });
-    });
-
-    const coScholastic = marks.map((mark) => ({
-      term: mark.examId.term,
-      ...mark.coScholasticMarks.reduce((acc, curr) => {
-        acc[curr.areaName] = curr.grade;
-        return acc;
-      }, {}),
-    }));
-
-    const reportCard = {
-      name: student.name,
-      dob: student.dob,
-      class: `${student.className} - ${student.section}`,
-      gender: student.gender,
-      admNo: student.admNo,
-      rollNo: student.rollNo,
-      motherName: student.motherName,
-      fatherName: student.fatherName,
-      subjects,
-      coScholastic,
-    };
-
-    res.status(200).json({ success: true, reportCard });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+  
+      if (!marks.length) {
+        return res.status(404).json({ success: false, message: 'No marks found for this student, school, and session' });
+      }
+  
+      // Log raw marks data
+      console.log('Marks fetched:', JSON.stringify(marks, null, 2));
+  
+      // Fetch all relevant exams based on examIds from marks
+      const examIds = marks.map((mark) => mark.examId); // Array of UUIDs
+      const exams = await Exam.find({ examId: { $in: examIds } });
+      const examMap = new Map(exams.map((exam) => [exam.examId, exam])); // Map UUID to Exam document
+  
+      const subjects = {};
+      marks.forEach((mark) => {
+        const exam = examMap.get(mark.examId);
+        if (!exam || !exam.term) {
+          console.warn(`Skipping mark with invalid or missing exam: ${mark._id}, examId: ${mark.examId}`);
+          return;
+        }
+  
+        const term = exam.term.toLowerCase().replace(' ', ''); // e.g., "term1"
+        mark.marks.forEach((subjectMark) => {
+          if (!subjects[subjectMark.subjectName]) {
+            subjects[subjectMark.subjectName] = {};
+          }
+  
+          const assessments = {};
+          subjectMark.assessments.forEach((a) => {
+            assessments[a.assessmentName] = a.marksObtained;
+          });
+  
+          subjects[subjectMark.subjectName][term] = {
+            ...assessments,
+            total: subjectMark.total,
+            grade: subjectMark.grade,
+          };
+        });
+      });
+  
+      const coScholastic = marks
+        .map((mark) => {
+          const exam = examMap.get(mark.examId);
+          if (!exam || !exam.term) return null; // Skip if no valid exam
+          return {
+            term: exam.term, // e.g., "Term-1"
+            ...mark.coScholasticMarks.reduce((acc, curr) => {
+              acc[curr.areaName] = curr.grade;
+              return acc;
+            }, {}),
+          };
+        })
+        .filter(Boolean); // Remove null entries
+  
+      const reportCard = {
+        name: student.studentName,
+        dob: student.dateOfBirth,
+        class: `${student.class} - ${student.section || ''}`,
+        gender: student.gender,
+        admNo: student.admissionNumber,
+        rollNo: student.rollNo || '---',
+        motherName: student.motherName,
+        fatherName: student.fatherName,
+        subjects,
+        coScholastic,
+      };
+  
+      res.status(200).json({ success: true, reportCard });
+    } catch (error) {
+      console.error('Error in generateFullReportCard:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  };
 
 exports.getExamAnalytics = async (req, res) => {
     try {

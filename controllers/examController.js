@@ -27,17 +27,23 @@ exports.createExam = async (req, res) => {
       createdBy: req.user._id,
       session,
     };
+
+    // Check for an existing exam with the same name, term, session, schoolId, classNames, and sections
     const existingExam = await Exam.findOne({
       schoolId: examData.schoolId,
       name: examData.name,
       term: examData.term,
       session,
+      classNames: { $all: classNames, $size: classNames.length }, // Exact match for classNames array
+      sections: { $all: sections, $size: sections.length }, // Exact match for sections array
     });
-    if (existingExam)
+
+    if (existingExam) {
       return res.status(400).json({
         success: false,
         message: "An exam with these details already exists",
       });
+    }
 
     // Calculate totalMarks for each subject based on assessments
     examData.subjects.forEach((subject) => {

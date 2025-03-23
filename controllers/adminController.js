@@ -3787,23 +3787,23 @@ exports.getStudentParent = async (req, res) => {
       const totalParents = await ParentModel.countDocuments(parentQuery);
       responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
     } else if (Object.keys(studentQuery).length > 2 || Object.keys(parentQuery).length > 2) {
-      // Fetch all students and parents if no specific query parameters
+      // Fetch all students and parents with pagination if specific filters are applied
       const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
       responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
-      
+
       const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
       responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
     } else {
-      // No query params, return all data
-      const students = await NewStudentModel.find({ schoolId, session }).sort(sort).skip(skip).limit(parseInt(limit)).lean();
-      const totalStudents = await NewStudentModel.countDocuments({ schoolId, session });
-      responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
+      // Default case: Fetch all students and parents without pagination
+      const students = await NewStudentModel.find({ schoolId, session }).sort(sort).lean();
+      const totalStudents = students.length; // No need for countDocuments since we fetch all
+      responseData.students = { data: students, total: totalStudents };
 
-      const parents = await ParentModel.find({ schoolId, session }).sort(sort).skip(skip).limit(parseInt(limit)).lean();
-      const totalParents = await ParentModel.countDocuments({ schoolId, session });
-      responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
+      const parents = await ParentModel.find({ schoolId, session }).sort(sort).lean();
+      const totalParents = parents.length; // No need for countDocuments since we fetch all
+      responseData.parents = { data: parents, total: totalParents };
     }
 
     res.status(200).json({

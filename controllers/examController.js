@@ -292,6 +292,9 @@ exports.generateFullReportCard = async (req, res) => {
 
         const subjectEntry = subjectMap.get(subjectMark.subjectName);
         const assessments = {};
+        let totalPossibleMarksForTerm = 0; // To calculate term percentage
+
+        // Calculate percentages for each assessment
         subjectMark.assessments.forEach((a) => {
           const percentage = a.totalMarks
             ? (a.marksObtained / a.totalMarks) * 100
@@ -304,28 +307,74 @@ exports.generateFullReportCard = async (req, res) => {
             totalMarks: a.totalMarks,
             passingMarks: a.passingMarks || 0,
             grade: assessmentGrade,
+            percentage: parseFloat(percentage.toFixed(2)), // Add percentage for each assessment
           };
+          totalPossibleMarksForTerm += a.totalMarks; // Sum total marks for term percentage
         });
+
+        // Calculate term percentage: (total / totalPossibleMarksForTerm) * 100
+        const termPercentage = totalPossibleMarksForTerm
+          ? (subjectMark.total / totalPossibleMarksForTerm) * 100
+          : 0;
 
         subjectEntry.terms[termKey] = {
           ...assessments,
           total: subjectMark.total,
           grade: subjectMark.grade,
+          percentage: parseFloat(termPercentage.toFixed(2)), // Add term percentage
+          totalPossibleMarks: totalPossibleMarksForTerm, // Include for overall calculation
         };
       });
     });
 
+    // Calculate overall percentage for each subject and the entire report
     const subjects = Array.from(subjectMap.values()).map((subjectEntry) => {
       const subject = {
         name: subjectEntry.name,
         term1: null,
         term2: null,
       };
+
+      let overallSubjectMarks = 0;
+      let overallSubjectPossibleMarks = 0;
+      const termPercentages = [];
+
+      // Assign term data and calculate overall subject percentage
       Object.keys(subjectEntry.terms).forEach((termKey) => {
         subject[termKey] = subjectEntry.terms[termKey];
+        overallSubjectMarks += subjectEntry.terms[termKey].total;
+        overallSubjectPossibleMarks +=
+          subjectEntry.terms[termKey].totalPossibleMarks;
+        termPercentages.push(subjectEntry.terms[termKey].percentage);
       });
+
+      // Calculate overall percentage for the subject
+      const overallSubjectPercentage = overallSubjectPossibleMarks
+        ? (overallSubjectMarks / overallSubjectPossibleMarks) * 100
+        : 0;
+
+      subject.overallPercentage = parseFloat(
+        overallSubjectPercentage.toFixed(2)
+      );
       return subject;
     });
+
+    // Calculate overall percentage for the entire report
+    let overallReportMarks = 0;
+    let overallReportPossibleMarks = 0;
+
+    subjects.forEach((subject) => {
+      Object.keys(subject).forEach((key) => {
+        if (key.startsWith("term") && subject[key]) {
+          overallReportMarks += subject[key].total;
+          overallReportPossibleMarks += subject[key].totalPossibleMarks;
+        }
+      });
+    });
+
+    const overallReportPercentage = overallReportPossibleMarks
+      ? (overallReportMarks / overallReportPossibleMarks) * 100
+      : 0;
 
     const coScholastic = marks
       .map((mark) => {
@@ -354,6 +403,7 @@ exports.generateFullReportCard = async (req, res) => {
       fatherName: student.fatherName,
       subjects,
       coScholastic,
+      overallPercentage: parseFloat(overallReportPercentage.toFixed(2)), // Add overall report percentage
     };
 
     res.status(200).json({ success: true, reportCard });
@@ -513,6 +563,8 @@ exports.generateClassReport = async (req, res) => {
 
             const subjectEntry = subjectMap.get(subjectMark.subjectName);
             const assessments = {};
+            let totalPossibleMarksForTerm = 0;
+
             subjectMark.assessments.forEach((a) => {
               const percentage = a.totalMarks
                 ? (a.marksObtained / a.totalMarks) * 100
@@ -525,15 +577,23 @@ exports.generateClassReport = async (req, res) => {
                 totalMarks: a.totalMarks,
                 passingMarks: a.passingMarks || 0,
                 grade: assessmentGrade,
+                percentage: parseFloat(percentage.toFixed(2)), // Add percentage for each assessment
                 startTime: a.startTime,
                 endTime: a.endTime,
               };
+              totalPossibleMarksForTerm += a.totalMarks;
             });
+
+            const termPercentage = totalPossibleMarksForTerm
+              ? (subjectMark.total / totalPossibleMarksForTerm) * 100
+              : 0;
 
             subjectEntry.terms[termKey] = {
               ...assessments,
               total: subjectMark.total,
               grade: subjectMark.grade,
+              percentage: parseFloat(termPercentage.toFixed(2)), // Add term percentage
+              totalPossibleMarks: totalPossibleMarksForTerm,
             };
           });
         });
@@ -544,11 +604,42 @@ exports.generateClassReport = async (req, res) => {
             term1: null,
             term2: null,
           };
+
+          let overallSubjectMarks = 0;
+          let overallSubjectPossibleMarks = 0;
+
           Object.keys(subjectEntry.terms).forEach((termKey) => {
             subject[termKey] = subjectEntry.terms[termKey];
+            overallSubjectMarks += subjectEntry.terms[termKey].total;
+            overallSubjectPossibleMarks +=
+              subjectEntry.terms[termKey].totalPossibleMarks;
           });
+
+          const overallSubjectPercentage = overallSubjectPossibleMarks
+            ? (overallSubjectMarks / overallSubjectPossibleMarks) * 100
+            : 0;
+
+          subject.overallPercentage = parseFloat(
+            overallSubjectPercentage.toFixed(2)
+          );
           return subject;
         });
+
+        let overallReportMarks = 0;
+        let overallReportPossibleMarks = 0;
+
+        subjects.forEach((subject) => {
+          Object.keys(subject).forEach((key) => {
+            if (key.startsWith("term") && subject[key]) {
+              overallReportMarks += subject[key].total;
+              overallReportPossibleMarks += subject[key].totalPossibleMarks;
+            }
+          });
+        });
+
+        const overallReportPercentage = overallReportPossibleMarks
+          ? (overallReportMarks / overallReportPossibleMarks) * 100
+          : 0;
 
         const coScholastic = studentMarks
           .map((mark) => {
@@ -577,6 +668,7 @@ exports.generateClassReport = async (req, res) => {
           fatherName: student.fatherName,
           subjects,
           coScholastic,
+          overallPercentage: parseFloat(overallReportPercentage.toFixed(2)), // Add overall report percentage
         };
       })
     );

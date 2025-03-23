@@ -455,27 +455,69 @@ exports.getExamAnalytics = async (req, res) => {
       });
     }
 
+    // Fetch all students who should have taken this exam (to account for absent students)
+    const studentIdsWithMarks = new Set(marks.map((mark) => mark.studentId));
+    const exam = await Exam.findOne({ examId });
+    if (!exam) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam not found",
+      });
+    }
+
+    // Assuming the exam is linked to a class/section, fetch all students in that class
+    // This depends on your data model; adjust accordingly
+    const students = await NewStudentModel.find({
+      schoolId: req.user.schoolId,
+      class: exam.class, // Adjust based on your Exam model
+      section: exam.section, // Adjust based on your Exam model
+    });
+
+    const totalStudents = students.length;
+    const presentStudents = marks.length;
+    const absentStudents = totalStudents - presentStudents;
+
     const analytics = {
-      totalStudents: marks.length,
-      passPercentage: marks.length
-        ? (marks.filter((m) => m.total >= 33).length / marks.length) * 100
-        : 0,
-      highestScore: marks.length ? Math.max(...marks.map((m) => m.total)) : 0,
-      lowestScore: marks.length ? Math.min(...marks.map((m) => m.total)) : 0,
-      averageScore: marks.length
-        ? marks.reduce((acc, curr) => acc + curr.total, 0) / marks.length
-        : 0,
+      totalStudents,
+      presentStudents,
+      absentStudents,
+      passPercentage: 0,
+      highestScore: 0,
+      lowestScore: Infinity,
+      averageScore: 0,
       gradeDistribution: {
-        A1: marks.filter((m) => m.grade === "A1").length,
-        A2: marks.filter((m) => m.grade === "A2").length,
-        B1: marks.filter((m) => m.grade === "B1").length,
-        B2: marks.filter((m) => m.grade === "B2").length,
-        C1: marks.filter((m) => m.grade === "C1").length,
-        C2: marks.filter((m) => m.grade === "C2").length,
-        D: marks.filter((m) => m.grade === "D").length,
-        E: marks.filter((m) => m.grade === "E").length,
+        A1: 0,
+        A2: 0,
+        B1: 0,
+        B2: 0,
+        C1: 0,
+        C2: 0,
+        D: 0,
+        E: 0,
       },
     };
+
+    if (presentStudents > 0) {
+      const totals = marks
+        .map((m) => m.total)
+        .filter((total) => typeof total === "number");
+      analytics.highestScore = totals.length ? Math.max(...totals) : 0;
+      analytics.lowestScore = totals.length ? Math.min(...totals) : 0;
+      analytics.averageScore = totals.length
+        ? totals.reduce((acc, curr) => acc + curr, 0) / presentStudents
+        : 0;
+      analytics.passPercentage =
+        (marks.filter((m) => m.total >= 33).length / totalStudents) * 100;
+
+      marks.forEach((mark) => {
+        if (
+          mark.grade &&
+          analytics.gradeDistribution.hasOwnProperty(mark.grade)
+        ) {
+          analytics.gradeDistribution[mark.grade]++;
+        }
+      });
+    }
 
     res.status(200).json({ success: true, analytics });
   } catch (error) {
@@ -525,16 +567,47 @@ exports.generateClassReport = async (req, res) => {
     }
 
     const marks = await Mark.find(marksQuery);
-    if (!marks.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No marks found for this class, section, and session",
-      });
-    }
 
     const examIdsFromMarks = marks.map((mark) => mark.examId);
     const exams = await Exam.find({ examId: { $in: examIdsFromMarks } });
     const examMap = new Map(exams.map((exam) => [exam.examId, exam]));
+
+    // Determine terms to include
+    let termsToInclude = [];
+    if (examIds) {
+      const filteredExams = exams.filter((exam) =>
+        examIdArray.includes(exam.examId)
+      );
+      termsToInclude = filteredExams.map((exam) =>
+        exam.term.toLowerCase().replace(/[\s-]/g, "")
+      );
+    } else {
+      termsToInclude = exams.map((exam) =>
+        exam.term.toLowerCase().replace(/[\s-]/g, "")
+      );
+    }
+
+    // Determine expected assessments for each term dynamically
+    const expectedAssessmentsByTerm = {};
+    termsToInclude.forEach((termKey) => {
+      const termMarks = marks.filter(
+        (mark) =>
+          examMap.get(mark.examId)?.term.toLowerCase().replace(/[\s-]/g, "") ===
+          termKey
+      );
+      const assessmentNames = [
+        ...new Set(
+          termMarks.flatMap((mark) =>
+            mark.marks.flatMap((subjectMark) =>
+              subjectMark.assessments.map((a) => a.assessmentName)
+            )
+          )
+        ),
+      ];
+      expectedAssessmentsByTerm[termKey] = assessmentNames.length
+        ? assessmentNames
+        : ["PT-1", "PF-1", "HYE"]; // Fallback in case no marks are found for the term
+    });
 
     const gradingScheme = await GradingScheme.findOne({
       schoolId: req.user.schoolId,
@@ -545,7 +618,6 @@ exports.generateClassReport = async (req, res) => {
         const studentMarks = marks.filter(
           (mark) => mark.studentId === student.studentId
         );
-        if (!studentMarks.length) return null;
 
         const subjectMap = new Map();
         studentMarks.forEach((mark) => {
@@ -577,7 +649,7 @@ exports.generateClassReport = async (req, res) => {
                 totalMarks: a.totalMarks,
                 passingMarks: a.passingMarks || 0,
                 grade: assessmentGrade,
-                percentage: parseFloat(percentage.toFixed(2)), // Add percentage for each assessment
+                percentage: parseFloat(percentage.toFixed(2)),
                 startTime: a.startTime,
                 endTime: a.endTime,
               };
@@ -592,15 +664,28 @@ exports.generateClassReport = async (req, res) => {
               ...assessments,
               total: subjectMark.total,
               grade: subjectMark.grade,
-              percentage: parseFloat(termPercentage.toFixed(2)), // Add term percentage
+              percentage: parseFloat(termPercentage.toFixed(2)),
               totalPossibleMarks: totalPossibleMarksForTerm,
             };
           });
         });
 
-        const subjects = Array.from(subjectMap.values()).map((subjectEntry) => {
+        // Get all subjects from all students' marks to ensure consistency
+        const allSubjects = [
+          ...new Set(
+            marks.flatMap((mark) =>
+              mark.marks.map((subjectMark) => subjectMark.subjectName)
+            )
+          ),
+        ];
+
+        const subjects = allSubjects.map((subjectName) => {
+          const subjectEntry = subjectMap.get(subjectName) || {
+            name: subjectName,
+            terms: {},
+          };
           const subject = {
-            name: subjectEntry.name,
+            name: subjectName,
             term1: null,
             term2: null,
           };
@@ -608,53 +693,100 @@ exports.generateClassReport = async (req, res) => {
           let overallSubjectMarks = 0;
           let overallSubjectPossibleMarks = 0;
 
-          Object.keys(subjectEntry.terms).forEach((termKey) => {
-            subject[termKey] = subjectEntry.terms[termKey];
-            overallSubjectMarks += subjectEntry.terms[termKey].total;
-            overallSubjectPossibleMarks +=
-              subjectEntry.terms[termKey].totalPossibleMarks;
+          // For each term we expect, set data or mark as absent
+          termsToInclude.forEach((termKey) => {
+            if (subjectEntry.terms[termKey]) {
+              subject[termKey] = subjectEntry.terms[termKey];
+              overallSubjectMarks += subjectEntry.terms[termKey].total;
+              overallSubjectPossibleMarks +=
+                subjectEntry.terms[termKey].totalPossibleMarks;
+            } else {
+              // Student was absent or has no marks for this term
+              subject[termKey] = {
+                total: "--",
+                grade: "--",
+                percentage: "--",
+                totalPossibleMarks: 0,
+              };
+              // Dynamically add expected assessments for this term
+              const expectedAssessments = expectedAssessmentsByTerm[termKey];
+              expectedAssessments.forEach((assessmentName) => {
+                subject[termKey][assessmentName] = {
+                  marksObtained: "--",
+                  totalMarks: 0,
+                  passingMarks: 0,
+                  grade: "--",
+                  percentage: "--",
+                };
+              });
+            }
           });
 
           const overallSubjectPercentage = overallSubjectPossibleMarks
             ? (overallSubjectMarks / overallSubjectPossibleMarks) * 100
-            : 0;
+            : "--";
 
-          subject.overallPercentage = parseFloat(
-            overallSubjectPercentage.toFixed(2)
-          );
+          subject.overallPercentage =
+            overallSubjectPercentage === "--"
+              ? "--"
+              : parseFloat(overallSubjectPercentage.toFixed(2));
           return subject;
         });
 
         let overallReportMarks = 0;
         let overallReportPossibleMarks = 0;
+        let termsWithMarks = 0;
 
         subjects.forEach((subject) => {
           Object.keys(subject).forEach((key) => {
             if (key.startsWith("term") && subject[key]) {
-              overallReportMarks += subject[key].total;
-              overallReportPossibleMarks += subject[key].totalPossibleMarks;
+              if (subject[key].total !== "--") {
+                overallReportMarks += subject[key].total;
+                overallReportPossibleMarks += subject[key].totalPossibleMarks;
+                termsWithMarks++;
+              }
             }
           });
         });
 
-        const overallReportPercentage = overallReportPossibleMarks
-          ? (overallReportMarks / overallReportPossibleMarks) * 100
-          : 0;
+        const overallReportPercentage =
+          termsWithMarks > 0 && overallReportPossibleMarks
+            ? (overallReportMarks / overallReportPossibleMarks) * 100
+            : "--";
 
-        const coScholastic = studentMarks
-          .map((mark) => {
-            const exam = examMap.get(mark.examId);
-            if (!exam || !exam.term) return null;
+        const coScholastic = termsToInclude.map((termKey) => {
+          const termName = exams.find(
+            (exam) => exam.term.toLowerCase().replace(/[\s-]/g, "") === termKey
+          )?.term;
+          const mark = studentMarks.find(
+            (m) =>
+              examMap
+                .get(m.examId)
+                ?.term.toLowerCase()
+                .replace(/[\s-]/g, "") === termKey
+          );
+          if (!mark) {
             return {
-              term: exam.term,
-              remarks: mark.remarks,
-              ...mark.coScholasticMarks.reduce((acc, curr) => {
-                acc[curr.areaName.toLowerCase()] = curr.grade;
-                return acc;
-              }, {}),
+              term: termName || termKey,
+              remarks: "--",
+              workeducation: "--",
+              arteducation: "--",
+              yoga: "--",
+              discipline: "--",
+              scouts: "--",
+              attendance: "--",
+              ict: "--",
             };
-          })
-          .filter(Boolean);
+          }
+          return {
+            term: termName,
+            remarks: mark.remarks,
+            ...mark.coScholasticMarks.reduce((acc, curr) => {
+              acc[curr.areaName.toLowerCase()] = curr.grade;
+              return acc;
+            }, {}),
+          };
+        });
 
         return {
           studentId: student.studentId,
@@ -668,21 +800,15 @@ exports.generateClassReport = async (req, res) => {
           fatherName: student.fatherName,
           subjects,
           coScholastic,
-          overallPercentage: parseFloat(overallReportPercentage.toFixed(2)), // Add overall report percentage
+          overallPercentage:
+            overallReportPercentage === "--"
+              ? "--"
+              : parseFloat(overallReportPercentage.toFixed(2)),
         };
       })
     );
 
-    const filteredReportCards = reportCards.filter((report) => report !== null);
-
-    if (!filteredReportCards.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No report cards generated for this class and section",
-      });
-    }
-
-    res.status(200).json({ success: true, reportCards: filteredReportCards });
+    res.status(200).json({ success: true, reportCards });
   } catch (error) {
     console.error("Error in generateClassReport:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -784,10 +910,13 @@ exports.getPerformanceAnalytics = async (req, res) => {
       session,
     };
 
+    let students = [];
     if (studentId) {
       query.studentId = studentId;
+      const student = await NewStudentModel.findOne({ studentId });
+      if (student) students = [student];
     } else if (className && section) {
-      const students = await NewStudentModel.find({
+      students = await NewStudentModel.find({
         class: className,
         section,
         schoolId: req.user.schoolId,
@@ -807,48 +936,80 @@ exports.getPerformanceAnalytics = async (req, res) => {
     }
 
     const marks = await Mark.find(query);
-    if (!marks.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No marks found for the given criteria",
-      });
-    }
 
     const examIdsFromMarks = marks.map((mark) => mark.examId);
     const exams = await Exam.find({ examId: { $in: examIdsFromMarks } });
     const examMap = new Map(exams.map((exam) => [exam.examId, exam]));
 
+    // Determine terms to include
+    const termsToInclude = examIds
+      ? exams
+          .filter((exam) => examIdArray.includes(exam.examId))
+          .map((exam) => exam.term.toLowerCase().replace(/[\s-]/g, ""))
+      : exams.map((exam) => exam.term.toLowerCase().replace(/[\s-]/g, ""));
+
     const analytics = {
-      totalStudents: studentId
-        ? 1
-        : new Set(marks.map((m) => m.studentId)).size,
+      totalStudents: students.length,
+      presentStudents: new Set(marks.map((m) => m.studentId)).size,
+      absentStudents: 0,
       subjectWisePerformance: {},
       overallPerformance: {
         averageTotal: 0,
         passPercentage: 0,
-        gradeDistribution: {},
+        gradeDistribution: {
+          A1: 0,
+          A2: 0,
+          B1: 0,
+          B2: 0,
+          C1: 0,
+          C2: 0,
+          D: 0,
+          E: 0,
+        },
       },
       studentWisePerformance: studentId ? {} : [],
     };
 
+    analytics.absentStudents =
+      analytics.totalStudents - analytics.presentStudents;
+
     const subjects = [
       ...new Set(marks.flatMap((mark) => mark.marks.map((m) => m.subjectName))),
     ];
+
+    // Initialize subject-wise performance
     subjects.forEach((subject) => {
       analytics.subjectWisePerformance[subject] = {
         averageMarks: 0,
         highestMarks: 0,
         lowestMarks: Infinity,
         termWiseTrend: {},
+        studentCount: 0,
       };
+      termsToInclude.forEach((term) => {
+        analytics.subjectWisePerformance[subject].termWiseTrend[term] = 0;
+      });
     });
 
-    const grades = ["A1", "A2", "B1", "B2", "C1", "C2", "D", "E"];
-    grades.forEach((grade) => {
-      analytics.overallPerformance.gradeDistribution[grade] = 0;
+    const studentDataMap = new Map();
+    students.forEach((student) => {
+      studentDataMap.set(student.studentId, {
+        total: 0,
+        terms: {},
+        subjects: {},
+        termCount: 0,
+      });
+      termsToInclude.forEach((term) => {
+        studentDataMap.get(student.studentId).terms[term] = 0;
+        subjects.forEach((subject) => {
+          if (!studentDataMap.get(student.studentId).subjects[subject]) {
+            studentDataMap.get(student.studentId).subjects[subject] = {};
+          }
+          studentDataMap.get(student.studentId).subjects[subject][term] = "--";
+        });
+      });
     });
 
-    const studentTotals = {};
     marks.forEach((mark) => {
       const exam = examMap.get(mark.examId);
       if (!exam || !exam.term) return;
@@ -856,102 +1017,113 @@ exports.getPerformanceAnalytics = async (req, res) => {
       const termKey = exam.term.toLowerCase().replace(/[\s-]/g, "");
       const studentId = mark.studentId;
 
-      if (!studentTotals[studentId]) {
-        studentTotals[studentId] = {
-          terms: {},
-          total: 0,
-          subjects: {},
-        };
-      }
-
-      if (!studentTotals[studentId].terms[termKey]) {
-        studentTotals[studentId].terms[termKey] = 0;
-      }
-
+      const studentData = studentDataMap.get(studentId);
       let studentTotalForTerm = 0;
+
       mark.marks.forEach((subjectMark) => {
         const subjectAnalytics =
           analytics.subjectWisePerformance[subjectMark.subjectName];
-        subjectAnalytics.averageMarks += subjectMark.total;
-        subjectAnalytics.highestMarks = Math.max(
-          subjectAnalytics.highestMarks,
-          subjectMark.total
-        );
-        subjectAnalytics.lowestMarks = Math.min(
-          subjectAnalytics.lowestMarks,
-          subjectMark.total
-        );
-        if (!subjectAnalytics.termWiseTrend[termKey]) {
-          subjectAnalytics.termWiseTrend[termKey] = 0;
+        if (typeof subjectMark.total === "number") {
+          subjectAnalytics.averageMarks += subjectMark.total;
+          subjectAnalytics.highestMarks = Math.max(
+            subjectAnalytics.highestMarks,
+            subjectMark.total
+          );
+          subjectAnalytics.lowestMarks = Math.min(
+            subjectAnalytics.lowestMarks,
+            subjectMark.total
+          );
+          subjectAnalytics.studentCount++;
+          subjectAnalytics.termWiseTrend[termKey] =
+            (subjectAnalytics.termWiseTrend[termKey] || 0) + subjectMark.total;
         }
-        subjectAnalytics.termWiseTrend[termKey] += subjectMark.total;
 
-        studentTotalForTerm += subjectMark.total;
-
-        if (!studentTotals[studentId].subjects[subjectMark.subjectName]) {
-          studentTotals[studentId].subjects[subjectMark.subjectName] = {};
-        }
-        if (
-          !studentTotals[studentId].subjects[subjectMark.subjectName][termKey]
-        ) {
-          studentTotals[studentId].subjects[subjectMark.subjectName][
-            termKey
-          ] = 0;
-        }
-        studentTotals[studentId].subjects[subjectMark.subjectName][termKey] =
+        studentTotalForTerm +=
+          typeof subjectMark.total === "number" ? subjectMark.total : 0;
+        studentData.subjects[subjectMark.subjectName][termKey] =
           subjectMark.total;
       });
 
-      studentTotals[studentId].terms[termKey] = studentTotalForTerm;
-      studentTotals[studentId].total += studentTotalForTerm;
-
-      if (mark.grade) {
-        analytics.overallPerformance.gradeDistribution[mark.grade] =
-          (analytics.overallPerformance.gradeDistribution[mark.grade] || 0) + 1;
-      }
+      studentData.terms[termKey] = studentTotalForTerm;
+      studentData.total += studentTotalForTerm;
+      studentData.termCount++;
     });
 
-    const totalRecordsPerSubject = studentId
-      ? 1
-      : new Set(marks.map((m) => m.studentId)).size;
+    // Finalize subject-wise performance
     Object.keys(analytics.subjectWisePerformance).forEach((subject) => {
       const subjectAnalytics = analytics.subjectWisePerformance[subject];
-      subjectAnalytics.averageMarks /= totalRecordsPerSubject;
-      Object.keys(subjectAnalytics.termWiseTrend).forEach((termKey) => {
-        subjectAnalytics.termWiseTrend[termKey] /= totalRecordsPerSubject;
-      });
+      if (subjectAnalytics.studentCount > 0) {
+        subjectAnalytics.averageMarks /= subjectAnalytics.studentCount;
+        subjectAnalytics.averageMarks = parseFloat(
+          subjectAnalytics.averageMarks.toFixed(2)
+        );
+        Object.keys(subjectAnalytics.termWiseTrend).forEach((termKey) => {
+          const termTotal = subjectAnalytics.termWiseTrend[termKey];
+          const studentCountForTerm = marks.filter(
+            (m) =>
+              examMap
+                .get(m.examId)
+                ?.term.toLowerCase()
+                .replace(/[\s-]/g, "") === termKey &&
+              m.marks.some((sm) => sm.subjectName === subject)
+          ).length;
+          subjectAnalytics.termWiseTrend[termKey] = studentCountForTerm
+            ? parseFloat((termTotal / studentCountForTerm).toFixed(2))
+            : "--";
+        });
+      } else {
+        subjectAnalytics.averageMarks = "--";
+        Object.keys(subjectAnalytics.termWiseTrend).forEach((termKey) => {
+          subjectAnalytics.termWiseTrend[termKey] = "--";
+        });
+      }
       if (subjectAnalytics.lowestMarks === Infinity)
         subjectAnalytics.lowestMarks = 0;
     });
 
-    const totalStudents = Object.keys(studentTotals).length;
+    // Calculate overall performance and student-wise performance
     let overallTotal = 0;
     let passedStudents = 0;
 
-    Object.keys(studentTotals).forEach((studentId) => {
-      const studentData = studentTotals[studentId];
-      const averageTotal =
-        studentData.total / Object.keys(studentData.terms).length;
-      overallTotal += averageTotal;
-      if (averageTotal >= 33) passedStudents++;
+    studentDataMap.forEach((studentData, studentId) => {
+      const termCount = studentData.termCount || 1;
+      const averageTotal = studentData.total / termCount;
+      overallTotal += studentData.total > 0 ? averageTotal : 0;
+
+      if (studentData.total > 0 && averageTotal >= 33) passedStudents++;
+
+      const studentPerformance = {
+        studentId,
+        total:
+          studentData.total > 0 ? parseFloat(averageTotal.toFixed(2)) : "--",
+        subjects: studentData.subjects,
+      };
 
       if (studentId === req.query.studentId) {
-        analytics.studentWisePerformance = {
-          total: averageTotal,
-          subjects: studentData.subjects,
-        };
+        analytics.studentWisePerformance = studentPerformance;
       } else {
-        analytics.studentWisePerformance.push({
-          studentId,
-          total: averageTotal,
-          subjects: studentData.subjects,
-        });
+        analytics.studentWisePerformance.push(studentPerformance);
       }
+
+      // Update grade distribution based on marks
+      const studentMarks = marks.filter((m) => m.studentId === studentId);
+      studentMarks.forEach((mark) => {
+        if (
+          mark.grade &&
+          analytics.overallPerformance.gradeDistribution[mark.grade] !==
+            undefined
+        ) {
+          analytics.overallPerformance.gradeDistribution[mark.grade]++;
+        }
+      });
     });
 
-    analytics.overallPerformance.averageTotal = overallTotal / totalStudents;
+    analytics.overallPerformance.averageTotal =
+      analytics.presentStudents > 0
+        ? parseFloat((overallTotal / analytics.presentStudents).toFixed(2))
+        : "--";
     analytics.overallPerformance.passPercentage =
-      (passedStudents / totalStudents) * 100;
+      (passedStudents / analytics.totalStudents) * 100;
 
     res.status(200).json({ success: true, analytics });
   } catch (error) {

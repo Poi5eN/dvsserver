@@ -244,3 +244,78 @@ exports.bulkUploadMarks = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+exports.bulkUpdateMarks = async (req, res) => {
+  try {
+    const { examId, studentsMarks } = req.body;
+
+    // Validate exam existence
+    const exam = await Exam.findOne({ 
+      examId, 
+      schoolId: req.user.schoolId, 
+      session: req.user.session 
+    });
+    if (!exam) {
+      return res.status(404).json({ success: false, message: "Exam not found" });
+    }
+
+    const results = [];
+    const errors = [];
+
+    // Process each student's data
+    for (const studentData of studentsMarks) {
+      try {
+        const { studentId, className, section, coScholasticMarks } = studentData;
+
+        // Validate required fields
+        if (!className || !section) {
+          throw new Error("className and section are required for each student");
+        }
+        if (!exam.classNames.includes(className) || !exam.sections.includes(section)) {
+          throw new Error(`Class ${className} or section ${section} not part of exam`);
+        }
+
+        // Find existing mark record
+        let studentMark = await Mark.findOne({
+          studentId,
+          examId,
+          schoolId: req.user.schoolId,
+          className,
+          section,
+          session: req.user.session,
+        });
+
+        if (!studentMark) {
+          throw new Error(`No existing mark record found for student ${studentId}`);
+        }
+
+        // Update coScholasticMarks if provided
+        if (coScholasticMarks && Array.isArray(coScholasticMarks)) {
+          studentMark.coScholasticMarks = coScholasticMarks.map((item) => ({
+            areaName: item.areaName,
+            grade: item.grade,
+          }));
+        }
+
+        // Save the updated record
+        await studentMark.save();
+        results.push(studentMark);
+
+      } catch (error) {
+        errors.push({ studentId: studentData.studentId, error: error.message });
+      }
+    }
+
+    // Respond with results
+    res.status(200).json({
+      success: true,
+      message: `Successfully updated marks for ${results.length} students`,
+      failedCount: errors.length,
+      results,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

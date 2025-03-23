@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Mark = require('../models/mark');
 const NewStudentModel = require('../models/newStudentModel');
 const Exam = require('../models/exam'); // Import Exam model
+const GradingScheme = require('../models/gradingScheme');
 
 exports.createExam = async (req, res) => {
     try {
@@ -191,11 +192,15 @@ exports.generateFullReportCard = async (req, res) => {
       console.log('Marks fetched:', JSON.stringify(marks, null, 2));
   
       // Fetch all relevant exams based on examIds from marks
-      const examIds = marks.map((mark) => mark.examId); // Array of UUIDs
+      const examIds = marks.map((mark) => mark.examId);
       const exams = await Exam.find({ examId: { $in: examIds } });
-      const examMap = new Map(exams.map((exam) => [exam.examId, exam])); // Map UUID to Exam document
+      const examMap = new Map(exams.map((exam) => [exam.examId, exam]));
   
-      const subjects = {};
+      // Fetch grading scheme
+      const gradingScheme = await GradingScheme.findOne({ schoolId: req.user.schoolId });
+  
+      // Build subjects array
+      const subjectMap = new Map(); // Map to aggregate subjects
       marks.forEach((mark) => {
         const exam = examMap.get(mark.examId);
         if (!exam || !exam.term) {
@@ -203,24 +208,30 @@ exports.generateFullReportCard = async (req, res) => {
           return;
         }
   
-        const term = exam.term.toLowerCase().replace(' ', ''); // e.g., "term1"
+        const termKey = exam.term.toLowerCase().replace(' ', ''); // e.g., "term1"
         mark.marks.forEach((subjectMark) => {
-          if (!subjects[subjectMark.subjectName]) {
-            subjects[subjectMark.subjectName] = {};
+          if (!subjectMap.has(subjectMark.subjectName)) {
+            subjectMap.set(subjectMark.subjectName, {
+              name: subjectMark.subjectName,
+              term1: null,
+              term2: null,
+            });
           }
   
+          const subjectEntry = subjectMap.get(subjectMark.subjectName);
           const assessments = {};
           subjectMark.assessments.forEach((a) => {
+            const percentage = a.totalMarks ? (a.marksObtained / a.totalMarks) * 100 : 0;
+            const assessmentGrade = gradingScheme ? getGrade(percentage, gradingScheme) : defaultGrade(percentage);
             assessments[a.assessmentName] = {
               marksObtained: a.marksObtained,
               totalMarks: a.totalMarks,
               passingMarks: a.passingMarks || 0,
-              startTime: a.startTime ? a.startTime.toISOString() : null, // Convert to ISO string or null
-              endTime: a.endTime ? a.endTime.toISOString() : null       // Convert to ISO string or null
+              grade: assessmentGrade,
             };
           });
   
-          subjects[subjectMark.subjectName][term] = {
+          subjectEntry[termKey] = {
             ...assessments,
             total: subjectMark.total,
             grade: subjectMark.grade,
@@ -228,19 +239,22 @@ exports.generateFullReportCard = async (req, res) => {
         });
       });
   
+      const subjects = Array.from(subjectMap.values());
+  
+      // Build coScholastic array
       const coScholastic = marks
         .map((mark) => {
           const exam = examMap.get(mark.examId);
-          if (!exam || !exam.term) return null; // Skip if no valid exam
+          if (!exam || !exam.term) return null;
           return {
             term: exam.term, // e.g., "Term-1"
             ...mark.coScholasticMarks.reduce((acc, curr) => {
-              acc[curr.areaName] = curr.grade;
+              acc[curr.areaName.toLowerCase()] = curr.grade;
               return acc;
             }, {}),
           };
         })
-        .filter(Boolean); // Remove null entries
+        .filter(Boolean);
   
       const reportCard = {
         name: student.studentName,
@@ -261,6 +275,27 @@ exports.generateFullReportCard = async (req, res) => {
       res.status(500).json({ success: false, message: error.message });
     }
   };
+  
+  // Grading functions (copied from Mark model for clarity)
+  function getGrade(percentage, gradingScheme) {
+    for (const range of gradingScheme.grades) {
+      if (percentage >= range.minPercentage && percentage <= range.maxPercentage) {
+        return range.grade;
+      }
+    }
+    return 'N/A';
+  }
+  
+  function defaultGrade(percentage) {
+    if (percentage >= 91) return 'A1';
+    if (percentage >= 81) return 'A2';
+    if (percentage >= 71) return 'B1';
+    if (percentage >= 61) return 'B2';
+    if (percentage >= 51) return 'C1';
+    if (percentage >= 41) return 'C2';
+    if (percentage >= 33) return 'D';
+    return 'E';
+  }
 
 exports.getExamAnalytics = async (req, res) => {
     try {

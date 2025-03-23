@@ -3699,7 +3699,7 @@ exports.getStudentParent = async (req, res) => {
 
     const {
       studentId, parentId, admissionNumber, parentAdmissionNumber, email, class: studentClass, section, gender, status,
-      fetchAllStudents, fetchNewAdmissions, fetchAllParents, fetchParentsWithMultipleChildren, limit = 10, page = 1,
+      fetchAllStudents, fetchNewAdmissions, fetchAllParents, fetchParentsWithMultipleChildren, limit, page = 1,
       sortBy = 'createdAt', sortOrder = 'desc', studentName, contact, rollNo, religion, caste, nationality, pincode,
       state, city, approvalStatus, createdBy, joiningDateStart, joiningDateEnd, dateOfBirthStart, dateOfBirthEnd,
     } = req.query;
@@ -3747,7 +3747,7 @@ exports.getStudentParent = async (req, res) => {
     if (parentAdmissionNumber) parentQuery.admissionNumber = parentAdmissionNumber;
     if (email) parentQuery.email = email;
 
-    const skip = (page - 1) * limit;
+    const skip = limit ? (page - 1) * parseInt(limit) : 0; // Only apply skip if limit is provided
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
     let responseData = {};
@@ -3771,38 +3771,53 @@ exports.getStudentParent = async (req, res) => {
       }
       const totalParentsWithMultiple = parentsWithMultipleChildren.length;
       responseData.parentsWithMultipleChildren = {
-        data: parentsWithMultipleChildren.slice(skip, skip + parseInt(limit)),
-        pagination: { total: totalParentsWithMultiple, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParentsWithMultiple / limit) },
+        data: limit ? parentsWithMultipleChildren.slice(skip, skip + parseInt(limit)) : parentsWithMultipleChildren,
+        pagination: limit ? { total: totalParentsWithMultiple, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParentsWithMultiple / limit) } : undefined,
       };
     } else if (fetchAllStudents === 'true') {
-      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
+      responseData.students = {
+        data: students,
+        pagination: limit ? { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } : undefined,
+      };
     } else if (fetchNewAdmissions === 'true') {
-      const newStudents = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const newStudents = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
       const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.newAdmissions = { data: newStudents, pagination: { total: totalNewStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalNewStudents / limit) } };
+      responseData.newAdmissions = {
+        data: newStudents,
+        pagination: limit ? { total: totalNewStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalNewStudents / limit) } : undefined,
+      };
     } else if (fetchAllParents === 'true') {
-      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
-      responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
+      responseData.parents = {
+        data: parents,
+        pagination: limit ? { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } : undefined,
+      };
     } else if (Object.keys(studentQuery).length > 2 || Object.keys(parentQuery).length > 2) {
-      // Fetch all students and parents with pagination if specific filters are applied
-      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      // Fetch all students and parents with optional pagination if limit is provided
+      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.students = { data: students, pagination: { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } };
+      responseData.students = {
+        data: students,
+        pagination: limit ? { total: totalStudents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalStudents / limit) } : undefined,
+      };
 
-      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(parseInt(limit)).lean();
+      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
-      responseData.parents = { data: parents, pagination: { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } };
+      responseData.parents = {
+        data: parents,
+        pagination: limit ? { total: totalParents, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalParents / limit) } : undefined,
+      };
     } else {
       // Default case: Fetch all students and parents without pagination
       const students = await NewStudentModel.find({ schoolId, session }).sort(sort).lean();
-      const totalStudents = students.length; // No need for countDocuments since we fetch all
+      const totalStudents = students.length;
       responseData.students = { data: students, total: totalStudents };
 
       const parents = await ParentModel.find({ schoolId, session }).sort(sort).lean();
-      const totalParents = parents.length; // No need for countDocuments since we fetch all
+      const totalParents = parents.length;
       responseData.parents = { data: parents, total: totalParents };
     }
 

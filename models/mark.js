@@ -25,6 +25,7 @@ const MarkSchema = new mongoose.Schema({
     areaName: { type: String, required: true },
     grade: { type: String, required: true }
   }],
+  remarks: { type: String, default: '' },
   session: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

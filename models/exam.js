@@ -15,7 +15,9 @@ const ExamSchema = new mongoose.Schema({
     assessments: [{
       name: { type: String, required: true },
       totalMarks: { type: Number, required: true },
-      passingMarks: { type: Number, default: 0 }
+      passingMarks: { type: Number, default: 0 },
+      startTime: { type: Date }, // New field
+      endTime: { type: Date }   // New field
     }],
     totalMarks: { type: Number, required: true }
   }],

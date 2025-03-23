@@ -4,34 +4,40 @@ const NewStudentModel = require('../models/newStudentModel');
 const Exam = require('../models/exam'); // Import Exam model
 
 exports.createExam = async (req, res) => {
-  try {
-    const { classNames, sections } = req.body;
-    const session = req.user.session;
-
-    if (!classNames || !sections || classNames.length === 0 || sections.length === 0) {
-      return res.status(400).json({ success: false, message: "classNames and sections are required" });
+    try {
+      const { classNames, sections } = req.body;
+      const session = req.user.session;
+  
+      if (!classNames || !sections || classNames.length === 0 || sections.length === 0) {
+        return res.status(400).json({ success: false, message: "classNames and sections are required" });
+      }
+  
+      const examData = { ...req.body, schoolId: req.user.schoolId, createdBy: req.user._id, session };
+      const existingExam = await Exam.findOne({
+        schoolId: examData.schoolId,
+        name: examData.name,
+        term: examData.term,
+        session,
+      });
+      if (existingExam) return res.status(400).json({ success: false, message: "An exam with these details already exists" });
+  
+      // Calculate totalMarks for each subject based on assessments
+      examData.subjects.forEach((subject) => {
+        subject.totalMarks = subject.assessments.reduce((sum, a) => sum + a.totalMarks, 0);
+        // Ensure startTime and endTime are parsed as Dates if provided
+        subject.assessments.forEach((assessment) => {
+          if (assessment.startTime) assessment.startTime = new Date(assessment.startTime);
+          if (assessment.endTime) assessment.endTime = new Date(assessment.endTime);
+        });
+      });
+  
+      const exam = new Exam(examData);
+      await exam.save();
+      res.status(201).json({ success: true, exam });
+    } catch (error) {
+      res.status(400).json({ success: false, message: error.message });
     }
-
-    const examData = { ...req.body, schoolId: req.user.schoolId, createdBy: req.user._id, session };
-    const existingExam = await Exam.findOne({
-      schoolId: examData.schoolId,
-      name: examData.name,
-      term: examData.term,
-      session,
-    });
-    if (existingExam) return res.status(400).json({ success: false, message: "An exam with these details already exists" });
-
-    examData.subjects.forEach((subject) => {
-      subject.totalMarks = subject.assessments.reduce((sum, a) => sum + a.totalMarks, 0);
-    });
-
-    const exam = new Exam(examData);
-    await exam.save();
-    res.status(201).json({ success: true, exam });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
+  };
 
 exports.getExams = async (req, res) => {
   try {
@@ -88,19 +94,58 @@ exports.deleteExam = async (req, res) => {
 };
 
 exports.submitExamResults = async (req, res) => {
-  try {
-    const exam = await Exam.findOne({
-      examId: req.params.id,
-      schoolId: req.user.schoolId,
-      session: req.user.session,
-    });
-    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
-
-    res.status(200).json({ success: true, message: "Exam results submitted successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+    try {
+      const { examId } = req.params;
+      const { studentId, marks, coScholasticMarks } = req.body; // Assume these are provided in the request
+  
+      const exam = await Exam.findOne({
+        examId,
+        schoolId: req.user.schoolId,
+        session: req.user.session,
+      });
+      if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+  
+      // Validate student
+      const student = await NewStudentModel.findOne({ studentId });
+      if (!student) return res.status(404).json({ success: false, message: "Student not found" });
+  
+      // Build the mark record
+      const markData = {
+        examId: exam.examId,
+        studentId,
+        schoolId: req.user.schoolId,
+        session: req.user.session,
+        className: exam.classNames[0], // Assuming single class for simplicity
+        section: exam.sections[0],     // Assuming single section for simplicity
+        marks: marks.map((subjectMark) => {
+          const examSubject = exam.subjects.find((s) => s.name === subjectMark.subjectName);
+          if (!examSubject) throw new Error(`Subject ${subjectMark.subjectName} not found in exam`);
+          
+          return {
+            subjectName: subjectMark.subjectName,
+            assessments: examSubject.assessments.map((examAssessment) => ({
+              assessmentName: examAssessment.name,
+              marksObtained: subjectMark.assessments.find((a) => a.assessmentName === examAssessment.name)?.marksObtained || 0,
+              totalMarks: examAssessment.totalMarks,
+              passingMarks: examAssessment.passingMarks || 0,
+              startTime: examAssessment.startTime, // Copy from Exam
+              endTime: examAssessment.endTime      // Copy from Exam
+            })),
+            total: subjectMark.total,
+            grade: subjectMark.grade,
+          };
+        }),
+        coScholasticMarks: coScholasticMarks || [],
+      };
+  
+      const mark = new Mark(markData);
+      await mark.save();
+  
+      res.status(200).json({ success: true, message: "Exam results submitted successfully", mark });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  };
 
 exports.generateReportCard = async (req, res) => {
   try {
@@ -166,7 +211,13 @@ exports.generateFullReportCard = async (req, res) => {
   
           const assessments = {};
           subjectMark.assessments.forEach((a) => {
-            assessments[a.assessmentName] = a.marksObtained;
+            assessments[a.assessmentName] = {
+              marksObtained: a.marksObtained,
+              totalMarks: a.totalMarks,
+              passingMarks: a.passingMarks || 0,
+              startTime: a.startTime ? a.startTime.toISOString() : null, // Convert to ISO string or null
+              endTime: a.endTime ? a.endTime.toISOString() : null       // Convert to ISO string or null
+            };
           });
   
           subjects[subjectMark.subjectName][term] = {

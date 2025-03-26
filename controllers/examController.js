@@ -182,11 +182,11 @@ exports.submitExamResults = async (req, res) => {
               )?.marksObtained || 0,
             totalMarks: examAssessment.totalMarks,
             passingMarks: examAssessment.passingMarks || 0,
-            startTime: examAssessment.startTime, // Copy from Exam
-            endTime: examAssessment.endTime, // Copy from Exam
+            startTime: examAssessment.startTime,
+            endTime: examAssessment.endTime,
           })),
           total: subjectMark.total,
-          grade: subjectMark.grade,
+          grade: subjectMark.grade, // Uses grade from req.body
         };
       }),
       coScholasticMarks: coScholasticMarks || [],
@@ -322,11 +322,22 @@ exports.generateFullReportCard = async (req, res) => {
         const termPercentage = totalPossibleMarksForTerm
           ? (subjectMark.total / totalPossibleMarksForTerm) * 100
           : 0;
+        const termGrade = gradingScheme
+          ? getGrade(termPercentage, gradingScheme)
+          : defaultGrade(termPercentage);
+
+        // Debugging log
+        // console.log(
+        //   `Subject: ${subjectMark.subjectName}, Term: ${termKey}, ` +
+        //     `Stored Grade: ${subjectMark.grade}, ` +
+        //     `Percentage: ${termPercentage.toFixed(2)}, ` +
+        //     `Calculated Grade: ${termGrade}`
+        // );
 
         subjectEntry.terms[termKey] = {
           ...assessments,
           total: subjectMark.total,
-          grade: subjectMark.grade,
+          grade: termGrade, // Use calculated grade
           percentage: parseFloat(termPercentage.toFixed(2)),
           totalPossibleMarks: totalPossibleMarksForTerm,
         };
@@ -362,7 +373,7 @@ exports.generateFullReportCard = async (req, res) => {
       subject.overallPercentage = parseFloat(
         overallSubjectPercentage.toFixed(2)
       );
-      subject.overallGrade = overallSubjectGrade; // Add overall grade for the subject
+      subject.overallGrade = overallSubjectGrade;
       return subject;
     });
 
@@ -427,13 +438,13 @@ exports.generateFullReportCard = async (req, res) => {
       fatherName: student.fatherName,
       subjects,
       coScholastic,
-      termTotals, // Now includes percentage and grade
+      termTotals,
       overallTotals: {
         totalMarksObtained: overallReportMarks,
         totalPossibleMarks: overallReportPossibleMarks,
       },
       overallPercentage: parseFloat(overallReportPercentage.toFixed(2)),
-      overallGrade: overallReportGrade, // Add overall grade for the report
+      overallGrade: overallReportGrade,
     };
 
     res.status(200).json({ success: true, reportCard });

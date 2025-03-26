@@ -707,11 +707,14 @@ exports.generateClassReport = async (req, res) => {
             const termPercentage = totalPossibleMarksForTerm
               ? (subjectMark.total / totalPossibleMarksForTerm) * 100
               : 0;
+            const termGrade = gradingScheme
+              ? getGrade(termPercentage, gradingScheme)
+              : defaultGrade(termPercentage);
 
             subjectEntry.terms[termKey] = {
               ...assessments,
               total: subjectMark.total,
-              grade: subjectMark.grade,
+              grade: termGrade, // Use calculated grade instead of subjectMark.grade
               percentage: parseFloat(termPercentage.toFixed(2)),
               totalPossibleMarks: totalPossibleMarksForTerm,
             };
@@ -781,7 +784,7 @@ exports.generateClassReport = async (req, res) => {
             overallSubjectPercentage === "--"
               ? "--"
               : parseFloat(overallSubjectPercentage.toFixed(2));
-          subject.overallGrade = overallSubjectGrade; // Add overall grade for the subject
+          subject.overallGrade = overallSubjectGrade;
           return subject;
         });
 
@@ -812,7 +815,6 @@ exports.generateClassReport = async (req, res) => {
             ? getGrade(overallReportPercentage, gradingScheme)
             : defaultGrade(overallReportPercentage);
 
-        // Add percentage and grade to termTotals, handle absent cases
         Object.keys(termTotals).forEach((termKey) => {
           if (termTotals[termKey].totalPossibleMarks === 0) {
             termTotals[termKey] = {
@@ -880,7 +882,7 @@ exports.generateClassReport = async (req, res) => {
           fatherName: student.fatherName,
           subjects,
           coScholastic,
-          termTotals, // Now includes percentage and grade
+          termTotals,
           overallTotals: {
             totalMarksObtained:
               overallReportMarks === 0 && termsWithMarks === 0
@@ -895,7 +897,7 @@ exports.generateClassReport = async (req, res) => {
             overallReportPercentage === "--"
               ? "--"
               : parseFloat(overallReportPercentage.toFixed(2)),
-          overallGrade: overallReportGrade, // Add overall grade for the report
+          overallGrade: overallReportGrade,
         };
       })
     );

@@ -232,12 +232,18 @@ exports.generateFullReportCard = async (req, res) => {
     const { studentId } = req.params;
     const { session = req.user.session, examIds } = req.query;
 
-    // Fetch student
+    // Fetch student and check status
     const student = await NewStudentModel.findOne({ studentId });
     if (!student) {
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
+    }
+    if (student.status === "deactivated") {
+      return res.status(200).json({
+        success: true,
+        message: "Report card not available for deactivated student",
+      });
     }
 
     // Fetch marks
@@ -275,12 +281,7 @@ exports.generateFullReportCard = async (req, res) => {
 
     marks.forEach((mark) => {
       const exam = examMap.get(mark.examId);
-      if (!exam || !exam.term) {
-        console.warn(
-          `Skipping mark with invalid or missing exam: ${mark._id}, examId: ${mark.examId}`
-        );
-        return;
-      }
+      if (!exam || !exam.term) return;
 
       const termKey = exam.term.toLowerCase().replace(/[\s-]/g, "");
       if (!termTotals[termKey]) {
@@ -326,18 +327,10 @@ exports.generateFullReportCard = async (req, res) => {
           ? getGrade(termPercentage, gradingScheme)
           : defaultGrade(termPercentage);
 
-        // Debugging log
-        // console.log(
-        //   `Subject: ${subjectMark.subjectName}, Term: ${termKey}, ` +
-        //     `Stored Grade: ${subjectMark.grade}, ` +
-        //     `Percentage: ${termPercentage.toFixed(2)}, ` +
-        //     `Calculated Grade: ${termGrade}`
-        // );
-
         subjectEntry.terms[termKey] = {
           ...assessments,
           total: subjectMark.total,
-          grade: termGrade, // Use calculated grade
+          grade: termGrade,
           percentage: parseFloat(termPercentage.toFixed(2)),
           totalPossibleMarks: totalPossibleMarksForTerm,
         };
@@ -583,16 +576,18 @@ exports.generateClassReport = async (req, res) => {
       });
     }
 
+    // Fetch only active students
     const students = await NewStudentModel.find({
       class: className,
       section,
       schoolId: req.user.schoolId,
+      status: "active",
     });
 
     if (!students.length) {
       return res.status(404).json({
         success: false,
-        message: "No students found for this class and section",
+        message: "No active students found for this class and section",
       });
     }
 
@@ -714,7 +709,7 @@ exports.generateClassReport = async (req, res) => {
             subjectEntry.terms[termKey] = {
               ...assessments,
               total: subjectMark.total,
-              grade: termGrade, // Use calculated grade instead of subjectMark.grade
+              grade: termGrade,
               percentage: parseFloat(termPercentage.toFixed(2)),
               totalPossibleMarks: totalPossibleMarksForTerm,
             };
@@ -902,7 +897,14 @@ exports.generateClassReport = async (req, res) => {
       })
     );
 
-    res.status(200).json({ success: true, reportCards });
+    // Add total count of active students
+    const totalActiveStudents = students.length;
+
+    res.status(200).json({
+      success: true,
+      totalActiveStudents,
+      reportCards,
+    });
   } catch (error) {
     console.error("Error in generateClassReport:", error);
     res.status(500).json({ success: false, message: error.message });

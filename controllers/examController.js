@@ -576,7 +576,6 @@ exports.generateClassReport = async (req, res) => {
       });
     }
 
-    // Fetch only active students
     const students = await NewStudentModel.find({
       class: className,
       section,
@@ -603,7 +602,6 @@ exports.generateClassReport = async (req, res) => {
     }
 
     const marks = await Mark.find(marksQuery);
-
     const examIdsFromMarks = marks.map((mark) => mark.examId);
     const exams = await Exam.find({ examId: { $in: examIdsFromMarks } });
     const examMap = new Map(exams.map((exam) => [exam.examId, exam]));
@@ -669,14 +667,15 @@ exports.generateClassReport = async (req, res) => {
 
           const termKey = exam.term.toLowerCase().replace(/[\s-]/g, "");
           mark.marks.forEach((subjectMark) => {
-            if (!subjectMap.has(subjectMark.subjectName)) {
-              subjectMap.set(subjectMark.subjectName, {
-                name: subjectMark.subjectName,
+            const normalizedSubjectName = subjectMark.subjectName.toLowerCase();
+            if (!subjectMap.has(normalizedSubjectName)) {
+              subjectMap.set(normalizedSubjectName, {
+                name: subjectMark.subjectName, // Preserve original casing
                 terms: {},
               });
             }
 
-            const subjectEntry = subjectMap.get(subjectMark.subjectName);
+            const subjectEntry = subjectMap.get(normalizedSubjectName);
             const assessments = {};
             let totalPossibleMarksForTerm = 0;
 
@@ -719,21 +718,27 @@ exports.generateClassReport = async (req, res) => {
           });
         });
 
+        // Normalize subject names in allSubjects
         const allSubjects = [
           ...new Set(
             marks.flatMap((mark) =>
-              mark.marks.map((subjectMark) => subjectMark.subjectName)
+              mark.marks.map((subjectMark) =>
+                subjectMark.subjectName.toLowerCase()
+              )
             )
           ),
         ];
 
-        const subjects = allSubjects.map((subjectName) => {
-          const subjectEntry = subjectMap.get(subjectName) || {
-            name: subjectName,
+        const subjects = allSubjects.map((normalizedSubjectName) => {
+          const subjectEntry = subjectMap.get(normalizedSubjectName) || {
+            name:
+              subjectMap.get(normalizedSubjectName)?.name ||
+              normalizedSubjectName.charAt(0).toUpperCase() +
+                normalizedSubjectName.slice(1), // Default to title case
             terms: {},
           };
           const subject = {
-            name: subjectName,
+            name: subjectEntry.name,
           };
 
           let overallSubjectMarks = 0;
@@ -897,7 +902,6 @@ exports.generateClassReport = async (req, res) => {
       })
     );
 
-    // Add total count of active students
     const totalActiveStudents = students.length;
 
     res.status(200).json({

@@ -4828,7 +4828,6 @@ exports.getDataByAdmissionNumber = async (req, res) => {
 
 exports.getParentWithChildren = async (req, res) => {
   try {
-    // Use parentId from request params
     const { parentId } = req.params;
     if (!parentId) {
       return res.status(400).json({
@@ -4837,7 +4836,7 @@ exports.getParentWithChildren = async (req, res) => {
       });
     }
 
-    // Find the parent by parentId (no populate needed)
+    // Find the parent by parentId
     const parent = await ParentModel.findOne({ parentId });
     if (!parent) {
       return res.status(404).json({
@@ -4846,16 +4845,18 @@ exports.getParentWithChildren = async (req, res) => {
       });
     }
 
-    // Query the NewStudentModel to find children with the matching parentId
+    // Find children with the matching parentId
     const children = await NewStudentModel.find({ parentId });
 
-    // Get dues for each child based on their admission number
+    // Get dues for each child based on their studentId
     const childrenWithDues = await Promise.all(
       children.map(async (student) => {
+        // Use studentId (instead of admissionNumber) to fetch fee status
         const feeStatus = await FeeStatus.findOne({
-          admissionNumber: student.admissionNumber,
+          schoolId: student.schoolId,
+          studentId: student.studentId,
         });
-        const totalDues = feeStatus ? feeStatus.dues : 0; // defaults to 0 if no fee record
+        const totalDues = feeStatus ? feeStatus.dues : 0;
 
         return {
           studentId: student.studentId,
@@ -4904,7 +4905,6 @@ exports.getParentWithChildren = async (req, res) => {
       })
     );
 
-    // Format the parent response
     res.status(200).json({
       success: true,
       parent: {
@@ -4940,6 +4940,7 @@ exports.getParentWithChildren = async (req, res) => {
     });
   }
 };
+
 
 
 

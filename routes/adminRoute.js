@@ -83,6 +83,7 @@ router.post('/fees/regular', verifyToken, admin.createFeeStructure)
 router.post("/fees/additional", verifyToken, admin.createAdditionalFee);
 router.post("/fees/fine", verifyToken, admin.createLateFineFee);
 router.get("/fees", verifyToken, admin.getFeeStructures);
+router.get("/fees/fine", verifyToken, admin.getAllFees);
 router.put('/fees/:feeStructureId', verifyToken, admin.updateFees)
 router.delete('/fees/:feeStructureId', verifyToken, admin.deleteFees)
 

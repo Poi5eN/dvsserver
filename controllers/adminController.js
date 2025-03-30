@@ -834,7 +834,7 @@ exports.getAllFeeStructures = async (req, res) => {
 // Get all fee structures (Regular + Additional + Late Fines) for a school
 exports.getAllFees = async (req, res) => {
   try {
-    const { className, includeLateFines = 'true' } = req.query; // Added includeLateFines filter
+    const { className, includeLateFines = 'true', onlyLateFines = 'false' } = req.query;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
@@ -851,11 +851,29 @@ exports.getAllFees = async (req, res) => {
       ...(className ? { className } : {}),
     };
 
+    // If onlyLateFines is true, then immediately return only late fine fee structures.
+    if (onlyLateFines === 'true') {
+      const lateFines = await FeeStructure.find({
+        ...filter,
+        additional: true,
+        feeType: "LateFine",
+      }).lean();
+      
+      return res.status(200).json({
+        success: true,
+        message: "Late fine fee structures fetched successfully",
+        data: lateFines,
+      });
+    }
+
+    // Fetch regular fees
     const regularFees = await FeeStructure.find({ ...filter, additional: false }).lean();
+
+    // Fetch additional fees excluding late fines
     const additionalFees = await FeeStructure.find({
       ...filter,
       additional: true,
-      feeType: { $ne: "LateFine" }, // Exclude late fines from additional fees
+      feeType: { $ne: "LateFine" },
     }).lean();
 
     let lateFines = [];

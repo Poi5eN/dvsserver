@@ -831,10 +831,10 @@ exports.getAllFeeStructures = async (req, res) => {
   }
 };
 
-// Get all fee structures (Regular + Additional) for a school
+// Get all fee structures (Regular + Additional + Late Fines) for a school
 exports.getAllFees = async (req, res) => {
   try {
-    const { className } = req.query;
+    const { className, includeLateFines = 'true' } = req.query; // Added includeLateFines filter
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
@@ -852,9 +852,22 @@ exports.getAllFees = async (req, res) => {
     };
 
     const regularFees = await FeeStructure.find({ ...filter, additional: false }).lean();
-    const additionalFees = await FeeStructure.find({ ...filter, additional: true }).lean();
+    const additionalFees = await FeeStructure.find({
+      ...filter,
+      additional: true,
+      feeType: { $ne: "LateFine" }, // Exclude late fines from additional fees
+    }).lean();
 
-    const allFees = [...regularFees, ...additionalFees];
+    let lateFines = [];
+    if (includeLateFines === 'true') {
+      lateFines = await FeeStructure.find({
+        ...filter,
+        additional: true,
+        feeType: "LateFine",
+      }).lean();
+    }
+
+    const allFees = [...regularFees, ...additionalFees, ...lateFines];
 
     res.status(200).json({
       success: true,
@@ -862,8 +875,12 @@ exports.getAllFees = async (req, res) => {
       data: allFees,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("Error in getAllFees:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
 
@@ -874,7 +891,7 @@ exports.updateFees = async (req, res) => {
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
-    const updateData = req.body; // No schoolId or session in body
+    const updateData = req.body;
 
     if (!schoolId || !session) {
       return res.status(400).json({
@@ -889,18 +906,36 @@ exports.updateFees = async (req, res) => {
       });
     }
 
-    const feeStructure = await FeeStructure.findOneAndUpdate(
-      { feeStructureId, schoolId, session },
-      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
-      { new: true, runValidators: true }
-    );
-
-    if (!feeStructure) {
+    // Fetch the existing fee structure to check its type
+    const existingFee = await FeeStructure.findOne({ feeStructureId, schoolId, session });
+    if (!existingFee) {
       return res.status(404).json({
         success: false,
         message: "Fee structure not found or does not belong to this school and session.",
       });
     }
+
+    // Additional validation for late fines
+    if (existingFee.feeType === "LateFine") {
+      if (updateData.amount !== undefined && (updateData.amount <= 0)) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid late fine amount is required.",
+        });
+      }
+      if (updateData.lateFineDueDay !== undefined && (updateData.lateFineDueDay < 1 || updateData.lateFineDueDay > 31)) {
+        return res.status(400).json({
+          success: false,
+          message: "Late fine due day must be between 1 and 31.",
+        });
+      }
+    }
+
+    const feeStructure = await FeeStructure.findOneAndUpdate(
+      { feeStructureId, schoolId, session },
+      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    );
 
     res.status(200).json({
       success: true,
@@ -908,8 +943,11 @@ exports.updateFees = async (req, res) => {
       data: feeStructure,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
+    console.error("Error in updateFees:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
@@ -1116,6 +1154,83 @@ exports.createLateFineFee = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to create late fine fee structure",
+      error: error.message,
+    });
+  }
+};
+
+
+// Edit a late fine fee structure using feeStructureId
+exports.editLateFineFee = async (req, res) => {
+  try {
+    const { feeStructureId } = req.params;
+    const { amount, lateFineDueDay } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!feeStructureId) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee structure ID is required in the URL parameter.",
+      });
+    }
+    if (amount !== undefined && (amount <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid late fine amount is required.",
+      });
+    }
+    if (lateFineDueDay !== undefined && (lateFineDueDay < 1 || lateFineDueDay > 31)) {
+      return res.status(400).json({
+        success: false,
+        message: "Late fine due day must be between 1 and 31.",
+      });
+    }
+
+    const feeStructure = await FeeStructure.findOne({
+      feeStructureId,
+      schoolId,
+      session,
+      feeType: "LateFine",
+      additional: true,
+    });
+
+    if (!feeStructure) {
+      return res.status(404).json({
+        success: false,
+        message: "Late fine fee structure not found or does not belong to this school and session.",
+      });
+    }
+
+    const updateData = {};
+    if (amount !== undefined) updateData.amount = amount;
+    if (lateFineDueDay !== undefined) updateData.lateFineDueDay = lateFineDueDay;
+    updateData.updatedBy = updatedBy;
+    updateData.updatedAt = new Date();
+
+    const updatedFeeStructure = await FeeStructure.findOneAndUpdate(
+      { feeStructureId, schoolId, session },
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Late fine fee structure updated successfully",
+      data: updatedFeeStructure,
+    });
+  } catch (error) {
+    console.error("Error in editLateFineFee:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update late fine fee structure",
       error: error.message,
     });
   }

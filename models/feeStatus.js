@@ -97,6 +97,15 @@ const feeHistorySchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    lateFines: [{
+      amount: { type: Number, required: true },
+      appliedOn: { type: Date, default: Date.now },
+      paidAmount: { type: Number, default: 0 },
+      dueAmount: { type: Number, required: true },
+    }],
+    lateFinesPaid: { type: Number, default: 0 },
+    concessionApplied: { type: Number, default: 0 },
+    paymentMessage: { type: String },
     paidAfterConcession: {
       type: Number,
       default: 0,
@@ -181,6 +190,7 @@ const feeStatus = new mongoose.Schema({
     type: Number,
     default: 0,
   }, // New field for past dues
+  totalLateFines: { type: Number, default: 0 },
   session: { type: String, required: true },
   createdAt: {
     type: Date,

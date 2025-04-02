@@ -1,5 +1,5 @@
 const express = require("express");
-const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues} = require("../controllers/feeStatusController");
+const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo} = require("../controllers/feeStatusController");
 const { manageDuesPayment, createPayment } = require("../controllers/manageDuesPayment");
 const verifyToken = require("../middleware/auth");
 
@@ -14,6 +14,7 @@ router.get('/feeHistory', verifyToken, getFeeHistory);
 router.get('/getAllStudentsFeeStatus', verifyToken, getAllStudentsFeeStatus);
 router.get('/getFeeStatusByMonth', verifyToken, getFeeStatusByMonth);
 router.get('/getStudentFeeHistory/:admissionNumber', verifyToken, getStudentFeeHistory);
+router.get('/getStudentFeeInfo', verifyToken, getStudentFeeInfo);
 router.get('/getFeeHistoryAndDues/:admissionNumber', verifyToken, getFeeHistoryAndDues);
 router.get('/getMonthlyDues', verifyToken, getMonthlyDues);
 router.put('/editFeeStatus/:receiptNumber', verifyToken, editFeeStatus);

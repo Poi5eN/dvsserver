@@ -27,6 +27,11 @@ const feeStructureSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  frequency: {
+    type: String,
+    enum: ["monthly", "one-time", "annual"],
+    default: "monthly"
+  },
   amount: {
     type: Number,
     required: true,

@@ -259,10 +259,6 @@ exports.getAdminInfo = async (req, res) => {
   }
 };
 
-
-
-
-
 // START OF TEACHER RELATED FLOW
 function generateEmployeeId() {
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -312,7 +308,8 @@ exports.createTeacher = async (req, res) => {
     if (userExist) {
       return res.status(400).send({
         success: false,
-        message: "Teacher already exists with this email for the specified session",
+        message:
+          "Teacher already exists with this email for the specified session",
       });
     }
 
@@ -618,7 +615,11 @@ exports.createStudentSpecificFee = async (req, res) => {
       });
     }
 
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -638,7 +639,9 @@ exports.createStudentSpecificFee = async (req, res) => {
     if (feesExist) {
       return res.status(400).json({
         success: false,
-        message: `Student-specific fee for ${feeType}${name ? ` (${name})` : ""} already exists for this student.`,
+        message: `Student-specific fee for ${feeType}${
+          name ? ` (${name})` : ""
+        } already exists for this student.`,
       });
     }
 
@@ -753,7 +756,8 @@ exports.createAdditionalFee = async (req, res) => {
     if (!className || !name || !feeType || !amount || amount <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Class name, fee name, fee type, and valid amount are required.",
+        message:
+          "Class name, fee name, fee type, and valid amount are required.",
       });
     }
 
@@ -769,7 +773,8 @@ exports.createAdditionalFee = async (req, res) => {
     if (feesExist) {
       return res.status(400).json({
         success: false,
-        message: "Additional fee already exists for this class, fee type, and name",
+        message:
+          "Additional fee already exists for this class, fee type, and name",
       });
     }
 
@@ -834,7 +839,11 @@ exports.getAllFeeStructures = async (req, res) => {
 // Get all fee structures (Regular + Additional + Late Fines) for a school
 exports.getAllFees = async (req, res) => {
   try {
-    const { className, includeLateFines = 'true', onlyLateFines = 'false' } = req.query;
+    const {
+      className,
+      includeLateFines = "true",
+      onlyLateFines = "false",
+    } = req.query;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
@@ -852,13 +861,13 @@ exports.getAllFees = async (req, res) => {
     };
 
     // If onlyLateFines is true, then immediately return only late fine fee structures.
-    if (onlyLateFines === 'true') {
+    if (onlyLateFines === "true") {
       const lateFines = await FeeStructure.find({
         ...filter,
         additional: true,
         feeType: "LateFine",
       }).lean();
-      
+
       return res.status(200).json({
         success: true,
         message: "Late fine fee structures fetched successfully",
@@ -867,7 +876,10 @@ exports.getAllFees = async (req, res) => {
     }
 
     // Fetch regular fees
-    const regularFees = await FeeStructure.find({ ...filter, additional: false }).lean();
+    const regularFees = await FeeStructure.find({
+      ...filter,
+      additional: false,
+    }).lean();
 
     // Fetch additional fees excluding late fines
     const additionalFees = await FeeStructure.find({
@@ -877,7 +889,7 @@ exports.getAllFees = async (req, res) => {
     }).lean();
 
     let lateFines = [];
-    if (includeLateFines === 'true') {
+    if (includeLateFines === "true") {
       lateFines = await FeeStructure.find({
         ...filter,
         additional: true,
@@ -925,23 +937,31 @@ exports.updateFees = async (req, res) => {
     }
 
     // Fetch the existing fee structure to check its type
-    const existingFee = await FeeStructure.findOne({ feeStructureId, schoolId, session });
+    const existingFee = await FeeStructure.findOne({
+      feeStructureId,
+      schoolId,
+      session,
+    });
     if (!existingFee) {
       return res.status(404).json({
         success: false,
-        message: "Fee structure not found or does not belong to this school and session.",
+        message:
+          "Fee structure not found or does not belong to this school and session.",
       });
     }
 
     // Additional validation for late fines
     if (existingFee.feeType === "LateFine") {
-      if (updateData.amount !== undefined && (updateData.amount <= 0)) {
+      if (updateData.amount !== undefined && updateData.amount <= 0) {
         return res.status(400).json({
           success: false,
           message: "Valid late fine amount is required.",
         });
       }
-      if (updateData.lateFineDueDay !== undefined && (updateData.lateFineDueDay < 1 || updateData.lateFineDueDay > 31)) {
+      if (
+        updateData.lateFineDueDay !== undefined &&
+        (updateData.lateFineDueDay < 1 || updateData.lateFineDueDay > 31)
+      ) {
         return res.status(400).json({
           success: false,
           message: "Late fine due day must be between 1 and 31.",
@@ -989,11 +1009,16 @@ exports.deleteFees = async (req, res) => {
       });
     }
 
-    const feeStructure = await FeeStructure.findOne({ feeStructureId, schoolId, session });
+    const feeStructure = await FeeStructure.findOne({
+      feeStructureId,
+      schoolId,
+      session,
+    });
     if (!feeStructure) {
       return res.status(404).json({
         success: false,
-        message: "Fee structure not found or does not belong to this school and session.",
+        message:
+          "Fee structure not found or does not belong to this school and session.",
       });
     }
 
@@ -1042,7 +1067,6 @@ exports.getAllAdditionalFee = async (req, res) => {
   }
 };
 
-
 exports.getFeeStructures = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
@@ -1072,7 +1096,7 @@ exports.getFeeStructures = async (req, res) => {
     if (className) query.className = className;
     if (feeType) query.feeType = feeType;
     if (studentId) query.studentId = studentId;
-    if (additional !== undefined) query.additional = additional === 'true';
+    if (additional !== undefined) query.additional = additional === "true";
     if (name) query.name = name;
 
     const feeStructures = await FeeStructure.find(query).lean();
@@ -1098,7 +1122,6 @@ exports.getFeeStructures = async (req, res) => {
     });
   }
 };
-
 
 // Create a late fine fee structure
 exports.createLateFineFee = async (req, res) => {
@@ -1177,7 +1200,6 @@ exports.createLateFineFee = async (req, res) => {
   }
 };
 
-
 // Edit a late fine fee structure using feeStructureId
 exports.editLateFineFee = async (req, res) => {
   try {
@@ -1199,13 +1221,16 @@ exports.editLateFineFee = async (req, res) => {
         message: "Fee structure ID is required in the URL parameter.",
       });
     }
-    if (amount !== undefined && (amount <= 0)) {
+    if (amount !== undefined && amount <= 0) {
       return res.status(400).json({
         success: false,
         message: "Valid late fine amount is required.",
       });
     }
-    if (lateFineDueDay !== undefined && (lateFineDueDay < 1 || lateFineDueDay > 31)) {
+    if (
+      lateFineDueDay !== undefined &&
+      (lateFineDueDay < 1 || lateFineDueDay > 31)
+    ) {
       return res.status(400).json({
         success: false,
         message: "Late fine due day must be between 1 and 31.",
@@ -1223,13 +1248,15 @@ exports.editLateFineFee = async (req, res) => {
     if (!feeStructure) {
       return res.status(404).json({
         success: false,
-        message: "Late fine fee structure not found or does not belong to this school and session.",
+        message:
+          "Late fine fee structure not found or does not belong to this school and session.",
       });
     }
 
     const updateData = {};
     if (amount !== undefined) updateData.amount = amount;
-    if (lateFineDueDay !== undefined) updateData.lateFineDueDay = lateFineDueDay;
+    if (lateFineDueDay !== undefined)
+      updateData.lateFineDueDay = lateFineDueDay;
     updateData.updatedBy = updatedBy;
     updateData.updatedAt = new Date();
 
@@ -1260,7 +1287,8 @@ exports.editLateFineFee = async (req, res) => {
 
 exports.createBookDetails = async (req, res) => {
   try {
-    const { bookName, authorName, quantity, category, className, subject } = req.body;
+    const { bookName, authorName, quantity, category, className, subject } =
+      req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
@@ -1340,7 +1368,8 @@ exports.getBooks = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
     const session = req.user.session;
-    const { bookId, bookName, authorName, category, className, subject } = req.query;
+    const { bookId, bookName, authorName, category, className, subject } =
+      req.query;
 
     if (!schoolId || !session) {
       return res.status(400).json({
@@ -1405,7 +1434,8 @@ exports.deleteBook = async (req, res) => {
     if (!book) {
       return res.status(404).json({
         success: false,
-        message: "Book not found or does not belong to this school and session.",
+        message:
+          "Book not found or does not belong to this school and session.",
       });
     }
 
@@ -1455,7 +1485,8 @@ exports.updateBook = async (req, res) => {
     if (!book) {
       return res.status(404).json({
         success: false,
-        message: "Book not found or does not belong to this school and session.",
+        message:
+          "Book not found or does not belong to this school and session.",
       });
     }
 
@@ -1496,7 +1527,12 @@ exports.createItemDetails = async (req, res) => {
       });
     }
 
-    const itemExist = await ItemModel.findOne({ schoolId, session, itemName, category });
+    const itemExist = await ItemModel.findOne({
+      schoolId,
+      session,
+      itemName,
+      category,
+    });
     if (itemExist) {
       return res.status(400).json({
         success: false,
@@ -1635,7 +1671,8 @@ exports.sellItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: "Item not found or does not belong to this school and session.",
+        message:
+          "Item not found or does not belong to this school and session.",
       });
     }
 
@@ -1693,7 +1730,8 @@ exports.deleteItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: "Item not found or does not belong to this school and session.",
+        message:
+          "Item not found or does not belong to this school and session.",
       });
     }
 
@@ -1745,7 +1783,8 @@ exports.updateItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: "Item not found or does not belong to this school and session.",
+        message:
+          "Item not found or does not belong to this school and session.",
       });
     }
 
@@ -1876,10 +1915,9 @@ const generateAdmission = async (schoolId) => {
   );
 };
 
-
-
 function generateRandomPassword(length = 8) {
-  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+  const charset =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
   let password = "";
   for (let i = 0; i < length; i++) {
     const randomIndex = Math.floor(Math.random() * charset.length);
@@ -1913,13 +1951,22 @@ exports.createRegistration = async (req, res) => {
 
     // Validation
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
     if (!studentFullName) {
-      return res.status(400).json({ success: false, message: "Student full name is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Student full name is required." });
     }
     if (!mobileNumber) {
-      return res.status(400).json({ success: false, message: "Mobile number is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Mobile number is required." });
     }
 
     const files = req.files || [];
@@ -1938,21 +1985,28 @@ exports.createRegistration = async (req, res) => {
       if (registrationExist) {
         return res.status(400).json({
           success: false,
-          message: "Already registered with this email in this school and session!",
+          message:
+            "Already registered with this email in this school and session!",
         });
       }
     }
 
     // Generate admissionNo and registrationNumber
-    const finalAdmissionNo = admissionNo && admissionNo.trim() !== ""
-      ? admissionNo
-      : await generateAdmission(schoolId); // Assumes this function exists
+    const finalAdmissionNo =
+      admissionNo && admissionNo.trim() !== ""
+        ? admissionNo
+        : await generateAdmission(schoolId); // Assumes this function exists
     const registrationNumber = await generateRegistrationNumber(schoolId); // Assumes this function exists
 
     // Handle file uploads
-    let studentPhotoResult = {}, fatherPhotoResult = {}, motherPhotoResult = {}, guardianPhotoResult = {};
+    let studentPhotoResult = {},
+      fatherPhotoResult = {},
+      motherPhotoResult = {},
+      guardianPhotoResult = {};
     if (studentPhoto) {
-      const fileKey = `registrations/student/${Date.now()}-${studentPhoto.originalname}`;
+      const fileKey = `registrations/student/${Date.now()}-${
+        studentPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1964,7 +2018,9 @@ exports.createRegistration = async (req, res) => {
       studentPhotoResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherPhoto) {
-      const fileKey = `registrations/father/${Date.now()}-${fatherPhoto.originalname}`;
+      const fileKey = `registrations/father/${Date.now()}-${
+        fatherPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1976,7 +2032,9 @@ exports.createRegistration = async (req, res) => {
       fatherPhotoResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherPhoto) {
-      const fileKey = `registrations/mother/${Date.now()}-${motherPhoto.originalname}`;
+      const fileKey = `registrations/mother/${Date.now()}-${
+        motherPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1988,7 +2046,9 @@ exports.createRegistration = async (req, res) => {
       motherPhotoResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianPhoto) {
-      const fileKey = `registrations/guardian/${Date.now()}-${guardianPhoto.originalname}`;
+      const fileKey = `registrations/guardian/${Date.now()}-${
+        guardianPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -2028,10 +2088,15 @@ exports.createRegistration = async (req, res) => {
     });
 
     // Send confirmation email (reusing your design)
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
     const schoolName = schoolDetails?.schoolName || "Your School";
-    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    const schoolImageUrl =
+      schoolDetails?.image?.url ||
+      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl =
+      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
     const emailContent = `
       <!DOCTYPE html>
@@ -2057,8 +2122,12 @@ exports.createRegistration = async (req, res) => {
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Registration Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Registration ID:</strong> ${registrationData.registrationId}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${registerClass || 'N/A'}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Registration ID:</strong> ${
+                  registrationData.registrationId
+                }</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${
+                  registerClass || "N/A"
+                }</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Registration Number:</strong> ${registrationNumber}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
               </div>
@@ -2113,10 +2182,17 @@ exports.createBulkRegistrations = async (req, res) => {
       });
     }
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
     if (!createdBy) {
-      return res.status(400).json({ success: false, message: "User ID is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required." });
     }
 
     const createdRegistrations = [];
@@ -2151,13 +2227,16 @@ exports.createBulkRegistrations = async (req, res) => {
             session,
           });
           if (registrationExist) {
-            throw new Error(`Already registered with email: ${studentEmail} in this school and session`);
+            throw new Error(
+              `Already registered with email: ${studentEmail} in this school and session`
+            );
           }
         }
 
-        const finalAdmissionNo = admissionNo && admissionNo.trim() !== ""
-          ? admissionNo
-          : await generateAdmission(schoolId);
+        const finalAdmissionNo =
+          admissionNo && admissionNo.trim() !== ""
+            ? admissionNo
+            : await generateAdmission(schoolId);
         const registrationNumber = await generateRegistrationNumber(schoolId);
 
         const registrationData = {
@@ -2192,7 +2271,9 @@ exports.createBulkRegistrations = async (req, res) => {
     }
 
     if (createdRegistrations.length > 0) {
-      const insertedRegistrations = await NewRegistrationModel.insertMany(createdRegistrations);
+      const insertedRegistrations = await NewRegistrationModel.insertMany(
+        createdRegistrations
+      );
       // Optionally send emails here for each registration
       res.status(201).json({
         success: true,
@@ -2223,7 +2304,12 @@ exports.getRegistrations = async (req, res) => {
     const session = req.user.session;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
 
     const {
@@ -2238,8 +2324,8 @@ exports.getRegistrations = async (req, res) => {
       fetchAll,
       limit = 10,
       page = 1,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
 
     let query = { schoolId, session };
@@ -2254,12 +2340,14 @@ exports.getRegistrations = async (req, res) => {
     if (status) query.approvalStatus = status;
 
     const skip = (page - 1) * limit;
-    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
     if (registrationId) {
       const registration = await NewRegistrationModel.findOne(query).lean();
       if (!registration) {
-        return res.status(404).json({ success: false, message: "Registration not found." });
+        return res
+          .status(404)
+          .json({ success: false, message: "Registration not found." });
       }
       return res.status(200).json({
         success: true,
@@ -2294,7 +2382,6 @@ exports.getRegistrations = async (req, res) => {
   }
 };
 
-
 exports.updateRegistrationStatus = async (req, res) => {
   try {
     const { registrationId } = req.params;
@@ -2303,10 +2390,21 @@ exports.updateRegistrationStatus = async (req, res) => {
     const session = req.user.session;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
-    if (!['pending', 'approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ success: false, message: "Invalid status value. Use 'pending', 'approved', or 'rejected'." });
+    if (!["pending", "approved", "rejected"].includes(status)) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message:
+            "Invalid status value. Use 'pending', 'approved', or 'rejected'.",
+        });
     }
 
     const registration = await NewRegistrationModel.findOneAndUpdate(
@@ -2316,7 +2414,9 @@ exports.updateRegistrationStatus = async (req, res) => {
     );
 
     if (!registration) {
-      return res.status(404).json({ success: false, message: "Registration not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Registration not found." });
     }
 
     res.status(200).json({
@@ -2333,7 +2433,6 @@ exports.updateRegistrationStatus = async (req, res) => {
   }
 };
 
-
 exports.admitRegistration = async (req, res) => {
   try {
     const { registrationId } = req.params;
@@ -2342,15 +2441,31 @@ exports.admitRegistration = async (req, res) => {
     const createdBy = req.user._id;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
 
-    const registration = await NewRegistrationModel.findOne({ registrationId, schoolId, session });
+    const registration = await NewRegistrationModel.findOne({
+      registrationId,
+      schoolId,
+      session,
+    });
     if (!registration) {
-      return res.status(404).json({ success: false, message: "Registration not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Registration not found." });
     }
-    if (registration.approvalStatus !== 'approved') {
-      return res.status(400).json({ success: false, message: "Registration must be approved to admit." });
+    if (registration.approvalStatus !== "approved") {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Registration must be approved to admit.",
+        });
     }
 
     // Check if student already exists
@@ -2363,7 +2478,8 @@ exports.admitRegistration = async (req, res) => {
       if (studentExist) {
         return res.status(400).json({
           success: false,
-          message: "Student with this email already exists in this school and session.",
+          message:
+            "Student with this email already exists in this school and session.",
         });
       }
     }
@@ -2375,8 +2491,14 @@ exports.admitRegistration = async (req, res) => {
     const parentHashPassword = await hashPassword(parentPassword);
 
     // Generate a unique admission number
-    const studentAdmissionNumber = await generateAdmissionNumber(schoolId, NewStudentModel);
-    const parentAdmissionNumber = await generateAdmissionNumber(schoolId, ParentModel);
+    const studentAdmissionNumber = await generateAdmissionNumber(
+      schoolId,
+      NewStudentModel
+    );
+    const parentAdmissionNumber = await generateAdmissionNumber(
+      schoolId,
+      ParentModel
+    );
 
     // Create student
     const studentData = await NewStudentModel.create({
@@ -2401,8 +2523,15 @@ exports.admitRegistration = async (req, res) => {
       guardianImage: registration.guardianPhoto,
       approvalStatus: "approved",
       createdBy,
-      joiningDate: new Date().toISOString().split('T')[0], // Current date
-      rollNo: registration.rollNo || ((await NewStudentModel.countDocuments({ schoolId, class: registration.registerClass })) + 1).toString(),
+      joiningDate: new Date().toISOString().split("T")[0], // Current date
+      rollNo:
+        registration.rollNo ||
+        (
+          (await NewStudentModel.countDocuments({
+            schoolId,
+            class: registration.registerClass,
+          })) + 1
+        ).toString(),
       // Default or null fields
       dateOfBirth: null,
       section: null,
@@ -2427,10 +2556,15 @@ exports.admitRegistration = async (req, res) => {
       guardianName: registration.guardianName,
       email: registration.parentEmail,
       password: parentHashPassword,
-      contact: registration.mobileNumber ? registration.mobileNumber.toString() : null,
+      contact: registration.mobileNumber
+        ? registration.mobileNumber.toString()
+        : null,
       admissionNumber: parentAdmissionNumber,
       createdBy,
-      parentImage: registration.fatherPhoto || registration.motherPhoto || registration.guardianPhoto,
+      parentImage:
+        registration.fatherPhoto ||
+        registration.motherPhoto ||
+        registration.guardianPhoto,
       fatherImage: registration.fatherPhoto,
       motherImage: registration.motherPhoto,
       guardianImage: registration.guardianPhoto,
@@ -2544,7 +2678,12 @@ exports.editRegistration = async (req, res) => {
     const session = req.user.session;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
 
     const registration = await NewRegistrationModel.findOne({
@@ -2553,7 +2692,9 @@ exports.editRegistration = async (req, res) => {
       session,
     });
     if (!registration) {
-      return res.status(404).json({ success: false, message: "Registration not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Registration not found." });
     }
 
     // Handle file uploads
@@ -2563,7 +2704,9 @@ exports.editRegistration = async (req, res) => {
     const guardianPhoto = files.find((f) => f.fieldname === "guardianPhoto");
 
     if (studentPhoto) {
-      const fileKey = `registrations/student/${Date.now()}-${studentPhoto.originalname}`;
+      const fileKey = `registrations/student/${Date.now()}-${
+        studentPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -2575,7 +2718,9 @@ exports.editRegistration = async (req, res) => {
       updateData.studentPhoto = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherPhoto) {
-      const fileKey = `registrations/father/${Date.now()}-${fatherPhoto.originalname}`;
+      const fileKey = `registrations/father/${Date.now()}-${
+        fatherPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -2587,7 +2732,9 @@ exports.editRegistration = async (req, res) => {
       updateData.fatherPhoto = { public_id: fileKey, url: minioData.Location };
     }
     if (motherPhoto) {
-      const fileKey = `registrations/mother/${Date.now()}-${motherPhoto.originalname}`;
+      const fileKey = `registrations/mother/${Date.now()}-${
+        motherPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -2599,7 +2746,9 @@ exports.editRegistration = async (req, res) => {
       updateData.motherPhoto = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianPhoto) {
-      const fileKey = `registrations/guardian/${Date.now()}-${guardianPhoto.originalname}`;
+      const fileKey = `registrations/guardian/${Date.now()}-${
+        guardianPhoto.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -2608,7 +2757,10 @@ exports.editRegistration = async (req, res) => {
         ACL: "public-read",
       };
       const minioData = await s3.upload(params).promise();
-      updateData.guardianPhoto = { public_id: fileKey, url: minioData.Location };
+      updateData.guardianPhoto = {
+        public_id: fileKey,
+        url: minioData.Location,
+      };
     }
 
     const updatedRegistration = await NewRegistrationModel.findOneAndUpdate(
@@ -2765,14 +2917,24 @@ exports.createStudentOnly = async (req, res) => {
       });
     }
 
-    if (!studentFullName || !studentEmail || !studentPassword || !studentJoiningDate || !studentClass) {
+    if (
+      !studentFullName ||
+      !studentEmail ||
+      !studentPassword ||
+      !studentJoiningDate ||
+      !studentClass
+    ) {
       return res.status(400).json({
         success: false,
         message: "Required student fields are missing.",
       });
     }
 
-    const studentExist = await NewStudentModel.findOne({ email: studentEmail, schoolId, session });
+    const studentExist = await NewStudentModel.findOne({
+      email: studentEmail,
+      schoolId,
+      session,
+    });
     if (studentExist) {
       return res.status(400).json({
         success: false,
@@ -2787,34 +2949,70 @@ exports.createStudentOnly = async (req, res) => {
     const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     const studentHashPassword = await hashPassword(studentPassword);
-    let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+    let studentImageResult = {},
+      fatherImageResult = {},
+      motherImageResult = {},
+      guardianImageResult = {};
 
     if (studentFile) {
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentFile.buffer,
+        ContentType: studentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const studentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, NewStudentModel);
+    const studentAdmissionNumberToUse =
+      admissionNumber && admissionNumber.trim() !== ""
+        ? admissionNumber
+        : await generateAdmissionNumber(schoolId, NewStudentModel);
 
     const studentData = await NewStudentModel.create({
       schoolId,
@@ -2823,7 +3021,13 @@ exports.createStudentOnly = async (req, res) => {
       email: studentEmail,
       password: studentHashPassword,
       dateOfBirth: studentDateOfBirth,
-      rollNo: ((await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1).toString(),
+      rollNo: (
+        (await NewStudentModel.countDocuments({
+          schoolId,
+          class: studentClass,
+          section: studentSection,
+        })) + 1
+      ).toString(),
       gender: studentGender,
       joiningDate: studentJoiningDate,
       address: studentAddress,
@@ -2853,14 +3057,73 @@ exports.createStudentOnly = async (req, res) => {
       approvalStatus: "approved",
       assignedThirdParty: null,
       udisePlusDetails: {
-        stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no, student_name, gender: studentUdiseGender, DOB, mother_name, father_name, guardian_name, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
+        stu_id,
+        class: studentUdiseClass,
+        section: studentUdiseSection,
+        roll_no,
+        student_name,
+        gender: studentUdiseGender,
+        DOB,
+        mother_name,
+        father_name,
+        guardian_name,
+        aadhar_no,
+        aadhar_name,
+        paddress,
+        pincode: udisePlusPincode,
+        mobile_no,
+        alt_mobile_no,
+        email_id,
+        mothere_tougue,
+        category,
+        minority,
+        is_bpl,
+        is_aay,
+        ews_aged_group,
+        is_cwsn,
+        cwsn_imp_type,
+        ind_national,
+        mainstramed_child,
+        adm_no,
+        adm_date,
+        stu_stream,
+        pre_year_schl_status,
+        pre_year_class,
+        stu_ward,
+        pre_class_exam_app,
+        result_pre_exam,
+        perc_pre_class,
+        att_pre_class,
+        fac_free_uniform,
+        fac_free_textbook,
+        received_central_scholarship,
+        name_central_scholarship,
+        received_state_scholarship,
+        received_other_scholarship,
+        scholarship_amount,
+        fac_provided_cwsn,
+        SLD_type,
+        aut_spec_disorder,
+        ADHD,
+        inv_ext_curr_activity,
+        vocational_course,
+        trade_sector_id,
+        job_role_id,
+        pre_app_exam_vocationalsubject,
+        bpl_card_no,
+        ann_card_no,
       },
     });
 
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
     const schoolName = schoolDetails?.schoolName || "Your School";
-    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    const schoolImageUrl =
+      schoolDetails?.image?.url ||
+      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl =
+      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -2886,7 +3149,9 @@ exports.createStudentOnly = async (req, res) => {
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData.studentId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${
+                  studentData.studentId
+                }</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
@@ -2910,7 +3175,11 @@ exports.createStudentOnly = async (req, res) => {
       </body>
       </html>
     `;
-    await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
+    await sendEmail(
+      studentEmail,
+      "Admission Confirmation",
+      studentEmailContent
+    );
 
     res.status(201).json({
       success: true,
@@ -2959,7 +3228,11 @@ exports.createParentOnly = async (req, res) => {
       });
     }
 
-    const parentExist = await ParentModel.findOne({ email: parentEmail, schoolId, session });
+    const parentExist = await ParentModel.findOne({
+      email: parentEmail,
+      schoolId,
+      session,
+    });
     if (parentExist) {
       return res.status(400).json({
         success: false,
@@ -2974,34 +3247,66 @@ exports.createParentOnly = async (req, res) => {
     const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     const parentHashPassword = await hashPassword(parentPassword);
-    let parentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+    let parentImageResult = {},
+      fatherImageResult = {},
+      motherImageResult = {},
+      guardianImageResult = {};
 
     if (parentFile) {
       const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: parentFile.buffer,
+        ContentType: parentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       parentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
       const fileKey = `parents/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
       const fileKey = `parents/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `parents/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `parents/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const parentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, ParentModel);
+    const parentAdmissionNumberToUse =
+      admissionNumber && admissionNumber.trim() !== ""
+        ? admissionNumber
+        : await generateAdmissionNumber(schoolId, ParentModel);
 
     const parentData = await ParentModel.create({
       schoolId,
@@ -3051,7 +3356,11 @@ exports.createParentOnly = async (req, res) => {
       </body>
       </html>
     `;
-    await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
+    await sendEmail(
+      parentEmail,
+      "Parent Login Credentials",
+      parentEmailContent
+    );
 
     res.status(201).json({
       success: true,
@@ -3071,20 +3380,91 @@ exports.createParentOnly = async (req, res) => {
 exports.createStudentParent = async (req, res) => {
   try {
     const {
-      studentFullName, studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
-      studentAddress, studentContact, studentClass, studentSection, studentCountry, studentSubject,
-      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
-      parentIncome, parentQualification, religion, caste, nationality, pincode, state, city, admissionNumber,
-      parentAdmissionNumber, stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no,
-      student_name, gender: studentUdiseGender, DOB, mother_name, father_name, guardian_name, aadhar_no,
-      aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue,
-      category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national,
-      mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward,
-      pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook,
-      received_central_scholarship, name_central_scholarship, received_state_scholarship,
-      received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder,
-      ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject,
-      bpl_card_no, ann_card_no,
+      studentFullName,
+      studentEmail,
+      studentPassword,
+      studentDateOfBirth,
+      studentGender,
+      studentJoiningDate,
+      studentAddress,
+      studentContact,
+      studentClass,
+      studentSection,
+      studentCountry,
+      studentSubject,
+      fatherName,
+      motherName,
+      guardianName,
+      remarks,
+      transport,
+      parentEmail,
+      parentPassword,
+      parentContact,
+      parentIncome,
+      parentQualification,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      admissionNumber,
+      parentAdmissionNumber,
+      stu_id,
+      class: studentUdiseClass,
+      section: studentUdiseSection,
+      roll_no,
+      student_name,
+      gender: studentUdiseGender,
+      DOB,
+      mother_name,
+      father_name,
+      guardian_name,
+      aadhar_no,
+      aadhar_name,
+      paddress,
+      pincode: udisePlusPincode,
+      mobile_no,
+      alt_mobile_no,
+      email_id,
+      mothere_tougue,
+      category,
+      minority,
+      is_bpl,
+      is_aay,
+      ews_aged_group,
+      is_cwsn,
+      cwsn_imp_type,
+      ind_national,
+      mainstramed_child,
+      adm_no,
+      adm_date,
+      stu_stream,
+      pre_year_schl_status,
+      pre_year_class,
+      stu_ward,
+      pre_class_exam_app,
+      result_pre_exam,
+      perc_pre_class,
+      att_pre_class,
+      fac_free_uniform,
+      fac_free_textbook,
+      received_central_scholarship,
+      name_central_scholarship,
+      received_state_scholarship,
+      received_other_scholarship,
+      scholarship_amount,
+      fac_provided_cwsn,
+      SLD_type,
+      aut_spec_disorder,
+      ADHD,
+      inv_ext_curr_activity,
+      vocational_course,
+      trade_sector_id,
+      job_role_id,
+      pre_app_exam_vocationalsubject,
+      bpl_card_no,
+      ann_card_no,
     } = req.body;
 
     const schoolId = req.user.schoolId;
@@ -3092,11 +3472,27 @@ exports.createStudentParent = async (req, res) => {
     const createdBy = req.user._id;
 
     if (!schoolId || !session || !createdBy) {
-      return res.status(400).json({ success: false, message: "School ID, session, and user ID are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID, session, and user ID are required.",
+        });
     }
 
-    if (!studentFullName || !studentEmail || !studentPassword || !fatherName || !studentJoiningDate || !studentClass || (!parentEmail && !parentAdmissionNumber) || (!parentPassword && !parentAdmissionNumber)) {
-      return res.status(400).json({ success: false, message: "Required fields are missing." });
+    if (
+      !studentFullName ||
+      !studentEmail ||
+      !studentPassword ||
+      !fatherName ||
+      !studentJoiningDate ||
+      !studentClass ||
+      (!parentEmail && !parentAdmissionNumber) ||
+      (!parentPassword && !parentAdmissionNumber)
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Required fields are missing." });
     }
 
     const files = req.files || [];
@@ -3105,64 +3501,212 @@ exports.createStudentParent = async (req, res) => {
     const motherFile = files.find((f) => f.fieldname === "motherImage");
     const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
-    const studentExist = await NewStudentModel.findOne({ email: studentEmail, schoolId, session });
+    const studentExist = await NewStudentModel.findOne({
+      email: studentEmail,
+      schoolId,
+      session,
+    });
     if (studentExist) {
-      return res.status(400).json({ success: false, message: `Student with email ${studentEmail} already exists.` });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: `Student with email ${studentEmail} already exists.`,
+        });
     }
 
-    const parentExist = parentAdmissionNumber ? await ParentModel.findOne({ admissionNumber: parentAdmissionNumber, schoolId, session }) : parentEmail ? await ParentModel.findOne({ email: parentEmail, schoolId, session }) : null;
+    const parentExist = parentAdmissionNumber
+      ? await ParentModel.findOne({
+          admissionNumber: parentAdmissionNumber,
+          schoolId,
+          session,
+        })
+      : parentEmail
+      ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
+      : null;
     if (parentAdmissionNumber && !parentExist) {
-      return res.status(400).json({ success: false, message: `Parent with admission number ${parentAdmissionNumber} does not exist.` });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: `Parent with admission number ${parentAdmissionNumber} does not exist.`,
+        });
     }
     if (!parentAdmissionNumber && parentEmail && parentExist) {
-      return res.status(400).json({ success: false, message: `Parent with email ${parentEmail} already exists.` });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: `Parent with email ${parentEmail} already exists.`,
+        });
     }
 
     const studentHashPassword = await hashPassword(studentPassword);
-    const parentHashPassword = parentPassword ? await hashPassword(parentPassword) : undefined;
+    const parentHashPassword = parentPassword
+      ? await hashPassword(parentPassword)
+      : undefined;
 
-    let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+    let studentImageResult = {},
+      fatherImageResult = {},
+      motherImageResult = {},
+      guardianImageResult = {};
     if (studentFile) {
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentFile.buffer,
+        ContentType: studentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const studentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" ? admissionNumber : await generateAdmissionNumber(schoolId, NewStudentModel);
+    const studentAdmissionNumberToUse =
+      admissionNumber && admissionNumber.trim() !== ""
+        ? admissionNumber
+        : await generateAdmissionNumber(schoolId, NewStudentModel);
 
     const studentData = await NewStudentModel.create({
-      schoolId, session, studentName: studentFullName, email: studentEmail, password: studentHashPassword,
-      dateOfBirth: studentDateOfBirth, rollNo: ((await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1).toString(),
-      gender: studentGender, joiningDate: studentJoiningDate, address: studentAddress, contact: studentContact,
-      class: studentClass, fatherName, motherName, guardianName, remarks, transport, section: studentSection,
-      country: studentCountry, subject: studentSubject, admissionNumber: studentAdmissionNumberToUse,
-      religion, caste, nationality, pincode, state, city, createdBy,
+      schoolId,
+      session,
+      studentName: studentFullName,
+      email: studentEmail,
+      password: studentHashPassword,
+      dateOfBirth: studentDateOfBirth,
+      rollNo: (
+        (await NewStudentModel.countDocuments({
+          schoolId,
+          class: studentClass,
+          section: studentSection,
+        })) + 1
+      ).toString(),
+      gender: studentGender,
+      joiningDate: studentJoiningDate,
+      address: studentAddress,
+      contact: studentContact,
+      class: studentClass,
+      fatherName,
+      motherName,
+      guardianName,
+      remarks,
+      transport,
+      section: studentSection,
+      country: studentCountry,
+      subject: studentSubject,
+      admissionNumber: studentAdmissionNumberToUse,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      createdBy,
       studentImage: studentImageResult.url ? studentImageResult : undefined,
       fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
       motherImage: motherImageResult.url ? motherImageResult : undefined,
       guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
-      approvalStatus: "approved", assignedThirdParty: null,
+      approvalStatus: "approved",
+      assignedThirdParty: null,
       udisePlusDetails: {
-        stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no, student_name, gender: studentUdiseGender, DOB, mother_name, father_name, guardian_name, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode, mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
+        stu_id,
+        class: studentUdiseClass,
+        section: studentUdiseSection,
+        roll_no,
+        student_name,
+        gender: studentUdiseGender,
+        DOB,
+        mother_name,
+        father_name,
+        guardian_name,
+        aadhar_no,
+        aadhar_name,
+        paddress,
+        pincode: udisePlusPincode,
+        mobile_no,
+        alt_mobile_no,
+        email_id,
+        mothere_tougue,
+        category,
+        minority,
+        is_bpl,
+        is_aay,
+        ews_aged_group,
+        is_cwsn,
+        cwsn_imp_type,
+        ind_national,
+        mainstramed_child,
+        adm_no,
+        adm_date,
+        stu_stream,
+        pre_year_schl_status,
+        pre_year_class,
+        stu_ward,
+        pre_class_exam_app,
+        result_pre_exam,
+        perc_pre_class,
+        att_pre_class,
+        fac_free_uniform,
+        fac_free_textbook,
+        received_central_scholarship,
+        name_central_scholarship,
+        received_state_scholarship,
+        received_other_scholarship,
+        scholarship_amount,
+        fac_provided_cwsn,
+        SLD_type,
+        aut_spec_disorder,
+        ADHD,
+        inv_ext_curr_activity,
+        vocational_course,
+        trade_sector_id,
+        job_role_id,
+        pre_app_exam_vocationalsubject,
+        bpl_card_no,
+        ann_card_no,
       },
     });
 
@@ -3170,27 +3714,54 @@ exports.createStudentParent = async (req, res) => {
     if (parentAdmissionNumber) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId, session },
-        { $push: { studentIds: studentData.studentId }, studentNames: studentFullName },
+        {
+          $push: { studentIds: studentData.studentId },
+          studentNames: studentFullName,
+        },
         { new: true }
       );
     } else if (parentEmail && parentPassword) {
-      const parentImageResult = files.find((f) => f.fieldname === "parentImage") || fatherFile || motherFile || guardianFile;
+      const parentImageResult =
+        files.find((f) => f.fieldname === "parentImage") ||
+        fatherFile ||
+        motherFile ||
+        guardianFile;
       let parentImageData = {};
       if (parentImageResult) {
-        const fileKey = `parents/${Date.now()}-${parentImageResult.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentImageResult.buffer, ContentType: parentImageResult.mimetype, ACL: "public-read" };
+        const fileKey = `parents/${Date.now()}-${
+          parentImageResult.originalname
+        }`;
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: parentImageResult.buffer,
+          ContentType: parentImageResult.mimetype,
+          ACL: "public-read",
+        };
         const minioData = await s3.upload(params).promise();
         parentImageData = { public_id: fileKey, url: minioData.Location };
       }
       parentData = await ParentModel.create({
-        schoolId, session, studentIds: [studentData.studentId], studentNames: [studentFullName],
-        fatherName, motherName, guardianName, email: parentEmail, password: parentHashPassword,
-        contact: parentContact, admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
-        income: parentIncome, qualification: parentQualification, createdBy,
+        schoolId,
+        session,
+        studentIds: [studentData.studentId],
+        studentNames: [studentFullName],
+        fatherName,
+        motherName,
+        guardianName,
+        email: parentEmail,
+        password: parentHashPassword,
+        contact: parentContact,
+        admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
+        income: parentIncome,
+        qualification: parentQualification,
+        createdBy,
         parentImage: parentImageData.url ? parentImageData : undefined,
         fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
         motherImage: motherImageResult.url ? motherImageResult : undefined,
-        guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
+        guardianImage: guardianImageResult.url
+          ? guardianImageResult
+          : undefined,
       });
 
       const parentEmailContent = `
@@ -3220,19 +3791,29 @@ exports.createStudentParent = async (req, res) => {
         </body>
         </html>
       `;
-      await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
+      await sendEmail(
+        parentEmail,
+        "Parent Login Credentials",
+        parentEmailContent
+      );
     }
 
     if (parentData) {
       studentData.parentId = parentData.parentId || parentExist.parentId;
-      studentData.parentAdmissionNumber = parentAdmissionNumber || parentData.admissionNumber;
+      studentData.parentAdmissionNumber =
+        parentAdmissionNumber || parentData.admissionNumber;
       await studentData.save();
     }
 
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
     const schoolName = schoolDetails?.schoolName || "Your School";
-    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    const schoolImageUrl =
+      schoolDetails?.image?.url ||
+      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl =
+      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -3258,7 +3839,9 @@ exports.createStudentParent = async (req, res) => {
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData.studentId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${
+                  studentData.studentId
+                }</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
@@ -3282,7 +3865,11 @@ exports.createStudentParent = async (req, res) => {
       </body>
       </html>
     `;
-    await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
+    await sendEmail(
+      studentEmail,
+      "Admission Confirmation",
+      studentEmailContent
+    );
 
     res.status(201).json({
       success: true,
@@ -3303,7 +3890,9 @@ exports.createStudentParent = async (req, res) => {
 exports.createBulkStudentParent = async (req, res) => {
   try {
     if (!req.body || !req.body.students || !Array.isArray(req.body.students)) {
-      return res.status(400).json({ success: false, message: "Invalid request format." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid request format." });
     }
 
     const studentsData = req.body.students;
@@ -3314,201 +3903,305 @@ exports.createBulkStudentParent = async (req, res) => {
     const errors = [];
 
     if (!schoolId || !session || !createdBy) {
-      return res.status(400).json({ success: false, message: "School ID, session, and user ID are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID, session, and user ID are required.",
+        });
     }
 
     for (const student of studentsData) {
       const {
-        studentFullName, studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
-        studentAddress, studentContact, studentClass, studentSection, studentCountry, studentSubject,
-        fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
-        parentIncome, parentQualification, religion, caste, nationality, pincode, state, city, admissionNumber,
-        parentAdmissionNumber, stu_id, class: studentUdiseClass, section: studentUdiseSection, roll_no,
-        student_name, gender: studentUdiseGender, DOB, mother_name, father_name: udiseFatherName,
-        guardian_name: udiseGuardianName, aadhar_no, aadhar_name, paddress, pincode: udisePlusPincode,
-        mobile_no, alt_mobile_no, email_id, mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group,
-        is_cwsn, cwsn_imp_type, ind_national, mainstramed_child, adm_no, adm_date, stu_stream,
-        pre_year_schl_status, pre_year_class, stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class,
-        att_pre_class, fac_free_uniform, fac_free_textbook, received_central_scholarship, name_central_scholarship,
-        received_state_scholarship, received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type,
-        aut_spec_disorder, ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id,
-        pre_app_exam_vocationalsubject, bpl_card_no, ann_card_no,
+        studentFullName,
+        studentEmail,
+        studentPassword,
+        studentDateOfBirth,
+        studentGender,
+        studentJoiningDate,
+        studentAddress,
+        studentContact,
+        studentClass,
+        studentSection,
+        studentCountry,
+        studentSubject,
+        fatherName,
+        motherName,
+        guardianName,
+        remarks,
+        transport,
+        parentEmail,
+        parentPassword,
+        parentContact,
+        parentIncome,
+        parentQualification,
+        religion,
+        caste,
+        nationality,
+        pincode,
+        state,
+        city,
+        admissionNumber,
+        parentAdmissionNumber,
+        stu_id,
+        class: studentUdiseClass,
+        section: studentUdiseSection,
+        roll_no,
+        student_name,
+        gender: studentUdiseGender,
+        DOB,
+        mother_name,
+        father_name: udiseFatherName,
+        guardian_name: udiseGuardianName,
+        aadhar_no,
+        aadhar_name,
+        paddress,
+        pincode: udisePlusPincode,
+        mobile_no,
+        alt_mobile_no,
+        email_id,
+        mothere_tougue,
+        category,
+        minority,
+        is_bpl,
+        is_aay,
+        ews_aged_group,
+        is_cwsn,
+        cwsn_imp_type,
+        ind_national,
+        mainstramed_child,
+        adm_no,
+        adm_date,
+        stu_stream,
+        pre_year_schl_status,
+        pre_year_class,
+        stu_ward,
+        pre_class_exam_app,
+        result_pre_exam,
+        perc_pre_class,
+        att_pre_class,
+        fac_free_uniform,
+        fac_free_textbook,
+        received_central_scholarship,
+        name_central_scholarship,
+        received_state_scholarship,
+        received_other_scholarship,
+        scholarship_amount,
+        fac_provided_cwsn,
+        SLD_type,
+        aut_spec_disorder,
+        ADHD,
+        inv_ext_curr_activity,
+        vocational_course,
+        trade_sector_id,
+        job_role_id,
+        pre_app_exam_vocationalsubject,
+        bpl_card_no,
+        ann_card_no,
       } = student;
 
       try {
-        if (!studentFullName || !studentEmail || !studentPassword || !fatherName || !studentJoiningDate || !studentClass || (!parentEmail && !parentAdmissionNumber) || (!parentPassword && !parentAdmissionNumber)) {
+        // Validate required fields
+        if (
+          !studentFullName ||
+          !studentEmail ||
+          !studentPassword ||
+          !fatherName ||
+          !studentJoiningDate ||
+          !studentClass ||
+          (!parentEmail && !parentAdmissionNumber) ||
+          (!parentPassword && !parentAdmissionNumber)
+        ) {
           throw new Error("Required fields are missing.");
         }
 
-        // Only check if the email exists within this specific school and session
-        const studentExist = await NewStudentModel.findOne({ 
-          email: studentEmail, 
-          schoolId: schoolId
+        // Check for existing student email
+        const studentExist = await NewStudentModel.findOne({
+          email: studentEmail,
+          schoolId,
         });
-        
+
         if (studentExist) {
-          throw new Error(`Student with email ${studentEmail} already exists in this school.`);
+          throw new Error(
+            `Student with email ${studentEmail} already exists in this school.`
+          );
         }
 
-        // Parent checks
-        const parentExist = parentAdmissionNumber 
-          ? await ParentModel.findOne({ admissionNumber: parentAdmissionNumber, schoolId, session }) 
-          : parentEmail 
-            ? await ParentModel.findOne({ email: parentEmail, schoolId, session }) 
-            : null;
-            
+        // Check for existing parent
+        const parentExist = parentAdmissionNumber
+          ? await ParentModel.findOne({
+              admissionNumber: parentAdmissionNumber,
+              schoolId,
+              session,
+            })
+          : parentEmail
+          ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
+          : null;
+
         if (parentAdmissionNumber && !parentExist) {
-          throw new Error(`Parent with admission number ${parentAdmissionNumber} does not exist.`);
+          throw new Error(
+            `Parent with admission number ${parentAdmissionNumber} does not exist.`
+          );
         }
-        
+
         if (!parentAdmissionNumber && parentEmail && parentExist) {
           throw new Error(`Parent with email ${parentEmail} already exists.`);
         }
 
+        // Hash passwords
         const studentHashPassword = await hashPassword(studentPassword);
-        const parentHashPassword = parentPassword ? await hashPassword(parentPassword) : undefined;
+        const parentHashPassword = parentPassword
+          ? await hashPassword(parentPassword)
+          : undefined;
 
-        const studentAdmissionNumberToUse = admissionNumber && admissionNumber.trim() !== "" 
-          ? admissionNumber 
-          : await generateAdmissionNumber(schoolId, NewStudentModel);
+        // Generate admission number if not provided
+        const studentAdmissionNumberToUse =
+          admissionNumber && admissionNumber.trim() !== ""
+            ? admissionNumber
+            : await generateAdmissionNumber(schoolId, NewStudentModel);
 
-        // Since MongoDB will throw a duplicate key error because of the unique email constraint,
-        // we'll need to use a manual method to insert the document
-        // Create the student document without saving it yet
-        const studentDoc = {
-          studentId: uuidv4(), // Generate a new UUID 
-          schoolId, 
-          session, 
-          studentName: studentFullName, 
-          email: studentEmail, 
+        // Create the student document
+        const studentData = await NewStudentModel.create({
+          schoolId,
+          session,
+          studentName: studentFullName,
+          email: studentEmail,
           password: studentHashPassword,
-          dateOfBirth: studentDateOfBirth, 
-          role: "student",
-          status: "active",
-          rollNo: ((await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection })) + 1).toString(),
-          gender: studentGender, 
-          joiningDate: studentJoiningDate, 
-          address: studentAddress, 
+          dateOfBirth: studentDateOfBirth,
+          rollNo: (
+            (await NewStudentModel.countDocuments({
+              schoolId,
+              class: studentClass,
+              section: studentSection,
+            })) + 1
+          ).toString(),
+          gender: studentGender,
+          joiningDate: studentJoiningDate,
+          address: studentAddress,
           contact: studentContact,
-          class: studentClass, 
-          fatherName, 
-          motherName, 
-          guardianName, 
-          remarks, 
-          transport, 
+          class: studentClass,
+          fatherName,
+          motherName,
+          guardianName,
+          remarks,
+          transport,
           section: studentSection,
-          country: studentCountry, 
-          subject: studentSubject, 
+          country: studentCountry,
+          subject: studentSubject,
           admissionNumber: studentAdmissionNumberToUse,
-          religion, 
-          caste, 
-          nationality, 
-          pincode, 
-          state, 
-          city, 
+          religion,
+          caste,
+          nationality,
+          pincode,
+          state,
+          city,
           createdBy,
-          createdAt: new Date(),
-          approvalStatus: "approved", 
+          approvalStatus: "approved",
           assignedThirdParty: null,
           isNewAdmission: true,
           udisePlusDetails: {
-            stu_id, 
-            class: studentUdiseClass, 
-            section: studentUdiseSection, 
-            roll_no, 
-            student_name, 
-            gender: studentUdiseGender, 
-            DOB, 
-            mother_name, 
-            father_name: udiseFatherName, 
-            guardian_name: udiseGuardianName, 
-            aadhar_no, 
-            aadhar_name, 
-            paddress, 
-            pincode: udisePlusPincode, 
-            mobile_no, 
-            alt_mobile_no, 
-            email_id, 
-            mothere_tougue, 
-            category, 
-            minority, 
-            is_bpl, 
-            is_aay, 
+            stu_id,
+            class: studentUdiseClass,
+            section: studentUdiseSection,
+            roll_no,
+            student_name,
+            gender: studentUdiseGender,
+            DOB,
+            mother_name,
+            father_name: udiseFatherName,
+            guardian_name: udiseGuardianName,
+            aadhar_no,
+            aadhar_name,
+            paddress,
+            pincode: udisePlusPincode,
+            mobile_no,
+            alt_mobile_no,
+            email_id,
+            mothere_tougue,
+            category,
+            minority,
+            is_bpl,
+            is_aay,
             ews_aged_group,
-            is_cwsn, 
-            cwsn_imp_type, 
-            ind_national, 
-            mainstramed_child, 
-            adm_no, 
-            adm_date, 
-            stu_stream, 
-            pre_year_schl_status, 
-            pre_year_class, 
-            stu_ward, 
-            pre_class_exam_app, 
-            result_pre_exam, 
+            is_cwsn,
+            cwsn_imp_type,
+            ind_national,
+            mainstramed_child,
+            adm_no,
+            adm_date,
+            stu_stream,
+            pre_year_schl_status,
+            pre_year_class,
+            stu_ward,
+            pre_class_exam_app,
+            result_pre_exam,
             perc_pre_class,
-            att_pre_class, 
-            fac_free_uniform, 
-            fac_free_textbook, 
-            received_central_scholarship, 
+            att_pre_class,
+            fac_free_uniform,
+            fac_free_textbook,
+            received_central_scholarship,
             name_central_scholarship,
-            received_state_scholarship, 
-            received_other_scholarship, 
-            scholarship_amount, 
-            fac_provided_cwsn, 
+            received_state_scholarship,
+            received_other_scholarship,
+            scholarship_amount,
+            fac_provided_cwsn,
             SLD_type,
-            aut_spec_disorder, 
-            ADHD, 
-            inv_ext_curr_activity, 
-            vocational_course, 
-            trade_sector_id, 
+            aut_spec_disorder,
+            ADHD,
+            inv_ext_curr_activity,
+            vocational_course,
+            trade_sector_id,
             job_role_id,
-            pre_app_exam_vocationalsubject, 
-            bpl_card_no, 
+            pre_app_exam_vocationalsubject,
+            bpl_card_no,
             ann_card_no,
           },
-        };
+        });
 
-        // Use insertOne to bypass the schema validation and unique constraints
-        // This is a temporary solution until you can fix the schema
-        const studentInsertResult = await mongoose.connection.collection('newstudentmodels').insertOne(studentDoc);
-        
-        // Get the inserted student document
-        const studentData = await NewStudentModel.findOne({ _id: studentInsertResult.insertedId });
-
-        if (!studentData) {
-          throw new Error(`Failed to create student record for ${studentEmail}`);
-        }
-
+        // Process parent information
         let parentData = null;
         if (parentAdmissionNumber) {
+          // Link existing parent to this student
           parentData = await ParentModel.findOneAndUpdate(
             { admissionNumber: parentAdmissionNumber, schoolId, session },
-            { 
-              $push: { studentIds: studentData.studentId }, 
-              $addToSet: { studentNames: studentFullName } 
+            {
+              $push: { studentIds: studentData.studentId },
+              $addToSet: { studentNames: studentFullName },
             },
             { new: true }
           );
         } else if (parentEmail && parentPassword) {
+          // Process income - remove dollar sign and convert to number
+          let processedIncome = parentIncome;
+          if (
+            typeof parentIncome === "string" &&
+            parentIncome.startsWith("$")
+          ) {
+            processedIncome = Number(parentIncome.replace(/[$,]/g, ""));
+          }
+
+          // Create new parent
           parentData = await ParentModel.create({
-            schoolId, 
-            session, 
-            studentIds: [studentData.studentId], 
+            schoolId,
+            session,
+            studentIds: [studentData.studentId],
             studentNames: [studentFullName],
-            fatherName, 
-            motherName, 
-            guardianName, 
-            email: parentEmail, 
+            fatherName,
+            motherName,
+            guardianName,
+            email: parentEmail,
             password: parentHashPassword,
-            contact: parentContact, 
-            admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
-            income: parentIncome, 
-            qualification: parentQualification, 
+            contact: parentContact,
+            admissionNumber: await generateAdmissionNumber(
+              schoolId,
+              ParentModel
+            ),
+            income: processedIncome,
+            qualification: parentQualification,
             createdBy,
           });
-          
+
+          // Send email to parent
           const parentEmailContent = `
             <!DOCTYPE html>
             <html>
@@ -3536,28 +4229,34 @@ exports.createBulkStudentParent = async (req, res) => {
             </body>
             </html>
           `;
-          
-          await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
-        }
 
-        if (parentData) {
-          // Update the student document with parent information
-          await mongoose.connection.collection('newstudentmodels').updateOne(
-            { _id: studentData._id },
-            { 
-              $set: { 
-                parentId: parentData.parentId || (parentExist && parentExist.parentId),
-                parentAdmissionNumber: parentAdmissionNumber || parentData.admissionNumber
-              } 
-            }
+          await sendEmail(
+            parentEmail,
+            "Parent Login Credentials",
+            parentEmailContent
           );
         }
 
+        // Update student with parent information
+        if (parentData) {
+          await NewStudentModel.findByIdAndUpdate(studentData._id, {
+            parentId:
+              parentData.parentId || (parentExist && parentExist.parentId),
+            parentAdmissionNumber:
+              parentAdmissionNumber || parentData.admissionNumber,
+          });
+        }
+
         // Generate and send student email
-        const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+        const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+          "schoolName image.url"
+        );
         const schoolName = schoolDetails?.schoolName || "Your School";
-        const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-        const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+        const schoolImageUrl =
+          schoolDetails?.image?.url ||
+          "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+        const softwareLogoUrl =
+          "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
         const studentEmailContent = `
           <!DOCTYPE html>
@@ -3583,7 +4282,9 @@ exports.createBulkStudentParent = async (req, res) => {
                   <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                     <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData.studentId}</p>
+                    <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${
+                      studentData.studentId
+                    }</p>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
@@ -3607,20 +4308,27 @@ exports.createBulkStudentParent = async (req, res) => {
           </body>
           </html>
         `;
-        
-        await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
 
+        await sendEmail(
+          studentEmail,
+          "Admission Confirmation",
+          studentEmailContent
+        );
         createdStudents.push(studentData);
       } catch (error) {
-        errors.push({ studentEmail: studentEmail || "unknown", error: error.message });
+        errors.push({
+          studentEmail: studentEmail || "unknown",
+          error: error.message,
+        });
       }
     }
 
     res.status(201).json({
       success: true,
-      message: "Bulk student and parent creation process completed successfully.",
+      message:
+        "Bulk student and parent creation process completed successfully.",
       createdStudents,
-      errors: errors.length > 0 ? errors : undefined,
+      errors: errors.length > 0 ? errors : [],
     });
   } catch (error) {
     res.status(500).json({
@@ -3645,21 +4353,33 @@ exports.editStudentParent = async (req, res) => {
     if (!schoolId || !session || !studentId) {
       return res.status(400).json({
         success: false,
-        message: "School ID, session, and student ID are required."
+        message: "School ID, session, and student ID are required.",
       });
     }
 
     // Find the student
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found or does not belong to this school and session." });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message:
+            "Student not found or does not belong to this school and session.",
+        });
     }
 
     // If an email is provided and is non-empty, check its format
     if (formData.email !== undefined && formData.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
-        return res.status(400).json({ success: false, message: "Invalid email format." });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid email format." });
       }
     }
 
@@ -3667,7 +4387,12 @@ exports.editStudentParent = async (req, res) => {
     if (formData.dateOfBirth !== undefined && formData.dateOfBirth) {
       const dob = new Date(formData.dateOfBirth);
       if (dob > new Date()) {
-        return res.status(400).json({ success: false, message: "Date of birth cannot be in the future." });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Date of birth cannot be in the future.",
+          });
       }
     }
 
@@ -3675,7 +4400,12 @@ exports.editStudentParent = async (req, res) => {
     let studentHashPassword = student.password;
     if (formData.password) {
       if (formData.password.length < 8) {
-        return res.status(400).json({ success: false, message: "Student password must be at least 8 characters long." });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Student password must be at least 8 characters long.",
+          });
       }
       studentHashPassword = await hashPassword(formData.password);
     }
@@ -3693,10 +4423,12 @@ exports.editStudentParent = async (req, res) => {
 
     if (studentFile) {
       if (student.studentImage && student.studentImage.public_id) {
-        await s3.deleteObject({
-          Bucket: process.env.MINIO_BUCKET,
-          Key: student.studentImage.public_id
-        }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: student.studentImage.public_id,
+          })
+          .promise();
       }
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
       const params = {
@@ -3704,75 +4436,99 @@ exports.editStudentParent = async (req, res) => {
         Key: fileKey,
         Body: studentFile.buffer,
         ContentType: studentFile.mimetype,
-        ACL: "public-read"
+        ACL: "public-read",
       };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
       if (student.fatherImage && student.fatherImage.public_id) {
-        await s3.deleteObject({
-          Bucket: process.env.MINIO_BUCKET,
-          Key: student.fatherImage.public_id
-        }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: student.fatherImage.public_id,
+          })
+          .promise();
       }
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
         Body: fatherFile.buffer,
         ContentType: fatherFile.mimetype,
-        ACL: "public-read"
+        ACL: "public-read",
       };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
       if (student.motherImage && student.motherImage.public_id) {
-        await s3.deleteObject({
-          Bucket: process.env.MINIO_BUCKET,
-          Key: student.motherImage.public_id
-        }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: student.motherImage.public_id,
+          })
+          .promise();
       }
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
         Body: motherFile.buffer,
         ContentType: motherFile.mimetype,
-        ACL: "public-read"
+        ACL: "public-read",
       };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
       if (student.guardianImage && student.guardianImage.public_id) {
-        await s3.deleteObject({
-          Bucket: process.env.MINIO_BUCKET,
-          Key: student.guardianImage.public_id
-        }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: student.guardianImage.public_id,
+          })
+          .promise();
       }
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
         Body: guardianFile.buffer,
         ContentType: guardianFile.mimetype,
-        ACL: "public-read"
+        ACL: "public-read",
       };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
     // Linking logic for parent/student relations (if linking data is provided)
-    if (formData.parentId || formData.parentAdmissionNumber || formData.linkStudentId) {
+    if (
+      formData.parentId ||
+      formData.parentAdmissionNumber ||
+      formData.linkStudentId
+    ) {
       let parent;
       // Link student to parent using parentId or parentAdmissionNumber
       if (formData.parentId || formData.parentAdmissionNumber) {
-        const parentQuery = formData.parentId ? { parentId: formData.parentId } : { admissionNumber: formData.parentAdmissionNumber };
-        parent = await ParentModel.findOne({ ...parentQuery, schoolId, session });
+        const parentQuery = formData.parentId
+          ? { parentId: formData.parentId }
+          : { admissionNumber: formData.parentAdmissionNumber };
+        parent = await ParentModel.findOne({
+          ...parentQuery,
+          schoolId,
+          session,
+        });
         if (!parent) {
-          return res.status(404).json({ success: false, message: "Parent not found." });
+          return res
+            .status(404)
+            .json({ success: false, message: "Parent not found." });
         }
         // Update student with parent details
         student.parentId = parent.parentId;
@@ -3787,14 +4543,34 @@ exports.editStudentParent = async (req, res) => {
 
       // Reverse linking: Link parent to another student (if provided)
       if (formData.linkStudentId) {
-        const targetStudent = await NewStudentModel.findOne({ studentId: formData.linkStudentId, schoolId, session });
+        const targetStudent = await NewStudentModel.findOne({
+          studentId: formData.linkStudentId,
+          schoolId,
+          session,
+        });
         if (!targetStudent) {
-          return res.status(404).json({ success: false, message: "Target student not found." });
+          return res
+            .status(404)
+            .json({ success: false, message: "Target student not found." });
         }
-        parent = await ParentModel.findOne({ parentId: student.parentId, schoolId, session }) || 
-                 await ParentModel.findOne({ studentIds: { $in: [studentId] }, schoolId, session });
+        parent =
+          (await ParentModel.findOne({
+            parentId: student.parentId,
+            schoolId,
+            session,
+          })) ||
+          (await ParentModel.findOne({
+            studentIds: { $in: [studentId] },
+            schoolId,
+            session,
+          }));
         if (!parent) {
-          return res.status(404).json({ success: false, message: "Parent not found for reverse linking." });
+          return res
+            .status(404)
+            .json({
+              success: false,
+              message: "Parent not found for reverse linking.",
+            });
         }
         if (!parent.studentIds.includes(formData.linkStudentId)) {
           parent.studentIds.push(formData.linkStudentId);
@@ -3813,92 +4589,294 @@ exports.editStudentParent = async (req, res) => {
       email: formData.email !== undefined ? formData.email : student.email,
       password: studentHashPassword,
       dateOfBirth: formData.dateOfBirth || student.dateOfBirth,
-      motherName: formData.motherName !== undefined ? formData.motherName : student.motherName,
-      fatherName: formData.fatherName !== undefined ? formData.fatherName : student.fatherName,
-      guardianName: formData.guardianName !== undefined ? formData.guardianName : student.guardianName,
-      remarks: formData.remarks !== undefined ? formData.remarks : student.remarks,
-      transport: formData.transport !== undefined ? formData.transport : student.transport, // simple string update
-      parentContact: formData.parentContact !== undefined ? formData.parentContact : student.parentContact,
+      motherName:
+        formData.motherName !== undefined
+          ? formData.motherName
+          : student.motherName,
+      fatherName:
+        formData.fatherName !== undefined
+          ? formData.fatherName
+          : student.fatherName,
+      guardianName:
+        formData.guardianName !== undefined
+          ? formData.guardianName
+          : student.guardianName,
+      remarks:
+        formData.remarks !== undefined ? formData.remarks : student.remarks,
+      transport:
+        formData.transport !== undefined
+          ? formData.transport
+          : student.transport, // simple string update
+      parentContact:
+        formData.parentContact !== undefined
+          ? formData.parentContact
+          : student.parentContact,
       rollNo: formData.rollNo !== undefined ? formData.rollNo : student.rollNo,
       parentId: student.parentId, // updated via linking logic if applicable
       parentAdmissionNumber: student.parentAdmissionNumber, // updated via linking logic if applicable
       gender: formData.gender !== undefined ? formData.gender : student.gender,
       joiningDate: formData.joiningDate || student.joiningDate,
-      address: formData.address !== undefined ? formData.address : student.address,
-      contact: formData.contact !== undefined ? formData.contact : student.contact,
+      address:
+        formData.address !== undefined ? formData.address : student.address,
+      contact:
+        formData.contact !== undefined ? formData.contact : student.contact,
       class: formData.class !== undefined ? formData.class : student.class,
-      section: formData.section !== undefined ? formData.section : student.section,
-      country: formData.country !== undefined ? formData.country : student.country,
-      subject: formData.subject !== undefined ? formData.subject : student.subject,
-      studentImage: studentImageResult.url ? studentImageResult : student.studentImage,
-      fatherImage: fatherImageResult.url ? fatherImageResult : student.fatherImage,
-      motherImage: motherImageResult.url ? motherImageResult : student.motherImage,
-      guardianImage: guardianImageResult.url ? guardianImageResult : student.guardianImage,
-      admissionNumber: formData.admissionNumber !== undefined ? formData.admissionNumber : student.admissionNumber,
-      religion: formData.religion !== undefined ? formData.religion : student.religion,
+      section:
+        formData.section !== undefined ? formData.section : student.section,
+      country:
+        formData.country !== undefined ? formData.country : student.country,
+      subject:
+        formData.subject !== undefined ? formData.subject : student.subject,
+      studentImage: studentImageResult.url
+        ? studentImageResult
+        : student.studentImage,
+      fatherImage: fatherImageResult.url
+        ? fatherImageResult
+        : student.fatherImage,
+      motherImage: motherImageResult.url
+        ? motherImageResult
+        : student.motherImage,
+      guardianImage: guardianImageResult.url
+        ? guardianImageResult
+        : student.guardianImage,
+      admissionNumber:
+        formData.admissionNumber !== undefined
+          ? formData.admissionNumber
+          : student.admissionNumber,
+      religion:
+        formData.religion !== undefined ? formData.religion : student.religion,
       caste: formData.caste !== undefined ? formData.caste : student.caste,
-      nationality: formData.nationality !== undefined ? formData.nationality : student.nationality,
-      pincode: formData.pincode !== undefined ? formData.pincode : student.pincode,
+      nationality:
+        formData.nationality !== undefined
+          ? formData.nationality
+          : student.nationality,
+      pincode:
+        formData.pincode !== undefined ? formData.pincode : student.pincode,
       state: formData.state !== undefined ? formData.state : student.state,
       city: formData.city !== undefined ? formData.city : student.city,
       udisePlusDetails: {
-        stu_id: formData.stu_id !== undefined ? formData.stu_id : student.udisePlusDetails?.stu_id,
-        class: formData.studentUdiseClass !== undefined ? formData.studentUdiseClass : student.udisePlusDetails?.class,
-        section: formData.studentUdiseSection !== undefined ? formData.studentUdiseSection : student.udisePlusDetails?.section,
-        roll_no: formData.roll_no !== undefined ? formData.roll_no : student.udisePlusDetails?.roll_no,
-        student_name: formData.student_name !== undefined ? formData.student_name : student.udisePlusDetails?.student_name,
-        gender: formData.studentUdiseGender !== undefined ? formData.studentUdiseGender : student.udisePlusDetails?.gender,
-        DOB: formData.DOB !== undefined ? formData.DOB : student.udisePlusDetails?.DOB,
-        mother_name: formData.mother_name !== undefined ? formData.mother_name : student.udisePlusDetails?.mother_name,
-        father_name: formData.father_name !== undefined ? formData.father_name : student.udisePlusDetails?.father_name,
-        guardian_name: formData.guardian_name !== undefined ? formData.guardian_name : student.udisePlusDetails?.guardian_name,
-        aadhar_no: formData.aadhar_no !== undefined ? formData.aadhar_no : student.udisePlusDetails?.aadhar_no,
-        aadhar_name: formData.aadhar_name !== undefined ? formData.aadhar_name : student.udisePlusDetails?.aadhar_name,
-        paddress: formData.paddress !== undefined ? formData.paddress : student.udisePlusDetails?.paddress,
-        pincode: formData.udisePlusPincode !== undefined ? formData.udisePlusPincode : student.udisePlusDetails?.pincode,
-        mobile_no: formData.mobile_no !== undefined ? formData.mobile_no : student.udisePlusDetails?.mobile_no,
-        alt_mobile_no: formData.alt_mobile_no !== undefined ? formData.alt_mobile_no : student.udisePlusDetails?.alt_mobile_no,
-        email_id: formData.email_id !== undefined ? formData.email_id : student.udisePlusDetails?.email_id,
-        mothere_tougue: formData.mothere_tougue !== undefined ? formData.mothere_tougue : student.udisePlusDetails?.mothere_tougue,
-        category: formData.category !== undefined ? formData.category : student.udisePlusDetails?.category,
-        minority: formData.minority !== undefined ? formData.minority : student.udisePlusDetails?.minority,
-        is_bpl: formData.is_bpl !== undefined ? formData.is_bpl : student.udisePlusDetails?.is_bpl,
-        is_aay: formData.is_aay !== undefined ? formData.is_aay : student.udisePlusDetails?.is_aay,
-        ews_aged_group: formData.ews_aged_group !== undefined ? formData.ews_aged_group : student.udisePlusDetails?.ews_aged_group,
-        is_cwsn: formData.is_cwsn !== undefined ? formData.is_cwsn : student.udisePlusDetails?.is_cwsn,
-        cwsn_imp_type: formData.cwsn_imp_type !== undefined ? formData.cwsn_imp_type : student.udisePlusDetails?.cwsn_imp_type,
-        ind_national: formData.ind_national !== undefined ? formData.ind_national : student.udisePlusDetails?.ind_national,
-        mainstramed_child: formData.mainstramed_child !== undefined ? formData.mainstramed_child : student.udisePlusDetails?.mainstramed_child,
-        adm_no: formData.adm_no !== undefined ? formData.adm_no : student.udisePlusDetails?.adm_no,
-        adm_date: formData.adm_date !== undefined ? formData.adm_date : student.udisePlusDetails?.adm_date,
-        stu_stream: formData.stu_stream !== undefined ? formData.stu_stream : student.udisePlusDetails?.stu_stream,
-        pre_year_schl_status: formData.pre_year_schl_status !== undefined ? formData.pre_year_schl_status : student.udisePlusDetails?.pre_year_schl_status,
-        pre_year_class: formData.pre_year_class !== undefined ? formData.pre_year_class : student.udisePlusDetails?.pre_year_class,
-        stu_ward: formData.stu_ward !== undefined ? formData.stu_ward : student.udisePlusDetails?.stu_ward,
-        pre_class_exam_app: formData.pre_class_exam_app !== undefined ? formData.pre_class_exam_app : student.udisePlusDetails?.pre_class_exam_app,
-        result_pre_exam: formData.result_pre_exam !== undefined ? formData.result_pre_exam : student.udisePlusDetails?.result_pre_exam,
-        perc_pre_class: formData.perc_pre_class !== undefined ? formData.perc_pre_class : student.udisePlusDetails?.perc_pre_class,
-        att_pre_class: formData.att_pre_class !== undefined ? formData.att_pre_class : student.udisePlusDetails?.att_pre_class,
-        fac_free_uniform: formData.fac_free_uniform !== undefined ? formData.fac_free_uniform : student.udisePlusDetails?.fac_free_uniform,
-        fac_free_textbook: formData.fac_free_textbook !== undefined ? formData.fac_free_textbook : student.udisePlusDetails?.fac_free_textbook,
-        received_central_scholarship: formData.received_central_scholarship !== undefined ? formData.received_central_scholarship : student.udisePlusDetails?.received_central_scholarship,
-        name_central_scholarship: formData.name_central_scholarship !== undefined ? formData.name_central_scholarship : student.udisePlusDetails?.name_central_scholarship,
-        received_state_scholarship: formData.received_state_scholarship !== undefined ? formData.received_state_scholarship : student.udisePlusDetails?.received_state_scholarship,
-        received_other_scholarship: formData.received_other_scholarship !== undefined ? formData.received_other_scholarship : student.udisePlusDetails?.received_other_scholarship,
-        scholarship_amount: formData.scholarship_amount !== undefined ? formData.scholarship_amount : student.udisePlusDetails?.scholarship_amount,
-        fac_provided_cwsn: formData.fac_provided_cwsn !== undefined ? formData.fac_provided_cwsn : student.udisePlusDetails?.fac_provided_cwsn,
-        SLD_type: formData.SLD_type !== undefined ? formData.SLD_type : student.udisePlusDetails?.SLD_type,
-        aut_spec_disorder: formData.aut_spec_disorder !== undefined ? formData.aut_spec_disorder : student.udisePlusDetails?.aut_spec_disorder,
-        ADHD: formData.ADHD !== undefined ? formData.ADHD : student.udisePlusDetails?.ADHD,
-        inv_ext_curr_activity: formData.inv_ext_curr_activity !== undefined ? formData.inv_ext_curr_activity : student.udisePlusDetails?.inv_ext_curr_activity,
-        vocational_course: formData.vocational_course !== undefined ? formData.vocational_course : student.udisePlusDetails?.vocational_course,
-        trade_sector_id: formData.trade_sector_id !== undefined ? formData.trade_sector_id : student.udisePlusDetails?.trade_sector_id,
-        job_role_id: formData.job_role_id !== undefined ? formData.job_role_id : student.udisePlusDetails?.job_role_id,
-        pre_app_exam_vocationalsubject: formData.pre_app_exam_vocationalsubject !== undefined ? formData.pre_app_exam_vocationalsubject : student.udisePlusDetails?.pre_app_exam_vocationalsubject,
-        bpl_card_no: formData.bpl_card_no !== undefined ? formData.bpl_card_no : student.udisePlusDetails?.bpl_card_no,
-        ann_card_no: formData.ann_card_no !== undefined ? formData.ann_card_no : student.udisePlusDetails?.ann_card_no,
+        stu_id:
+          formData.stu_id !== undefined
+            ? formData.stu_id
+            : student.udisePlusDetails?.stu_id,
+        class:
+          formData.studentUdiseClass !== undefined
+            ? formData.studentUdiseClass
+            : student.udisePlusDetails?.class,
+        section:
+          formData.studentUdiseSection !== undefined
+            ? formData.studentUdiseSection
+            : student.udisePlusDetails?.section,
+        roll_no:
+          formData.roll_no !== undefined
+            ? formData.roll_no
+            : student.udisePlusDetails?.roll_no,
+        student_name:
+          formData.student_name !== undefined
+            ? formData.student_name
+            : student.udisePlusDetails?.student_name,
+        gender:
+          formData.studentUdiseGender !== undefined
+            ? formData.studentUdiseGender
+            : student.udisePlusDetails?.gender,
+        DOB:
+          formData.DOB !== undefined
+            ? formData.DOB
+            : student.udisePlusDetails?.DOB,
+        mother_name:
+          formData.mother_name !== undefined
+            ? formData.mother_name
+            : student.udisePlusDetails?.mother_name,
+        father_name:
+          formData.father_name !== undefined
+            ? formData.father_name
+            : student.udisePlusDetails?.father_name,
+        guardian_name:
+          formData.guardian_name !== undefined
+            ? formData.guardian_name
+            : student.udisePlusDetails?.guardian_name,
+        aadhar_no:
+          formData.aadhar_no !== undefined
+            ? formData.aadhar_no
+            : student.udisePlusDetails?.aadhar_no,
+        aadhar_name:
+          formData.aadhar_name !== undefined
+            ? formData.aadhar_name
+            : student.udisePlusDetails?.aadhar_name,
+        paddress:
+          formData.paddress !== undefined
+            ? formData.paddress
+            : student.udisePlusDetails?.paddress,
+        pincode:
+          formData.udisePlusPincode !== undefined
+            ? formData.udisePlusPincode
+            : student.udisePlusDetails?.pincode,
+        mobile_no:
+          formData.mobile_no !== undefined
+            ? formData.mobile_no
+            : student.udisePlusDetails?.mobile_no,
+        alt_mobile_no:
+          formData.alt_mobile_no !== undefined
+            ? formData.alt_mobile_no
+            : student.udisePlusDetails?.alt_mobile_no,
+        email_id:
+          formData.email_id !== undefined
+            ? formData.email_id
+            : student.udisePlusDetails?.email_id,
+        mothere_tougue:
+          formData.mothere_tougue !== undefined
+            ? formData.mothere_tougue
+            : student.udisePlusDetails?.mothere_tougue,
+        category:
+          formData.category !== undefined
+            ? formData.category
+            : student.udisePlusDetails?.category,
+        minority:
+          formData.minority !== undefined
+            ? formData.minority
+            : student.udisePlusDetails?.minority,
+        is_bpl:
+          formData.is_bpl !== undefined
+            ? formData.is_bpl
+            : student.udisePlusDetails?.is_bpl,
+        is_aay:
+          formData.is_aay !== undefined
+            ? formData.is_aay
+            : student.udisePlusDetails?.is_aay,
+        ews_aged_group:
+          formData.ews_aged_group !== undefined
+            ? formData.ews_aged_group
+            : student.udisePlusDetails?.ews_aged_group,
+        is_cwsn:
+          formData.is_cwsn !== undefined
+            ? formData.is_cwsn
+            : student.udisePlusDetails?.is_cwsn,
+        cwsn_imp_type:
+          formData.cwsn_imp_type !== undefined
+            ? formData.cwsn_imp_type
+            : student.udisePlusDetails?.cwsn_imp_type,
+        ind_national:
+          formData.ind_national !== undefined
+            ? formData.ind_national
+            : student.udisePlusDetails?.ind_national,
+        mainstramed_child:
+          formData.mainstramed_child !== undefined
+            ? formData.mainstramed_child
+            : student.udisePlusDetails?.mainstramed_child,
+        adm_no:
+          formData.adm_no !== undefined
+            ? formData.adm_no
+            : student.udisePlusDetails?.adm_no,
+        adm_date:
+          formData.adm_date !== undefined
+            ? formData.adm_date
+            : student.udisePlusDetails?.adm_date,
+        stu_stream:
+          formData.stu_stream !== undefined
+            ? formData.stu_stream
+            : student.udisePlusDetails?.stu_stream,
+        pre_year_schl_status:
+          formData.pre_year_schl_status !== undefined
+            ? formData.pre_year_schl_status
+            : student.udisePlusDetails?.pre_year_schl_status,
+        pre_year_class:
+          formData.pre_year_class !== undefined
+            ? formData.pre_year_class
+            : student.udisePlusDetails?.pre_year_class,
+        stu_ward:
+          formData.stu_ward !== undefined
+            ? formData.stu_ward
+            : student.udisePlusDetails?.stu_ward,
+        pre_class_exam_app:
+          formData.pre_class_exam_app !== undefined
+            ? formData.pre_class_exam_app
+            : student.udisePlusDetails?.pre_class_exam_app,
+        result_pre_exam:
+          formData.result_pre_exam !== undefined
+            ? formData.result_pre_exam
+            : student.udisePlusDetails?.result_pre_exam,
+        perc_pre_class:
+          formData.perc_pre_class !== undefined
+            ? formData.perc_pre_class
+            : student.udisePlusDetails?.perc_pre_class,
+        att_pre_class:
+          formData.att_pre_class !== undefined
+            ? formData.att_pre_class
+            : student.udisePlusDetails?.att_pre_class,
+        fac_free_uniform:
+          formData.fac_free_uniform !== undefined
+            ? formData.fac_free_uniform
+            : student.udisePlusDetails?.fac_free_uniform,
+        fac_free_textbook:
+          formData.fac_free_textbook !== undefined
+            ? formData.fac_free_textbook
+            : student.udisePlusDetails?.fac_free_textbook,
+        received_central_scholarship:
+          formData.received_central_scholarship !== undefined
+            ? formData.received_central_scholarship
+            : student.udisePlusDetails?.received_central_scholarship,
+        name_central_scholarship:
+          formData.name_central_scholarship !== undefined
+            ? formData.name_central_scholarship
+            : student.udisePlusDetails?.name_central_scholarship,
+        received_state_scholarship:
+          formData.received_state_scholarship !== undefined
+            ? formData.received_state_scholarship
+            : student.udisePlusDetails?.received_state_scholarship,
+        received_other_scholarship:
+          formData.received_other_scholarship !== undefined
+            ? formData.received_other_scholarship
+            : student.udisePlusDetails?.received_other_scholarship,
+        scholarship_amount:
+          formData.scholarship_amount !== undefined
+            ? formData.scholarship_amount
+            : student.udisePlusDetails?.scholarship_amount,
+        fac_provided_cwsn:
+          formData.fac_provided_cwsn !== undefined
+            ? formData.fac_provided_cwsn
+            : student.udisePlusDetails?.fac_provided_cwsn,
+        SLD_type:
+          formData.SLD_type !== undefined
+            ? formData.SLD_type
+            : student.udisePlusDetails?.SLD_type,
+        aut_spec_disorder:
+          formData.aut_spec_disorder !== undefined
+            ? formData.aut_spec_disorder
+            : student.udisePlusDetails?.aut_spec_disorder,
+        ADHD:
+          formData.ADHD !== undefined
+            ? formData.ADHD
+            : student.udisePlusDetails?.ADHD,
+        inv_ext_curr_activity:
+          formData.inv_ext_curr_activity !== undefined
+            ? formData.inv_ext_curr_activity
+            : student.udisePlusDetails?.inv_ext_curr_activity,
+        vocational_course:
+          formData.vocational_course !== undefined
+            ? formData.vocational_course
+            : student.udisePlusDetails?.vocational_course,
+        trade_sector_id:
+          formData.trade_sector_id !== undefined
+            ? formData.trade_sector_id
+            : student.udisePlusDetails?.trade_sector_id,
+        job_role_id:
+          formData.job_role_id !== undefined
+            ? formData.job_role_id
+            : student.udisePlusDetails?.job_role_id,
+        pre_app_exam_vocationalsubject:
+          formData.pre_app_exam_vocationalsubject !== undefined
+            ? formData.pre_app_exam_vocationalsubject
+            : student.udisePlusDetails?.pre_app_exam_vocationalsubject,
+        bpl_card_no:
+          formData.bpl_card_no !== undefined
+            ? formData.bpl_card_no
+            : student.udisePlusDetails?.bpl_card_no,
+        ann_card_no:
+          formData.ann_card_no !== undefined
+            ? formData.ann_card_no
+            : student.udisePlusDetails?.ann_card_no,
       },
-      updatedBy // track who updated the record
+      updatedBy, // track who updated the record
     };
 
     // Update the student document
@@ -3910,16 +4888,31 @@ exports.editStudentParent = async (req, res) => {
 
     // If parent info is provided, update the parent document (only minimal checks are done)
     if (formData.parentId) {
-      const parent = await ParentModel.findOne({ parentId: formData.parentId, schoolId, session });
+      const parent = await ParentModel.findOne({
+        parentId: formData.parentId,
+        schoolId,
+        session,
+      });
       if (!parent) {
-        return res.status(404).json({ success: false, message: "Parent not found or does not belong to this school and session." });
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message:
+              "Parent not found or does not belong to this school and session.",
+          });
       }
 
       // Update parent's password if provided
       let parentHashPassword = parent.password;
       if (formData.parentPassword) {
         if (formData.parentPassword.length < 8) {
-          return res.status(400).json({ success: false, message: "Parent password must be at least 8 characters long." });
+          return res
+            .status(400)
+            .json({
+              success: false,
+              message: "Parent password must be at least 8 characters long.",
+            });
         }
         parentHashPassword = await hashPassword(formData.parentPassword);
       }
@@ -3933,10 +4926,12 @@ exports.editStudentParent = async (req, res) => {
       const parentFile = files.find((f) => f.fieldname === "parentImage");
       if (parentFile) {
         if (parent.parentImage && parent.parentImage.public_id) {
-          await s3.deleteObject({
-            Bucket: process.env.MINIO_BUCKET,
-            Key: parent.parentImage.public_id,
-          }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: parent.parentImage.public_id,
+            })
+            .promise();
         }
         const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
         const params = {
@@ -3951,12 +4946,16 @@ exports.editStudentParent = async (req, res) => {
       }
       if (fatherFile) {
         if (parent.fatherImage && parent.fatherImage.public_id) {
-          await s3.deleteObject({
-            Bucket: process.env.MINIO_BUCKET,
-            Key: parent.fatherImage.public_id,
-          }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: parent.fatherImage.public_id,
+            })
+            .promise();
         }
-        const fileKey = `parents/father/${Date.now()}-${fatherFile.originalname}`;
+        const fileKey = `parents/father/${Date.now()}-${
+          fatherFile.originalname
+        }`;
         const params = {
           Bucket: process.env.MINIO_BUCKET,
           Key: fileKey,
@@ -3969,12 +4968,16 @@ exports.editStudentParent = async (req, res) => {
       }
       if (motherFile) {
         if (parent.motherImage && parent.motherImage.public_id) {
-          await s3.deleteObject({
-            Bucket: process.env.MINIO_BUCKET,
-            Key: parent.motherImage.public_id,
-          }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: parent.motherImage.public_id,
+            })
+            .promise();
         }
-        const fileKey = `parents/mother/${Date.now()}-${motherFile.originalname}`;
+        const fileKey = `parents/mother/${Date.now()}-${
+          motherFile.originalname
+        }`;
         const params = {
           Bucket: process.env.MINIO_BUCKET,
           Key: fileKey,
@@ -3987,12 +4990,16 @@ exports.editStudentParent = async (req, res) => {
       }
       if (guardianFile) {
         if (parent.guardianImage && parent.guardianImage.public_id) {
-          await s3.deleteObject({
-            Bucket: process.env.MINIO_BUCKET,
-            Key: parent.guardianImage.public_id,
-          }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: parent.guardianImage.public_id,
+            })
+            .promise();
         }
-        const fileKey = `parents/guardian/${Date.now()}-${guardianFile.originalname}`;
+        const fileKey = `parents/guardian/${Date.now()}-${
+          guardianFile.originalname
+        }`;
         const params = {
           Bucket: process.env.MINIO_BUCKET,
           Key: fileKey,
@@ -4005,19 +5012,43 @@ exports.editStudentParent = async (req, res) => {
       }
 
       const updateParentFields = {
-        fatherName: formData.fatherName !== undefined ? formData.fatherName : parent.fatherName,
-        motherName: formData.motherName !== undefined ? formData.motherName : parent.motherName,
-        guardianName: formData.guardianName !== undefined ? formData.guardianName : parent.guardianName,
+        fatherName:
+          formData.fatherName !== undefined
+            ? formData.fatherName
+            : parent.fatherName,
+        motherName:
+          formData.motherName !== undefined
+            ? formData.motherName
+            : parent.motherName,
+        guardianName:
+          formData.guardianName !== undefined
+            ? formData.guardianName
+            : parent.guardianName,
         email: formData.email !== undefined ? formData.email : parent.email,
         password: parentHashPassword,
-        contact: formData.contact !== undefined ? formData.contact : parent.contact,
+        contact:
+          formData.contact !== undefined ? formData.contact : parent.contact,
         income: formData.income !== undefined ? formData.income : parent.income,
-        qualification: formData.qualification !== undefined ? formData.qualification : parent.qualification,
-        parentImage: parentImageResult.url ? parentImageResult : parent.parentImage,
-        fatherImage: pFatherImageResult.url ? pFatherImageResult : parent.fatherImage,
-        motherImage: pMotherImageResult.url ? pMotherImageResult : parent.motherImage,
-        guardianImage: pGuardianImageResult.url ? pGuardianImageResult : parent.guardianImage,
-        admissionNumber: formData.admissionNumber !== undefined ? formData.admissionNumber : parent.admissionNumber,
+        qualification:
+          formData.qualification !== undefined
+            ? formData.qualification
+            : parent.qualification,
+        parentImage: parentImageResult.url
+          ? parentImageResult
+          : parent.parentImage,
+        fatherImage: pFatherImageResult.url
+          ? pFatherImageResult
+          : parent.fatherImage,
+        motherImage: pMotherImageResult.url
+          ? pMotherImageResult
+          : parent.motherImage,
+        guardianImage: pGuardianImageResult.url
+          ? pGuardianImageResult
+          : parent.guardianImage,
+        admissionNumber:
+          formData.admissionNumber !== undefined
+            ? formData.admissionNumber
+            : parent.admissionNumber,
       };
 
       await ParentModel.findOneAndUpdate(
@@ -4042,21 +5073,53 @@ exports.editStudentParent = async (req, res) => {
   }
 };
 
-
 exports.getStudentParent = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session are required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
     }
 
     const {
-      studentId, parentId, admissionNumber, parentAdmissionNumber, email, class: studentClass, section, gender, status,
-      fetchAllStudents, fetchNewAdmissions, fetchAllParents, fetchParentsWithMultipleChildren, limit, page = 1,
-      sortBy = 'createdAt', sortOrder = 'desc', studentName, contact, rollNo, religion, caste, nationality, pincode,
-      state, city, approvalStatus, createdBy, joiningDateStart, joiningDateEnd, dateOfBirthStart, dateOfBirthEnd,
+      studentId,
+      parentId,
+      admissionNumber,
+      parentAdmissionNumber,
+      email,
+      class: studentClass,
+      section,
+      gender,
+      status,
+      fetchAllStudents,
+      fetchNewAdmissions,
+      fetchAllParents,
+      fetchParentsWithMultipleChildren,
+      limit,
+      page = 1,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+      studentName,
+      contact,
+      rollNo,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      approvalStatus,
+      createdBy,
+      joiningDateStart,
+      joiningDateEnd,
+      dateOfBirthStart,
+      dateOfBirthEnd,
     } = req.query;
 
     let studentQuery = { schoolId, session };
@@ -4070,7 +5133,8 @@ exports.getStudentParent = async (req, res) => {
     if (section) studentQuery.section = section;
     if (gender) studentQuery.gender = gender;
     if (status) studentQuery.status = status;
-    if (studentName) studentQuery.studentName = { $regex: studentName, $options: 'i' };
+    if (studentName)
+      studentQuery.studentName = { $regex: studentName, $options: "i" };
     if (contact) studentQuery.contact = contact;
     if (rollNo) studentQuery.rollNo = rollNo;
     if (religion) studentQuery.religion = religion;
@@ -4083,95 +5147,197 @@ exports.getStudentParent = async (req, res) => {
     if (createdBy) studentQuery.createdBy = createdBy;
     if (joiningDateStart || joiningDateEnd) {
       studentQuery.joiningDate = {};
-      if (joiningDateStart) studentQuery.joiningDate.$gte = new Date(joiningDateStart);
-      if (joiningDateEnd) studentQuery.joiningDate.$lte = new Date(joiningDateEnd);
+      if (joiningDateStart)
+        studentQuery.joiningDate.$gte = new Date(joiningDateStart);
+      if (joiningDateEnd)
+        studentQuery.joiningDate.$lte = new Date(joiningDateEnd);
     }
     if (dateOfBirthStart || dateOfBirthEnd) {
       studentQuery.dateOfBirth = {};
-      if (dateOfBirthStart) studentQuery.dateOfBirth.$gte = new Date(dateOfBirthStart);
-      if (dateOfBirthEnd) studentQuery.dateOfBirth.$lte = new Date(dateOfBirthEnd);
+      if (dateOfBirthStart)
+        studentQuery.dateOfBirth.$gte = new Date(dateOfBirthStart);
+      if (dateOfBirthEnd)
+        studentQuery.dateOfBirth.$lte = new Date(dateOfBirthEnd);
     }
 
     // Add filter for new admissions
-    if (fetchNewAdmissions === 'true') {
+    if (fetchNewAdmissions === "true") {
       studentQuery.isNewAdmission = true;
     }
 
     // Enhanced Parent Query
     if (parentId) parentQuery.parentId = parentId;
-    if (parentAdmissionNumber) parentQuery.admissionNumber = parentAdmissionNumber;
+    if (parentAdmissionNumber)
+      parentQuery.admissionNumber = parentAdmissionNumber;
     if (email) parentQuery.email = email;
 
     const skip = (page - 1) * (limit || 0); // Adjusted to handle undefined limit
-    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
     let responseData = {};
 
     if (studentId) {
       const student = await NewStudentModel.findOne(studentQuery).lean();
-      if (!student) return res.status(404).json({ success: false, message: `Student with ID ${studentId} not found` });
-      const parentData = student.parentId ? await ParentModel.findOne({ parentId: student.parentId, schoolId, session }).lean() : null;
+      if (!student)
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message: `Student with ID ${studentId} not found`,
+          });
+      const parentData = student.parentId
+        ? await ParentModel.findOne({
+            parentId: student.parentId,
+            schoolId,
+            session,
+          }).lean()
+        : null;
       responseData.student = { ...student, parentDetails: parentData };
     } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
-      if (!parent) return res.status(404).json({ success: false, message: `Parent with ID ${parentId} not found` });
-      const students = await NewStudentModel.find({ parentId: parent.parentId, schoolId, session }).lean();
-      responseData.parent = { ...parent, studentDetails: students, hasMultipleChildren: students.length > 1, totalChildren: students.length };
-    } else if (fetchParentsWithMultipleChildren === 'true') {
+      if (!parent)
+        return res
+          .status(404)
+          .json({
+            success: false,
+            message: `Parent with ID ${parentId} not found`,
+          });
+      const students = await NewStudentModel.find({
+        parentId: parent.parentId,
+        schoolId,
+        session,
+      }).lean();
+      responseData.parent = {
+        ...parent,
+        studentDetails: students,
+        hasMultipleChildren: students.length > 1,
+        totalChildren: students.length,
+      };
+    } else if (fetchParentsWithMultipleChildren === "true") {
       const parents = await ParentModel.find(parentQuery).sort(sort).lean();
       const parentsWithMultipleChildren = [];
       for (const parent of parents) {
-        const students = await NewStudentModel.find({ parentId: parent.parentId, schoolId, session }).lean();
-        if (students.length > 1) parentsWithMultipleChildren.push({ ...parent, studentDetails: students, totalChildren: students.length });
+        const students = await NewStudentModel.find({
+          parentId: parent.parentId,
+          schoolId,
+          session,
+        }).lean();
+        if (students.length > 1)
+          parentsWithMultipleChildren.push({
+            ...parent,
+            studentDetails: students,
+            totalChildren: students.length,
+          });
       }
       const totalParentsWithMultiple = parentsWithMultipleChildren.length;
       responseData.parentsWithMultipleChildren = {
-        data: limit ? parentsWithMultipleChildren.slice(skip, skip + parseInt(limit)) : parentsWithMultipleChildren,
-        pagination: { total: totalParentsWithMultiple, page: parseInt(page), limit: limit ? parseInt(limit) : null, totalPages: limit ? Math.ceil(totalParentsWithMultiple / limit) : 1 },
+        data: limit
+          ? parentsWithMultipleChildren.slice(skip, skip + parseInt(limit))
+          : parentsWithMultipleChildren,
+        pagination: {
+          total: totalParentsWithMultiple,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalParentsWithMultiple / limit) : 1,
+        },
       };
-    } else if (fetchAllStudents === 'true') {
-      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
+    } else if (fetchAllStudents === "true") {
+      const students = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.students = { 
-        data: students, 
-        pagination: { total: totalStudents, page: parseInt(page), limit: limit ? parseInt(limit) : null, totalPages: limit ? Math.ceil(totalStudents / limit) : 1 } 
+      responseData.students = {
+        data: students,
+        pagination: {
+          total: totalStudents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
+        },
       };
-    } else if (fetchNewAdmissions === 'true') {
-      const newStudents = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
-      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.newAdmissions = { 
-        data: newStudents, 
-        pagination: { total: totalNewStudents, page: parseInt(page), limit: limit ? parseInt(limit) : null, totalPages: limit ? Math.ceil(totalNewStudents / limit) : 1 } 
+    } else if (fetchNewAdmissions === "true") {
+      const newStudents = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
+      const totalNewStudents = await NewStudentModel.countDocuments(
+        studentQuery
+      );
+      responseData.newAdmissions = {
+        data: newStudents,
+        pagination: {
+          total: totalNewStudents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalNewStudents / limit) : 1,
+        },
       };
-    } else if (fetchAllParents === 'true') {
-      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
+    } else if (fetchAllParents === "true") {
+      const parents = await ParentModel.find(parentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
-      responseData.parents = { 
-        data: parents, 
-        pagination: { total: totalParents, page: parseInt(page), limit: limit ? parseInt(limit) : null, totalPages: limit ? Math.ceil(totalParents / limit) : 1 } 
+      responseData.parents = {
+        data: parents,
+        pagination: {
+          total: totalParents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalParents / limit) : 1,
+        },
       };
-    } else if (Object.keys(studentQuery).length > 2 || Object.keys(parentQuery).length > 2) {
+    } else if (
+      Object.keys(studentQuery).length > 2 ||
+      Object.keys(parentQuery).length > 2
+    ) {
       // Fetch all students and parents with pagination if specific filters are applied
-      const students = await NewStudentModel.find(studentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
+      const students = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.students = { 
-        data: students, 
-        pagination: { total: totalStudents, page: parseInt(page), limit: limit ? parseInt(limit) : null, totalPages: limit ? Math.ceil(totalStudents / limit) : 1 } 
+      responseData.students = {
+        data: students,
+        pagination: {
+          total: totalStudents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
+        },
       };
 
-      const parents = await ParentModel.find(parentQuery).sort(sort).skip(skip).limit(limit ? parseInt(limit) : undefined).lean();
+      const parents = await ParentModel.find(parentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
-      responseData.parents = { 
-        data: parents, 
-        pagination: { total: totalParents, page: parseInt(page), limit: limit ? parseInt(limit) : null, totalPages: limit ? Math.ceil(totalParents / limit) : 1 } 
+      responseData.parents = {
+        data: parents,
+        pagination: {
+          total: totalParents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalParents / limit) : 1,
+        },
       };
     } else {
       // Default case: Fetch all students and parents without pagination
-      const students = await NewStudentModel.find({ schoolId, session }).sort(sort).lean();
+      const students = await NewStudentModel.find({ schoolId, session })
+        .sort(sort)
+        .lean();
       const totalStudents = students.length; // No need for countDocuments since we fetch all
       responseData.students = { data: students, total: totalStudents };
 
-      const parents = await ParentModel.find({ schoolId, session }).sort(sort).lean();
+      const parents = await ParentModel.find({ schoolId, session })
+        .sort(sort)
+        .lean();
       const totalParents = parents.length; // No need for countDocuments since we fetch all
       responseData.parents = { data: parents, total: totalParents };
     }
@@ -4189,7 +5355,6 @@ exports.getStudentParent = async (req, res) => {
     });
   }
 };
-
 
 exports.getStudentAndParent = async (req, res) => {
   try {
@@ -4221,7 +5386,11 @@ exports.getStudentAndParent = async (req, res) => {
 
     // Fetch parent data separately using the parentId string
     const parentData = studentData.parentId
-      ? await ParentModel.findOne({ parentId: studentData.parentId, schoolId, session })
+      ? await ParentModel.findOne({
+          parentId: studentData.parentId,
+          schoolId,
+          session,
+        })
       : null;
 
     res.status(200).json({
@@ -4237,7 +5406,6 @@ exports.getStudentAndParent = async (req, res) => {
     });
   }
 };
-
 
 exports.toggleAdmissionStatus = async (req, res) => {
   try {
@@ -4257,12 +5425,17 @@ exports.toggleAdmissionStatus = async (req, res) => {
     if (isNewAdmission === undefined || typeof isNewAdmission !== "boolean") {
       return res.status(400).json({
         success: false,
-        message: "isNewAdmission must be provided as a boolean value (true or false).",
+        message:
+          "isNewAdmission must be provided as a boolean value (true or false).",
       });
     }
 
     // Find the student
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -4276,7 +5449,9 @@ exports.toggleAdmissionStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Student admission status updated to ${isNewAdmission ? "new" : "existing"} successfully.`,
+      message: `Student admission status updated to ${
+        isNewAdmission ? "new" : "existing"
+      } successfully.`,
       student: {
         studentId: student.studentId,
         studentName: student.studentName,
@@ -4293,7 +5468,6 @@ exports.toggleAdmissionStatus = async (req, res) => {
     });
   }
 };
-
 
 exports.toggleStudentParentStatus = async (req, res) => {
   try {
@@ -4316,16 +5490,22 @@ exports.toggleStudentParentStatus = async (req, res) => {
     }
 
     // Find the student
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
     // Toggle student status
-    const newStudentStatus = student.status === "active" ? "deactivated" : "active";
+    const newStudentStatus =
+      student.status === "active" ? "deactivated" : "active";
 
     // Update student
     const updatedStudent = await NewStudentModel.findOneAndUpdate(
@@ -4343,9 +5523,14 @@ exports.toggleStudentParentStatus = async (req, res) => {
     // If student has a parent, toggle parent's status as well
     let updatedParent = null;
     if (student.parentId) {
-      const parent = await ParentModel.findOne({ parentId: student.parentId, schoolId, session });
+      const parent = await ParentModel.findOne({
+        parentId: student.parentId,
+        schoolId,
+        session,
+      });
       if (parent) {
-        const newParentStatus = parent.status === "active" ? "deactivated" : "active";
+        const newParentStatus =
+          parent.status === "active" ? "deactivated" : "active";
         updatedParent = await ParentModel.findOneAndUpdate(
           { parentId: student.parentId, schoolId, session },
           {
@@ -4521,11 +5706,16 @@ exports.approveAdmission = async (req, res) => {
       });
     }
 
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
@@ -4575,7 +5765,12 @@ exports.approveMultipleAdmissions = async (req, res) => {
     }
 
     const result = await NewStudentModel.updateMany(
-      { studentId: { $in: studentIds }, schoolId, session, approvalStatus: "pending" },
+      {
+        studentId: { $in: studentIds },
+        schoolId,
+        session,
+        approvalStatus: "pending",
+      },
       {
         $set: {
           approvalStatus: "approved",
@@ -4713,11 +5908,16 @@ exports.linkStudentToParent = async (req, res) => {
     }
 
     // Find the student using studentId (UUID)
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
@@ -4735,7 +5935,10 @@ exports.linkStudentToParent = async (req, res) => {
     }
 
     // Check if the student is already linked to this parent
-    if (student.parentId && student.parentId.toString() === newParent.parentId.toString()) {
+    if (
+      student.parentId &&
+      student.parentId.toString() === newParent.parentId.toString()
+    ) {
       return res.status(400).json({
         success: false,
         message: "Student is already linked to this parent.",
@@ -4744,7 +5947,11 @@ exports.linkStudentToParent = async (req, res) => {
 
     // If the student was previously linked to another parent, update the old parent's student list
     if (student.parentId) {
-      const oldParent = await ParentModel.findOne({ parentId: student.parentId, schoolId, session });
+      const oldParent = await ParentModel.findOne({
+        parentId: student.parentId,
+        schoolId,
+        session,
+      });
       if (oldParent) {
         oldParent.studentIds = oldParent.studentIds.filter(
           (id) => id.toString() !== student._id.toString()
@@ -5022,14 +6229,27 @@ exports.getDataByAdmissionNumber = async (req, res) => {
       });
     }
 
-    const studentData = await NewStudentModel.findOne({ admissionNumber, schoolId, session });
-    const parentData = await ParentModel.findOne({ admissionNumber, schoolId, session });
-    const feeStatusData = await FeeStatus.findOne({ admissionNumber, schoolId, session });
+    const studentData = await NewStudentModel.findOne({
+      admissionNumber,
+      schoolId,
+      session,
+    });
+    const parentData = await ParentModel.findOne({
+      admissionNumber,
+      schoolId,
+      session,
+    });
+    const feeStatusData = await FeeStatus.findOne({
+      admissionNumber,
+      schoolId,
+      session,
+    });
 
     if (!studentData && !parentData && !feeStatusData) {
       return res.status(404).json({
         success: false,
-        message: "No data found with this admission number for this school and session",
+        message:
+          "No data found with this admission number for this school and session",
       });
     }
 
@@ -5163,9 +6383,6 @@ exports.getParentWithChildren = async (req, res) => {
   }
 };
 
-
-
-
 exports.getAllParentsWithChildren = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
@@ -5272,11 +6489,16 @@ exports.updateParent = async (req, res) => {
       });
     }
 
-    const parentData = await ParentModel.findOne({ parentId, schoolId, session });
+    const parentData = await ParentModel.findOne({
+      parentId,
+      schoolId,
+      session,
+    });
     if (!parentData) {
       return res.status(404).json({
         success: false,
-        message: "Parent not found or does not belong to this school and session.",
+        message:
+          "Parent not found or does not belong to this school and session.",
       });
     }
 
@@ -5285,10 +6507,12 @@ exports.updateParent = async (req, res) => {
 
     if (parentImageFile) {
       if (parentData.parentImage.public_id) {
-        await s3.deleteObject({
-          Bucket: process.env.MINIO_BUCKET,
-          Key: parentData.parentImage.public_id,
-        }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: parentData.parentImage.public_id,
+          })
+          .promise();
       }
       const fileKey = `parents/${Date.now()}-${parentImageFile.originalname}`;
       const params = {
@@ -5307,7 +6531,9 @@ exports.updateParent = async (req, res) => {
       motherName: motherName || parentData.motherName,
       contact: parentContact || parentData.contact,
       email: parentEmail || parentData.email,
-      parentImage: parentImageResult.url ? parentImageResult : parentData.parentImage,
+      parentImage: parentImageResult.url
+        ? parentImageResult
+        : parentData.parentImage,
       updatedBy,
       updatedAt: new Date(),
     };
@@ -5331,7 +6557,6 @@ exports.updateParent = async (req, res) => {
     });
   }
 };
-
 
 exports.deactivateParent = async (req, res) => {
   try {
@@ -5363,7 +6588,8 @@ exports.deactivateParent = async (req, res) => {
     if (!parent) {
       return res.status(404).json({
         success: false,
-        message: "Parent not found or does not belong to this school and session.",
+        message:
+          "Parent not found or does not belong to this school and session.",
       });
     }
 
@@ -5401,7 +6627,8 @@ exports.toggleParentStatus = async (req, res) => {
     if (!parent) {
       return res.status(404).json({
         success: false,
-        message: "Parent not found or does not belong to this school and session.",
+        message:
+          "Parent not found or does not belong to this school and session.",
       });
     }
 
@@ -5434,7 +6661,6 @@ exports.toggleParentStatus = async (req, res) => {
     });
   }
 };
-
 
 exports.getAllParents = async (req, res) => {
   try {
@@ -5479,7 +6705,7 @@ exports.bulkUpdateStudents = async (req, res) => {
       filters, // Filters like class, section, etc.
       updateFields, // Object containing fields to update
     } = req.body;
-    
+
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
@@ -5520,7 +6746,7 @@ exports.bulkUpdateStudents = async (req, res) => {
     // Check if any students match the query
     const matchingStudents = await NewStudentModel.countDocuments(query);
     console.log("Matching students count:", matchingStudents);
-    
+
     if (matchingStudents === 0) {
       return res.status(404).json({
         success: false,
@@ -5589,7 +6815,7 @@ exports.getAllStudents = async (req, res) => {
     // Ensure req.sessionFilter is properly set to filter based on session-specific data
     console.log("Session Filter:", req.sessionFilter);
     console.log("SchoolId:", req.user.schoolId);
-    
+
     // Construct the filter
     const filter = {
       ...(email ? { email: email } : {}),
@@ -5602,9 +6828,9 @@ exports.getAllStudents = async (req, res) => {
 
     // Find all students with the constructed filter
     const allStudent = await NewStudentModel.find({
-      schoolId: req.user.schoolId,  // Filter by schoolId from the authenticated user
-      status: "active",  // Only active students
-      ...filter,  // Apply the additional filters (including session-based ones)
+      schoolId: req.user.schoolId, // Filter by schoolId from the authenticated user
+      status: "active", // Only active students
+      ...filter, // Apply the additional filters (including session-based ones)
     });
 
     // Send the response
@@ -5639,11 +6865,16 @@ exports.deactivateStudent = async (req, res) => {
       });
     }
 
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
@@ -5689,7 +6920,6 @@ exports.deactivateStudent = async (req, res) => {
   }
 };
 
-
 exports.toggleStudentStatus = async (req, res) => {
   try {
     // Get studentId from URL parameters
@@ -5706,11 +6936,16 @@ exports.toggleStudentStatus = async (req, res) => {
     }
 
     // Find the student based on studentId, schoolId, and session
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
@@ -5743,9 +6978,6 @@ exports.toggleStudentStatus = async (req, res) => {
     });
   }
 };
-
-
-
 
 exports.getDeactivatedStudents = async (req, res) => {
   try {
@@ -5856,11 +7088,16 @@ exports.updateStudent = async (req, res) => {
       });
     }
 
-    const studentData = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const studentData = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!studentData) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
@@ -5869,10 +7106,12 @@ exports.updateStudent = async (req, res) => {
 
     if (studentImageFile) {
       if (studentData.studentImage.public_id) {
-        await s3.deleteObject({
-          Bucket: process.env.MINIO_BUCKET,
-          Key: studentData.studentImage.public_id,
-        }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: studentData.studentImage.public_id,
+          })
+          .promise();
       }
       const fileKey = `students/${Date.now()}-${studentImageFile.originalname}`;
       const params = {
@@ -5889,7 +7128,9 @@ exports.updateStudent = async (req, res) => {
     const updateFields = {
       ...studentFields,
       email: email || studentData.email,
-      studentImage: studentImageResult.url ? studentImageResult : studentData.studentImage,
+      studentImage: studentImageResult.url
+        ? studentImageResult
+        : studentData.studentImage,
       updatedBy,
       updatedAt: new Date(),
     };
@@ -5990,14 +7231,21 @@ exports.deleteStudentsByClass = async (req, res) => {
   }
 };
 
-
-
-
 // LATER TEST DELETE BY CLASSWISE/SCHOOLWISE CODE START
 
 exports.createEmployee = async (req, res) => {
   try {
-    const { email, password, staffName, dateOfBirth, qualification, salary, gender, address, contact } = req.body;
+    const {
+      email,
+      password,
+      staffName,
+      dateOfBirth,
+      qualification,
+      salary,
+      gender,
+      address,
+      contact,
+    } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
@@ -6016,11 +7264,16 @@ exports.createEmployee = async (req, res) => {
       });
     }
 
-    const employeeExist = await EmployeeModel.findOne({ schoolId, session, email });
+    const employeeExist = await EmployeeModel.findOne({
+      schoolId,
+      session,
+      email,
+    });
     if (employeeExist) {
       return res.status(400).json({
         success: false,
-        message: "Employee with this email already exists in this school and session.",
+        message:
+          "Employee with this email already exists in this school and session.",
       });
     }
 
@@ -6028,7 +7281,9 @@ exports.createEmployee = async (req, res) => {
     let employeeImage = null;
     if (req.file) {
       const fileUri = getDataUri(req.file);
-      const uploadedImage = await cloudinary.v2.uploader.upload(fileUri.content);
+      const uploadedImage = await cloudinary.v2.uploader.upload(
+        fileUri.content
+      );
       employeeImage = {
         public_id: uploadedImage.public_id,
         url: uploadedImage.url,
@@ -6050,16 +7305,19 @@ exports.createEmployee = async (req, res) => {
       address,
       contact,
       updatedBy,
-      image: employeeImage,  // Image is optional now, can be null
+      image: employeeImage, // Image is optional now, can be null
     });
 
     await employeeData.save();
 
     // Fetch school details for email branding
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
     const schoolName = schoolDetails?.schoolName || "Your School";
     const schoolImageUrl =
-      schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+      schoolDetails?.image?.url ||
+      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
     const softwareLogoUrl =
       "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
@@ -6147,7 +7405,9 @@ exports.getEmployees = async (req, res) => {
     if (status) query.status = status;
     if (minSalary) query.salary = { $gte: parseFloat(minSalary) };
 
-    const employees = await EmployeeModel.find(query).select("-password").lean();
+    const employees = await EmployeeModel.find(query)
+      .select("-password")
+      .lean();
 
     if (employees.length === 0) {
       return res.status(404).json({
@@ -6226,7 +7486,8 @@ exports.deactivateEmployee = async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: "Employee not found or does not belong to this school and session.",
+        message:
+          "Employee not found or does not belong to this school and session.",
       });
     }
 
@@ -6269,7 +7530,9 @@ exports.updateEmployee = async (req, res) => {
     const file = req.file;
     if (file) {
       const fileUri = getDataUri(file);
-      const employeeImageResult = await cloudinary.v2.uploader.upload(fileUri.content);
+      const employeeImageResult = await cloudinary.v2.uploader.upload(
+        fileUri.content
+      );
       updateData.image = {
         public_id: employeeImageResult.public_id,
         url: employeeImageResult.url,
@@ -6285,7 +7548,8 @@ exports.updateEmployee = async (req, res) => {
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: "Employee not found or does not belong to this school and session.",
+        message:
+          "Employee not found or does not belong to this school and session.",
       });
     }
 
@@ -6326,12 +7590,17 @@ exports.toggleEmployeeStatus = async (req, res) => {
     }
 
     // Find the employee based on the staffId, schoolId, and session
-    const employee = await EmployeeModel.findOne({ staffId, schoolId, session });
+    const employee = await EmployeeModel.findOne({
+      staffId,
+      schoolId,
+      session,
+    });
 
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: "Employee not found or does not belong to this school and session.",
+        message:
+          "Employee not found or does not belong to this school and session.",
       });
     }
 
@@ -6365,7 +7634,6 @@ exports.toggleEmployeeStatus = async (req, res) => {
     });
   }
 };
-
 
 // CLASS CONTROLLERS FOR THE SCHOOL
 
@@ -6581,17 +7849,18 @@ exports.createNotice = async (req, res) => {
     console.log("Request body:", req.body);
     console.log("Request file:", req.file);
     console.log("Request files:", req.files);
-    
+
     const { title, content, class: className, section, role } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
-    
+
     // Check for file in both req.file (single file) and req.files (multiple files)
-    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
-    
+    const file =
+      req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+
     // Validate title and content
-    if (!title || title.trim() === '' || !content || content.trim() === '') {
+    if (!title || title.trim() === "" || !content || content.trim() === "") {
       return res.status(400).json({
         success: false,
         message: "Title and content are required.",
@@ -6709,7 +7978,10 @@ exports.updateNotice = async (req, res) => {
     if (file) {
       const fileDataUri = getDataUri(file);
       noticeFile = await cloudinary.v2.uploader.upload(fileDataUri.content);
-      updateData.file = { public_id: noticeFile.public_id, url: noticeFile.secure_url };
+      updateData.file = {
+        public_id: noticeFile.public_id,
+        url: noticeFile.secure_url,
+      };
     }
 
     const notice = await NoticeModel.findOneAndUpdate(
@@ -6746,7 +8018,11 @@ exports.deleteNotice = async (req, res) => {
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
-    const notice = await NoticeModel.findOneAndDelete({ noticeId, schoolId, session });
+    const notice = await NoticeModel.findOneAndDelete({
+      noticeId,
+      schoolId,
+      session,
+    });
     if (!notice) {
       return res.status(404).json({
         success: false,
@@ -6767,10 +8043,6 @@ exports.deleteNotice = async (req, res) => {
     });
   }
 };
-
-
-
-
 
 exports.promotionOfStudent = async (req, res) => {
   try {
@@ -6966,9 +8238,6 @@ exports.getAllCurriculum = async (req, res) => {
   }
 };
 
-
-
-
 exports.createSyllabus = async (req, res) => {
   try {
     const { className, academicYear } = req.body;
@@ -6976,7 +8245,8 @@ exports.createSyllabus = async (req, res) => {
     const session = req.user.session;
     const updatedBy = req.user._id;
     // Support both single and multiple file uploads
-    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    const file =
+      req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
 
     if (!file) {
       return res.status(400).json({
@@ -6992,7 +8262,7 @@ exports.createSyllabus = async (req, res) => {
       const fileDataUri = getDataUri(file);
       syllabusFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
         resource_type: "auto", // ensures support for PDFs and other file types
-        folder: "syllabi",      // adjust folder name if needed
+        folder: "syllabi", // adjust folder name if needed
       });
       console.log("File uploaded successfully:", syllabusFile.public_id);
     } catch (uploadError) {
@@ -7004,7 +8274,12 @@ exports.createSyllabus = async (req, res) => {
       });
     }
 
-    const existSyllabus = await Curriculum.findOne({ schoolId, session, className, academicYear });
+    const existSyllabus = await Curriculum.findOne({
+      schoolId,
+      session,
+      className,
+      academicYear,
+    });
     if (existSyllabus) {
       return res.status(400).json({
         success: false,
@@ -7037,7 +8312,6 @@ exports.createSyllabus = async (req, res) => {
     });
   }
 };
-
 
 exports.getSyllabuses = async (req, res) => {
   try {
@@ -7082,17 +8356,24 @@ exports.updateSyllabus = async (req, res) => {
     const updatedBy = req.user._id;
     const updateData = req.body;
     // Support both single and multiple file uploads
-    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    const file =
+      req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
 
     if (file) {
       console.log("Processing file:", file.mimetype, file.originalname);
       try {
         const fileDataUri = getDataUri(file);
-        const syllabusFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
-          resource_type: "auto",
-          folder: "syllabi",
-        });
-        updateData.file = { public_id: syllabusFile.public_id, url: syllabusFile.secure_url };
+        const syllabusFile = await cloudinary.v2.uploader.upload(
+          fileDataUri.content,
+          {
+            resource_type: "auto",
+            folder: "syllabi",
+          }
+        );
+        updateData.file = {
+          public_id: syllabusFile.public_id,
+          url: syllabusFile.secure_url,
+        };
       } catch (uploadError) {
         console.error("File upload error:", uploadError);
         return res.status(400).json({
@@ -7131,14 +8412,17 @@ exports.updateSyllabus = async (req, res) => {
   }
 };
 
-
 exports.deleteSyllabus = async (req, res) => {
   try {
     const { syllabusId } = req.params;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
-    const syllabus = await Curriculum.findOneAndDelete({ syllabusId, schoolId, session });
+    const syllabus = await Curriculum.findOneAndDelete({
+      syllabusId,
+      schoolId,
+      session,
+    });
     if (!syllabus) {
       return res.status(404).json({
         success: false,
@@ -7160,17 +8444,16 @@ exports.deleteSyllabus = async (req, res) => {
   }
 };
 
-
-
-
 exports.createTask = async (req, res) => {
   try {
-    const { className, section, title, description, dueDate, subject } = req.body;
+    const { className, section, title, description, dueDate, subject } =
+      req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
     // Support both single and multiple file uploads
-    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    const file =
+      req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
 
     if (!file) {
       return res.status(400).json({
@@ -7197,11 +8480,18 @@ exports.createTask = async (req, res) => {
       });
     }
 
-    const existTask = await Assignment.findOne({ schoolId, session, className, section, title });
+    const existTask = await Assignment.findOne({
+      schoolId,
+      session,
+      className,
+      section,
+      title,
+    });
     if (existTask) {
       return res.status(400).json({
         success: false,
-        message: "Task with this title for this class and section already exists.",
+        message:
+          "Task with this title for this class and section already exists.",
       });
     }
 
@@ -7234,7 +8524,6 @@ exports.createTask = async (req, res) => {
     });
   }
 };
-
 
 exports.getTasks = async (req, res) => {
   try {
@@ -7281,17 +8570,24 @@ exports.updateTask = async (req, res) => {
     const updatedBy = req.user._id;
     const updateData = req.body;
     // Support both single and multiple file uploads
-    const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
+    const file =
+      req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
 
     if (file) {
       console.log("Processing file:", file.mimetype, file.originalname);
       try {
         const fileDataUri = getDataUri(file);
-        const taskFile = await cloudinary.v2.uploader.upload(fileDataUri.content, {
-          resource_type: "auto",
-          folder: "tasks",
-        });
-        updateData.file = { public_id: taskFile.public_id, url: taskFile.secure_url };
+        const taskFile = await cloudinary.v2.uploader.upload(
+          fileDataUri.content,
+          {
+            resource_type: "auto",
+            folder: "tasks",
+          }
+        );
+        updateData.file = {
+          public_id: taskFile.public_id,
+          url: taskFile.secure_url,
+        };
       } catch (uploadError) {
         console.error("File upload error:", uploadError);
         return res.status(400).json({
@@ -7330,14 +8626,17 @@ exports.updateTask = async (req, res) => {
   }
 };
 
-
 exports.deleteTask = async (req, res) => {
   try {
     const { taskId } = req.params;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
 
-    const task = await Assignment.findOneAndDelete({ taskId, schoolId, session });
+    const task = await Assignment.findOneAndDelete({
+      taskId,
+      schoolId,
+      session,
+    });
     if (!task) {
       return res.status(404).json({
         success: false,
@@ -7358,9 +8657,6 @@ exports.deleteTask = async (req, res) => {
     });
   }
 };
-
-
-
 
 exports.createAssignment = async (req, res) => {
   try {
@@ -7553,15 +8849,21 @@ exports.issueBook = async (req, res) => {
     if (!book) {
       return res.status(404).json({
         success: false,
-        message: "Book not found or does not belong to this school and session.",
+        message:
+          "Book not found or does not belong to this school and session.",
       });
     }
 
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: "Student not found or does not belong to this school and session.",
+        message:
+          "Student not found or does not belong to this school and session.",
       });
     }
 
@@ -7639,7 +8941,8 @@ exports.returnBook = async (req, res) => {
     if (!issueRecord) {
       return res.status(404).json({
         success: false,
-        message: "Issue record not found or does not belong to this school and session.",
+        message:
+          "Issue record not found or does not belong to this school and session.",
       });
     }
 
@@ -7656,7 +8959,11 @@ exports.returnBook = async (req, res) => {
     issueRecord.updatedAt = new Date();
     await issueRecord.save();
 
-    const book = await BookModel.findOne({ bookId: issueRecord.bookId, schoolId, session });
+    const book = await BookModel.findOne({
+      bookId: issueRecord.bookId,
+      schoolId,
+      session,
+    });
     if (book) {
       book.quantity += 1;
       await book.save();
@@ -7734,8 +9041,6 @@ exports.getAllIssuedBookStudent = async (req, res) => {
   }
 };
 
-
-
 exports.getMyKids = async (req, res) => {
   try {
     if (req.user.role !== "parent") {
@@ -7792,7 +9097,17 @@ exports.createAdminExam = async (req, res) => {
       });
     }
 
-    const { name, examType, className, section, subjects, startDate, endDate, resultPublishDate, gradeSystem } = req.body;
+    const {
+      name,
+      examType,
+      className,
+      section,
+      subjects,
+      startDate,
+      endDate,
+      resultPublishDate,
+      gradeSystem,
+    } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const createdBy = req.user._id;
@@ -8410,9 +9725,13 @@ exports.bulkUploadAdminMarks = async (req, res) => {
         });
 
         const validatedMarks = studentData.marks.map((m) => {
-          const examSubject = exam.subjects.find((s) => s.name === m.subjectName);
-          if (!examSubject) throw new Error(`Subject ${m.subjectName} not found in exam.`);
-          if (m.marks > examSubject.totalMarks) throw new Error(`Marks exceed total for ${m.subjectName}.`);
+          const examSubject = exam.subjects.find(
+            (s) => s.name === m.subjectName
+          );
+          if (!examSubject)
+            throw new Error(`Subject ${m.subjectName} not found in exam.`);
+          if (m.marks > examSubject.totalMarks)
+            throw new Error(`Marks exceed total for ${m.subjectName}.`);
           return {
             subjectName: m.subjectName,
             marks: m.marks,

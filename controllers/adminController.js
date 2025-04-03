@@ -3365,8 +3365,18 @@ exports.createParentOnly = async (req, res) => {
 const parseDate = (dateString) => {
   if (!dateString || typeof dateString !== "string") return null;
   const [day, month, year] = dateString.split("/");
-  // Months in JavaScript Date are 0-based (0-11), so subtract 1 from month
   return new Date(`${year}-${month}-${day}`);
+};
+
+// Utility function to generate unique email
+const generateUniqueEmail = async (base, schoolId, model, suffix) => {
+  let email = `${base.replace(/\s+/g, "").toLowerCase()}${suffix}`;
+  let counter = 1;
+  while (await model.findOne({ email, schoolId })) {
+    email = `${base.replace(/\s+/g, "").toLowerCase()}${counter}${suffix}`;
+    counter++;
+  }
+  return email;
 };
 
 // Existing createStudentParent (Unchanged except for minor refactoring)
@@ -3874,7 +3884,6 @@ exports.createStudentParent = async (req, res) => {
 // Updated createBulkStudentParent
 exports.createBulkStudentParent = async (req, res) => {
   try {
-    // Validate request format
     if (!req.body || !req.body.students || !Array.isArray(req.body.students)) {
       return res
         .status(400)
@@ -3886,10 +3895,9 @@ exports.createBulkStudentParent = async (req, res) => {
     const session = req.user.session;
     const createdBy = req.user._id;
     const createdStudents = [];
-    const generatedParents = []; // Array to store generated parent credentials
+    const generatedCredentials = []; // Store both student and parent credentials
     const errors = [];
 
-    // Check for required authentication fields
     if (!schoolId || !session || !createdBy) {
       return res.status(400).json({
         success: false,
@@ -3900,8 +3908,7 @@ exports.createBulkStudentParent = async (req, res) => {
     for (const student of studentsData) {
       const {
         studentFullName,
-        studentEmail,
-        studentPassword,
+        studentEmail: providedStudentEmail,
         studentDateOfBirth,
         studentGender,
         studentJoiningDate,
@@ -3916,8 +3923,7 @@ exports.createBulkStudentParent = async (req, res) => {
         guardianName,
         remarks,
         transport,
-        parentEmail,
-        parentPassword,
+        parentEmail: providedParentEmail,
         parentContact,
         parentIncome,
         parentQualification,
@@ -3929,79 +3935,35 @@ exports.createBulkStudentParent = async (req, res) => {
         city,
         admissionNumber,
         parentAdmissionNumber,
-        stu_id,
-        class: studentUdiseClass,
-        section: studentUdiseSection,
-        roll_no,
-        student_name,
-        gender: studentUdiseGender,
-        DOB,
-        mother_name,
-        father_name: udiseFatherName,
-        guardian_name: udiseGuardianName,
-        aadhar_no,
-        aadhar_name,
-        paddress,
-        pincode: udisePlusPincode,
-        mobile_no,
-        alt_mobile_no,
-        email_id,
-        mothere_tougue,
-        category,
-        minority,
-        is_bpl,
-        is_aay,
-        ews_aged_group,
-        is_cwsn,
-        cwsn_imp_type,
-        ind_national,
-        mainstramed_child,
-        adm_no,
-        adm_date,
-        stu_stream,
-        pre_year_schl_status,
-        pre_year_class,
-        stu_ward,
-        pre_class_exam_app,
-        result_pre_exam,
-        perc_pre_class,
-        att_pre_class,
-        fac_free_uniform,
-        fac_free_textbook,
-        received_central_scholarship,
-        name_central_scholarship,
-        received_state_scholarship,
-        received_other_scholarship,
-        scholarship_amount,
-        fac_provided_cwsn,
-        SLD_type,
-        aut_spec_disorder,
-        ADHD,
-        inv_ext_curr_activity,
-        vocational_course,
-        trade_sector_id,
-        job_role_id,
-        pre_app_exam_vocationalsubject,
-        bpl_card_no,
-        ann_card_no,
       } = student;
 
       try {
-        // Validate required student fields only
+        // Required fields validation
         if (
           !studentFullName ||
-          !studentEmail ||
-          !studentPassword ||
           !fatherName ||
           !studentJoiningDate ||
           !studentClass
         ) {
-          throw new Error("Required student fields are missing.");
+          throw new Error(
+            "Required fields (studentFullName, fatherName, studentJoiningDate, studentClass) are missing."
+          );
         }
 
-        // Check for existing student with case-insensitive email
+        // Generate or use student email
+        const studentEmail =
+          providedStudentEmail && providedStudentEmail.trim()
+            ? providedStudentEmail
+            : await generateUniqueEmail(
+                studentFullName,
+                schoolId,
+                NewStudentModel,
+                "@dvs.com"
+              );
+
+        // Check for existing student
         const studentExist = await NewStudentModel.findOne({
-          email: { $regex: new RegExp(`^${studentEmail}$`, "i") }, // Case-insensitive match
+          email: studentEmail,
           schoolId,
           session,
         });
@@ -4011,16 +3973,17 @@ exports.createBulkStudentParent = async (req, res) => {
           );
         }
 
-        // Hash student password
+        // Default student password
+        const studentPassword = "dvs@student";
         const studentHashPassword = await hashPassword(studentPassword);
 
-        // Generate student admission number if not provided
+        // Generate admission number if not provided
         const studentAdmissionNumberToUse =
-          admissionNumber && admissionNumber.trim() !== ""
+          admissionNumber && admissionNumber.trim()
             ? admissionNumber
             : await generateAdmissionNumber(schoolId, NewStudentModel);
 
-        // Parse dateOfBirth if provided in DD/MM/YYYY format
+        // Parse dateOfBirth
         const parsedDateOfBirth = studentDateOfBirth
           ? parseDate(studentDateOfBirth)
           : null;
@@ -4030,7 +3993,7 @@ exports.createBulkStudentParent = async (req, res) => {
           );
         }
 
-        // Create student document
+        // Create student
         const studentData = await NewStudentModel.create({
           schoolId,
           session,
@@ -4057,7 +4020,7 @@ exports.createBulkStudentParent = async (req, res) => {
           transport,
           section: studentSection,
           country: studentCountry,
-          subject: studentSubject,
+          subject: studentSubject || [],
           admissionNumber: studentAdmissionNumberToUse,
           religion,
           caste,
@@ -4069,66 +4032,8 @@ exports.createBulkStudentParent = async (req, res) => {
           approvalStatus: "approved",
           assignedThirdParty: null,
           isNewAdmission: true,
-          udisePlusDetails: {
-            stu_id,
-            class: studentUdiseClass,
-            section: studentUdiseSection,
-            roll_no,
-            student_name,
-            gender: studentUdiseGender,
-            DOB,
-            mother_name,
-            father_name: udiseFatherName,
-            guardian_name: udiseGuardianName,
-            aadhar_no,
-            aadhar_name,
-            paddress,
-            pincode: udisePlusPincode,
-            mobile_no,
-            alt_mobile_no,
-            email_id,
-            mothere_tougue,
-            category,
-            minority,
-            is_bpl,
-            is_aay,
-            ews_aged_group,
-            is_cwsn,
-            cwsn_imp_type,
-            ind_national,
-            mainstramed_child,
-            adm_no,
-            adm_date,
-            stu_stream,
-            pre_year_schl_status,
-            pre_year_class,
-            stu_ward,
-            pre_class_exam_app,
-            result_pre_exam,
-            perc_pre_class,
-            att_pre_class,
-            fac_free_uniform,
-            fac_free_textbook,
-            received_central_scholarship,
-            name_central_scholarship,
-            received_state_scholarship,
-            received_other_scholarship,
-            scholarship_amount,
-            fac_provided_cwsn,
-            SLD_type,
-            aut_spec_disorder,
-            ADHD,
-            inv_ext_curr_activity,
-            vocational_course,
-            trade_sector_id,
-            job_role_id,
-            pre_app_exam_vocationalsubject,
-            bpl_card_no,
-            ann_card_no,
-          },
         });
 
-        // Handle parent creation or linking
         let parentData = null;
 
         if (parentAdmissionNumber) {
@@ -4150,126 +4055,104 @@ exports.createBulkStudentParent = async (req, res) => {
               $addToSet: { studentNames: studentFullName },
             }
           );
-        } else if (parentEmail) {
-          // Check if parent already exists with provided email
-          const parentExist = await ParentModel.findOne({
-            email: { $regex: new RegExp(`^${parentEmail}$`, "i") }, // Case-insensitive match
-            schoolId,
-            session,
-          });
-          if (parentExist) {
-            throw new Error(`Parent with email ${parentEmail} already exists.`);
-          }
-          // Hash provided parent password
-          const parentHashPassword = await hashPassword(parentPassword);
-          // Process income if provided with '$'
-          let processedIncome = parentIncome;
-          if (
-            typeof parentIncome === "string" &&
-            parentIncome.startsWith("$")
-          ) {
-            processedIncome = Number(parentIncome.replace(/[$,]/g, ""));
-          }
-          // Create new parent with provided details
-          parentData = await ParentModel.create({
-            schoolId,
-            session,
-            studentIds: [studentData.studentId],
-            studentNames: [studentFullName],
-            fatherName,
-            motherName,
-            guardianName,
-            email: parentEmail,
-            password: parentHashPassword,
-            contact: parentContact,
-            admissionNumber: await generateAdmissionNumber(
-              schoolId,
-              ParentModel
-            ),
-            income: processedIncome,
-            qualification: parentQualification,
-            createdBy,
-          });
-          // Send email with credentials to provided parent email
-          const parentEmailContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Parent Account Created</title>
-            </head>
-            <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
-                    <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">Welcome, Parent!</h1>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 30px; background-color: #ffffff;">
-                    <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Your Credentials</h2>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${parentEmail}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${parentPassword}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Parent ID:</strong> ${parentData.parentId}</p>
-                  </td>
-                </tr>
-              </table>
-            </body>
-            </html>
-          `;
-          await sendEmail(
-            parentEmail,
-            "Parent Login Credentials",
-            parentEmailContent
-          );
         } else {
-          // Generate parent email and password if not provided
-          const generatedEmail = `parent${crypto
-            .randomBytes(8)
-            .toString("hex")}@email.com`;
-          const generatedPassword = crypto.randomBytes(8).toString("hex");
-          const parentHashPassword = await hashPassword(generatedPassword);
-          // Process income if provided with '$'
-          let processedIncome = parentIncome;
-          if (
-            typeof parentIncome === "string" &&
-            parentIncome.startsWith("$")
-          ) {
-            processedIncome = Number(parentIncome.replace(/[$,]/g, ""));
-          }
-          // Create new parent with generated credentials
-          parentData = await ParentModel.create({
+          // Generate or use parent email
+          const parentEmailBase =
+            parentContact && parentContact.trim()
+              ? `${fatherName}${parentContact}`
+              : fatherName;
+          const parentEmail =
+            providedParentEmail && providedParentEmail.trim()
+              ? providedParentEmail
+              : await generateUniqueEmail(
+                  parentEmailBase,
+                  schoolId,
+                  ParentModel,
+                  "@dvs.com"
+                );
+
+          // Check for existing parent
+          parentData = await ParentModel.findOne({
+            email: parentEmail,
             schoolId,
             session,
-            studentIds: [studentData.studentId],
-            studentNames: [studentFullName],
-            fatherName,
-            motherName,
-            guardianName,
-            email: generatedEmail,
-            password: parentHashPassword,
-            contact: parentContact,
-            admissionNumber: await generateAdmissionNumber(
-              schoolId,
-              ParentModel
-            ),
-            income: processedIncome,
-            qualification: parentQualification,
-            createdBy,
           });
-          // Collect generated credentials for response (no email sent)
-          generatedParents.push({
+
+          if (!parentData) {
+            // Default parent password
+            const parentPassword = "dvs@parent";
+            const parentHashPassword = await hashPassword(parentPassword);
+
+            // Process income
+            let processedIncome = parentIncome;
+            if (
+              typeof parentIncome === "string" &&
+              parentIncome.startsWith("$")
+            ) {
+              processedIncome = Number(parentIncome.replace(/[$,]/g, ""));
+            }
+
+            // Create new parent
+            parentData = await ParentModel.create({
+              schoolId,
+              session,
+              studentIds: [studentData.studentId],
+              studentNames: [studentFullName],
+              fatherName,
+              motherName,
+              guardianName,
+              email: parentEmail,
+              password: parentHashPassword,
+              contact: parentContact,
+              admissionNumber: await generateAdmissionNumber(
+                schoolId,
+                ParentModel
+              ),
+              income: processedIncome,
+              qualification: parentQualification,
+              createdBy,
+            });
+
+            // Send parent email
+            const parentEmailContent = `
+              <!DOCTYPE html>
+              <html>
+              <body>
+                <h1>Welcome, Parent!</h1>
+                <p>Email: ${parentEmail}</p>
+                <p>Password: ${parentPassword}</p>
+                <p>Parent ID: ${parentData.parentId}</p>
+              </body>
+              </html>
+            `;
+            await sendEmail(
+              parentEmail,
+              "Parent Login Credentials",
+              parentEmailContent
+            );
+          } else {
+            // Link to existing parent
+            await ParentModel.updateOne(
+              { _id: parentData._id },
+              {
+                $push: { studentIds: studentData.studentId },
+                $addToSet: { studentNames: studentFullName },
+              }
+            );
+          }
+
+          // Collect credentials
+          generatedCredentials.push({
+            studentName: studentFullName,
             studentEmail,
-            parentEmail: generatedEmail,
-            parentPassword: generatedPassword,
+            studentPassword,
+            parentEmail,
+            parentPassword: "dvs@parent",
             parentId: parentData.parentId,
-            fatherName,
-            motherName,
           });
         }
 
-        // Update student with parent information
+        // Update student with parent info
         if (parentData) {
           await NewStudentModel.updateOne(
             { _id: studentData._id },
@@ -4280,7 +4163,7 @@ exports.createBulkStudentParent = async (req, res) => {
           );
         }
 
-        // Send student admission confirmation email
+        // Send student email
         const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
           "schoolName image.url"
         );
@@ -4288,56 +4171,15 @@ exports.createBulkStudentParent = async (req, res) => {
         const schoolImageUrl =
           schoolDetails?.image?.url ||
           "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-        const softwareLogoUrl =
-          "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
-
         const studentEmailContent = `
           <!DOCTYPE html>
           <html>
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Admission Confirmation</title>
-          </head>
-          <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-              <tr>
-                <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
-                  <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
-                  <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
-                  <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your Learning Journey!</p>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 30px; background-color: #ffffff;">
-                  <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
-                  <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
-                  <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
-                    <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${
-                      studentData.studentId
-                    }</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
-                  </div>
-                  <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Get ready for an amazing adventure with us! Your journey starts on ${studentJoiningDate}.</p>
-                </td>
-              </tr>
-              <tr>
-                <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
-                  <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
-                  <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
-                  <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
-                  <p style="margin: 5px 0; font-size: 12px; color: #000000;">
-                    Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> |
-                    <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
-                  </p>
-                  <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
-                </td>
-              </tr>
-            </table>
+          <body>
+            <h1>Welcome to ${schoolName}!</h1>
+            <p>Hello, ${studentFullName}!</p>
+            <p>Email: ${studentEmail}</p>
+            <p>Password: ${studentPassword}</p>
+            <p>Student ID: ${studentData.studentId}</p>
           </body>
           </html>
         `;
@@ -4350,19 +4192,18 @@ exports.createBulkStudentParent = async (req, res) => {
         createdStudents.push(studentData);
       } catch (error) {
         errors.push({
-          studentEmail: studentEmail || "unknown",
+          studentEmail: providedStudentEmail || "unknown",
           error: error.message,
         });
       }
     }
 
-    // Return response with created students, generated parents, and errors
     res.status(201).json({
       success: true,
       message:
         "Bulk student and parent creation process completed successfully.",
       createdStudents,
-      generatedParents,
+      generatedCredentials,
       errors: errors.length > 0 ? errors : [],
     });
   } catch (error) {

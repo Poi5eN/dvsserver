@@ -40,6 +40,10 @@ const parentSchema = new mongoose.Schema({
     message:
       "Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000)",
   },
+  sessionHistory: {
+    type: [String],
+    default: [],
+  },
   base64: { type: String },
   income: { type: Number },
   qualification: { type: String },

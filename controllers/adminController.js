@@ -3886,9 +3886,10 @@ exports.createStudentParent = async (req, res) => {
   }
 };
 
-// Updated createBulkStudentParent function
+// Updated createBulkStudentParent
 exports.createBulkStudentParent = async (req, res) => {
   try {
+    // Validate request format
     if (!req.body || !req.body.students || !Array.isArray(req.body.students)) {
       return res
         .status(400)
@@ -3900,8 +3901,10 @@ exports.createBulkStudentParent = async (req, res) => {
     const session = req.user.session;
     const createdBy = req.user._id;
     const createdStudents = [];
+    const generatedParents = []; // Array to store generated parent credentials
     const errors = [];
 
+    // Check for required authentication fields
     if (!schoolId || !session || !createdBy) {
       return res
         .status(400)
@@ -4001,66 +4004,40 @@ exports.createBulkStudentParent = async (req, res) => {
       } = student;
 
       try {
-        // Validate required fields
+        // Validate required student fields only
         if (
           !studentFullName ||
           !studentEmail ||
           !studentPassword ||
           !fatherName ||
           !studentJoiningDate ||
-          !studentClass ||
-          (!parentEmail && !parentAdmissionNumber) ||
-          (!parentPassword && !parentAdmissionNumber)
+          !studentClass
         ) {
-          throw new Error("Required fields are missing.");
+          throw new Error("Required student fields are missing.");
         }
 
-        // Check for existing student email
+        // Check for existing student
         const studentExist = await NewStudentModel.findOne({
           email: studentEmail,
           schoolId,
+          session,
         });
-
         if (studentExist) {
           throw new Error(
             `Student with email ${studentEmail} already exists in this school.`
           );
         }
 
-        // Check for existing parent
-        const parentExist = parentAdmissionNumber
-          ? await ParentModel.findOne({
-              admissionNumber: parentAdmissionNumber,
-              schoolId,
-              session,
-            })
-          : parentEmail
-          ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
-          : null;
-
-        if (parentAdmissionNumber && !parentExist) {
-          throw new Error(
-            `Parent with admission number ${parentAdmissionNumber} does not exist.`
-          );
-        }
-
-        if (!parentAdmissionNumber && parentEmail && parentExist) {
-          throw new Error(`Parent with email ${parentEmail} already exists.`);
-        }
-
-        // Hash passwords
+        // Hash student password
         const studentHashPassword = await hashPassword(studentPassword);
-        const parentHashPassword = parentPassword
-          ? await hashPassword(parentPassword)
-          : undefined;
 
-        // Generate admission number if not provided
+        // Generate student admission number if not provided
         const studentAdmissionNumberToUse =
           admissionNumber && admissionNumber.trim() !== ""
             ? admissionNumber
             : await generateAdmissionNumber(schoolId, NewStudentModel);
 
-        // Create the student document
+        // Create student document
         const studentData = await NewStudentModel.create({
           schoolId,
           session,
@@ -4158,20 +4135,41 @@ exports.createBulkStudentParent = async (req, res) => {
           },
         });
 
-        // Process parent information
+        // Handle parent creation or linking
         let parentData = null;
+
         if (parentAdmissionNumber) {
-          // Link existing parent to this student
-          parentData = await ParentModel.findOneAndUpdate(
-            { admissionNumber: parentAdmissionNumber, schoolId, session },
+          // Link to existing parent
+          parentData = await ParentModel.findOne({
+            admissionNumber: parentAdmissionNumber,
+            schoolId,
+            session,
+          });
+          if (!parentData) {
+            throw new Error(
+              `Parent with admission number ${parentAdmissionNumber} does not exist.`
+            );
+          }
+          await ParentModel.updateOne(
+            { _id: parentData._id },
             {
               $push: { studentIds: studentData.studentId },
               $addToSet: { studentNames: studentFullName },
-            },
-            { new: true }
+            }
           );
-        } else if (parentEmail && parentPassword) {
-          // Process income - remove dollar sign and convert to number
+        } else if (parentEmail) {
+          // Check if parent already exists with provided email
+          const parentExist = await ParentModel.findOne({
+            email: parentEmail,
+            schoolId,
+            session,
+          });
+          if (parentExist) {
+            throw new Error(`Parent with email ${parentEmail} already exists.`);
+          }
+          // Hash provided parent password
+          const parentHashPassword = await hashPassword(parentPassword);
+          // Process income if provided with '$'
           let processedIncome = parentIncome;
           if (
             typeof parentIncome === "string" &&
@@ -4179,8 +4177,7 @@ exports.createBulkStudentParent = async (req, res) => {
           ) {
             processedIncome = Number(parentIncome.replace(/[$,]/g, ""));
           }
-
-          // Create new parent
+          // Create new parent with provided details
           parentData = await ParentModel.create({
             schoolId,
             session,
@@ -4192,16 +4189,12 @@ exports.createBulkStudentParent = async (req, res) => {
             email: parentEmail,
             password: parentHashPassword,
             contact: parentContact,
-            admissionNumber: await generateAdmissionNumber(
-              schoolId,
-              ParentModel
-            ),
+            admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
             income: processedIncome,
             qualification: parentQualification,
             createdBy,
           });
-
-          // Send email to parent
+          // Send email with credentials to provided parent email
           const parentEmailContent = `
             <!DOCTYPE html>
             <html>
@@ -4229,25 +4222,64 @@ exports.createBulkStudentParent = async (req, res) => {
             </body>
             </html>
           `;
-
           await sendEmail(
             parentEmail,
             "Parent Login Credentials",
             parentEmailContent
           );
+        } else {
+          // Generate parent email and password if not provided
+          const generatedEmail = `parent${crypto.randomBytes(8).toString('hex')}@email.com`;
+          const generatedPassword = crypto.randomBytes(8).toString('hex');
+          const parentHashPassword = await hashPassword(generatedPassword);
+          // Process income if provided with '$'
+          let processedIncome = parentIncome;
+          if (
+            typeof parentIncome === "string" &&
+            parentIncome.startsWith("$")
+          ) {
+            processedIncome = Number(parentIncome.replace(/[$,]/g, ""));
+          }
+          // Create new parent with generated credentials
+          parentData = await ParentModel.create({
+            schoolId,
+            session,
+            studentIds: [studentData.studentId],
+            studentNames: [studentFullName],
+            fatherName,
+            motherName,
+            guardianName,
+            email: generatedEmail,
+            password: parentHashPassword,
+            contact: parentContact,
+            admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
+            income: processedIncome,
+            qualification: parentQualification,
+            createdBy,
+          });
+          // Collect generated credentials for response (no email sent)
+          generatedParents.push({
+            studentEmail,
+            parentEmail: generatedEmail,
+            parentPassword: generatedPassword,
+            parentId: parentData.parentId,
+            fatherName,
+            motherName,
+          });
         }
 
         // Update student with parent information
         if (parentData) {
-          await NewStudentModel.findByIdAndUpdate(studentData._id, {
-            parentId:
-              parentData.parentId || (parentExist && parentExist.parentId),
-            parentAdmissionNumber:
-              parentAdmissionNumber || parentData.admissionNumber,
-          });
+          await NewStudentModel.updateOne(
+            { _id: studentData._id },
+            {
+              parentId: parentData.parentId,
+              parentAdmissionNumber: parentData.admissionNumber,
+            }
+          );
         }
 
-        // Generate and send student email
+        // Send student admission confirmation email
         const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
           "schoolName image.url"
         );
@@ -4278,13 +4310,11 @@ exports.createBulkStudentParent = async (req, res) => {
               <tr>
                 <td style="padding: 30px; background-color: #ffffff;">
                   <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
-                  <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We're thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
+                  <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
                   <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                     <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                    <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${
-                      studentData.studentId
-                    }</p>
+                    <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData.studentId}</p>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                     <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
@@ -4308,12 +4338,12 @@ exports.createBulkStudentParent = async (req, res) => {
           </body>
           </html>
         `;
-
         await sendEmail(
           studentEmail,
           "Admission Confirmation",
           studentEmailContent
         );
+
         createdStudents.push(studentData);
       } catch (error) {
         errors.push({
@@ -4323,11 +4353,12 @@ exports.createBulkStudentParent = async (req, res) => {
       }
     }
 
+    // Return response with created students, generated parents, and errors
     res.status(201).json({
       success: true,
-      message:
-        "Bulk student and parent creation process completed successfully.",
+      message: "Bulk student and parent creation process completed successfully.",
       createdStudents,
+      generatedParents,
       errors: errors.length > 0 ? errors : [],
     });
   } catch (error) {
@@ -8044,6 +8075,23 @@ exports.deleteNotice = async (req, res) => {
   }
 };
 
+// Helper function to compute next session from a session string like "2024-2025"
+function getNextSession(currentSession) {
+  // Expecting format "YYYY-YYYY"
+  const parts = currentSession.split('-');
+  if (parts.length !== 2) {
+    throw new Error("Invalid session format");
+  }
+  const startYear = parseInt(parts[0], 10);
+  const endYear = parseInt(parts[1], 10);
+  if (isNaN(startYear) || isNaN(endYear)) {
+    throw new Error("Invalid session numbers");
+  }
+  const newStart = startYear + 1;
+  const newEnd = endYear + 1;
+  return `${newStart}-${newEnd}`;
+}
+
 exports.promotionOfStudent = async (req, res) => {
   try {
     const { students, promotedClass, promotedSection } = req.body;
@@ -8054,25 +8102,53 @@ exports.promotionOfStudent = async (req, res) => {
         message: "Missing Parameters",
       });
     }
+    
+    // Use a Set to avoid updating the same parent multiple times
+    let parentIds = new Set();
 
-    for (const student of students) {
-      const updatedStudent = await NewStudentModel.findByIdAndUpdate(
-        student,
-        {
-          class: promotedClass,
-          section: promotedSection,
-        },
-        { new: true }
-      );
-
-      if (!updatedStudent) {
+    // Update each student record
+    for (const studentId of students) {
+      // Fetch the student document
+      const student = await NewStudentModel.findById(studentId);
+      if (!student) {
         return res.status(404).json({
           success: false,
-          message: `Student Id ${student._id} is not found`,
+          message: `Student Id ${studentId} not found`,
         });
+      }
+      
+      // Calculate next session for the student
+      const currentSession = student.session;
+      const nextSession = getNextSession(currentSession);
+      
+      // Save current session in history
+      student.sessionHistory = student.sessionHistory || [];
+      student.sessionHistory.push(currentSession);
+      
+      // Update student's session, class, and section
+      student.session = nextSession;
+      student.class = promotedClass;
+      student.section = promotedSection;
+      
+      await student.save();
+      
+      // Collect the parent's id if it exists
+      if (student.parentId) {
+        parentIds.add(student.parentId);
       }
     }
 
+    // Update each parent record once using the set of distinct parentIds
+    for (const parentId of parentIds) {
+      const parent = await ParentModel.findOne({ parentId });
+      if (parent) {
+        parent.sessionHistory = parent.sessionHistory || [];
+        parent.sessionHistory.push(parent.session);
+        parent.session = getNextSession(parent.session);
+        await parent.save();
+      }
+    }
+    
     res.status(200).json({
       success: true,
       message: "Selected Student is Promoted Successfully",
@@ -8085,6 +8161,7 @@ exports.promotionOfStudent = async (req, res) => {
     });
   }
 };
+
 
 exports.createCurriculum = async (req, res) => {
   try {

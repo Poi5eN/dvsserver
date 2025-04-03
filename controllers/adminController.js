@@ -3910,7 +3910,7 @@ exports.createBulkStudentParent = async (req, res) => {
     }
 
     for (const student of studentsData) {
-      let finalStudentEmail = null; // Declare outside try block
+      let finalStudentEmail = null;
 
       try {
         const {
@@ -3933,6 +3933,7 @@ exports.createBulkStudentParent = async (req, res) => {
           pincode,
           state,
           city,
+          studentContact, // Add studentContact to destructuring
           admissionNumber,
           parentAdmissionNumber,
           stu_id,
@@ -4035,8 +4036,7 @@ exports.createBulkStudentParent = async (req, res) => {
         // Parse and handle dates
         let parsedJoiningDate;
         if (typeof studentJoiningDate === "number") {
-          // Convert Excel serial date to Date object
-          const excelEpoch = new Date(1899, 11, 30); // Excel epoch starts Dec 30, 1899
+          const excelEpoch = new Date(1899, 11, 30);
           parsedJoiningDate = new Date(
             excelEpoch.getTime() + studentJoiningDate * 86400000
           );
@@ -4054,7 +4054,7 @@ exports.createBulkStudentParent = async (req, res) => {
               `Invalid joiningDate format: ${studentJoiningDate}. Use DD/MM/YYYY.`
             );
           }
-          parsedJoiningDate = studentJoiningDate; // Keep as string since schema expects string
+          parsedJoiningDate = studentJoiningDate;
         }
 
         const parsedDateOfBirth = studentDateOfBirth
@@ -4065,10 +4065,6 @@ exports.createBulkStudentParent = async (req, res) => {
             `Invalid dateOfBirth format: ${studentDateOfBirth}. Use DD/MM/YYYY.`
           );
         }
-        // Temporarily bypass future date validation for testing
-        // if (parsedDateOfBirth && parsedDateOfBirth > new Date()) {
-        //   throw new Error(`Date of birth ${studentDateOfBirth} cannot be in the future.`);
-        // }
 
         // Set passwords
         const studentPassword = "dvs@student";
@@ -4098,7 +4094,7 @@ exports.createBulkStudentParent = async (req, res) => {
           gender: studentGender,
           joiningDate: parsedJoiningDate,
           address: studentAddress,
-          contact: studentContact,
+          contact: studentContact || "", // Fallback to empty string if undefined
           class: studentClass,
           fatherName,
           motherName,
@@ -4289,12 +4285,6 @@ exports.createBulkStudentParent = async (req, res) => {
           "schoolName image.url"
         );
         const schoolName = schoolDetails?.schoolName || "Your School";
-        const schoolImageUrl =
-          schoolDetails?.image?.url ||
-          "https://digitalvidyasaarthi.in/static/media/welcome.jpg";
-        const softwareLogoUrl =
-          "https://digitalvidyasaarthi.in/static/media/digitalvidya.png";
-
         const studentEmailContent = `
           <!DOCTYPE html>
           <html>

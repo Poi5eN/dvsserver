@@ -4,6 +4,7 @@ const Teacher = require("../models/teacherModel");
 const cloudinary = require("cloudinary");
 const getDataUri = require("../utils/dataUri");
 const sendEmail = require("../utils/email");
+const crypto = require("crypto");
 const s3 = require("../config/minio");
 
 const {
@@ -3376,6 +3377,15 @@ exports.createParentOnly = async (req, res) => {
   }
 };
 
+
+// Utility function to parse DD/MM/YYYY date strings
+const parseDate = (dateString) => {
+  if (!dateString || typeof dateString !== 'string') return null;
+  const [day, month, year] = dateString.split('/');
+  // Months in JavaScript Date are 0-based (0-11), so subtract 1 from month
+  return new Date(`${year}-${month}-${day}`);
+};
+
 // Existing createStudentParent (Unchanged except for minor refactoring)
 exports.createStudentParent = async (req, res) => {
   try {
@@ -4016,15 +4026,15 @@ exports.createBulkStudentParent = async (req, res) => {
           throw new Error("Required student fields are missing.");
         }
 
-        // Check for existing student
+        // Check for existing student with case-insensitive email
         const studentExist = await NewStudentModel.findOne({
-          email: studentEmail,
+          email: { $regex: new RegExp(`^${studentEmail}$`, 'i') }, // Case-insensitive match
           schoolId,
           session,
         });
         if (studentExist) {
           throw new Error(
-            `Student with email ${studentEmail} already exists in this school.`
+            `Student with email ${studentEmail} already exists in this school for this session.`
           );
         }
 
@@ -4037,6 +4047,16 @@ exports.createBulkStudentParent = async (req, res) => {
             ? admissionNumber
             : await generateAdmissionNumber(schoolId, NewStudentModel);
 
+        // Parse dateOfBirth if provided in DD/MM/YYYY format
+        const parsedDateOfBirth = studentDateOfBirth
+          ? parseDate(studentDateOfBirth)
+          : null;
+        if (studentDateOfBirth && !parsedDateOfBirth) {
+          throw new Error(
+            `Invalid dateOfBirth format for ${studentEmail}. Use DD/MM/YYYY.`
+          );
+        }
+
         // Create student document
         const studentData = await NewStudentModel.create({
           schoolId,
@@ -4044,7 +4064,7 @@ exports.createBulkStudentParent = async (req, res) => {
           studentName: studentFullName,
           email: studentEmail,
           password: studentHashPassword,
-          dateOfBirth: studentDateOfBirth,
+          dateOfBirth: parsedDateOfBirth,
           rollNo: (
             (await NewStudentModel.countDocuments({
               schoolId,
@@ -4160,7 +4180,7 @@ exports.createBulkStudentParent = async (req, res) => {
         } else if (parentEmail) {
           // Check if parent already exists with provided email
           const parentExist = await ParentModel.findOne({
-            email: parentEmail,
+            email: { $regex: new RegExp(`^${parentEmail}$`, 'i') }, // Case-insensitive match
             schoolId,
             session,
           });

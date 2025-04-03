@@ -266,11 +266,15 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
     }
-    const totalLateFinesBefore = lateFines.reduce(
+    // Calculate total late fines before payment
+    totalLateFinesBefore = feeStatus.lateFines.reduce(
       (sum, lf) => sum + lf.dueAmount,
       0
     );
 
+    feeStatus.totalLateFines = totalLateFinesBefore;
+
+    // Update total dues before payment
     const totalDuesBefore =
       totalPastDues +
       totalRegularDues +
@@ -337,7 +341,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
       // Pay late fines first
       let paidLateFines = 0;
-      const updatedLateFines = lateFines.map((lf) => {
+      const updatedLateFines = feeStatus.lateFines.map((lf) => {
         const payment = Math.min(remaining, lf.dueAmount);
         const updatedLf = {
           ...lf,
@@ -349,7 +353,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         return updatedLf;
       });
 
-      // Pay past dues (now part of dues)
+      // Pay past dues
       const paidPastDues = Math.min(remaining, totalPastDues);
       remaining -= paidPastDues;
 
@@ -417,7 +421,12 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
 
-      // Update feeStatus.monthlyDues with the updated values
+      // Update feeStatus
+      feeStatus.lateFines = updatedLateFines;
+      feeStatus.totalLateFines = updatedLateFines.reduce(
+        (sum, lf) => sum + lf.dueAmount,
+        0
+      );
       const otherRegularDues = feeStatus.monthlyDues.regularDues.filter(
         (due) => !regularFees.some((r) => r.month === due.month)
       );
@@ -437,26 +446,16 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         ...updatedAdditional,
       ];
 
-      // Update past dues and late fines
       feeStatus.pastDues = Math.max(0, totalPastDues - paidPastDues);
-      feeStatus.totalLateFines = updatedLateFines.reduce(
-        (sum, lf) => sum + lf.dueAmount,
-        0
-      );
-
-      // Calculate total dues
-      const totalRegularDuesAfter = feeStatus.monthlyDues.regularDues.reduce(
-        (sum, d) => sum + d.dueAmount,
-        0
-      );
-      const totalAdditionalDuesAfter =
+      feeStatus.dues =
+        feeStatus.monthlyDues.regularDues.reduce(
+          (sum, d) => sum + d.dueAmount,
+          0
+        ) +
         feeStatus.monthlyDues.additionalDues.reduce(
           (sum, d) => sum + d.dueAmount,
           0
-        );
-      feeStatus.dues =
-        totalRegularDuesAfter +
-        totalAdditionalDuesAfter +
+        ) +
         feeStatus.pastDues +
         feeStatus.totalLateFines;
 
@@ -505,7 +504,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       let paidPastDues = Math.min(pastDuesPaid, totalPastDues);
       remaining -= paidLateFines + paidPastDues;
 
-      const updatedLateFines = lateFines.map((lf) => {
+      const updatedLateFines = feeStatus.lateFines.map((lf) => {
         const payment = Math.min(paidLateFines, lf.dueAmount);
         const updatedLf = {
           ...lf,
@@ -568,8 +567,8 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           );
         }
         const updatedDue = {
-          name: due.name,
-          month: due.month,
+          name: a.name,
+          month: a.month,
           paidAmount: due.paidAmount + paidAmount,
           dueAmount: Math.max(0, due.dueAmount - paidAmount),
           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
@@ -577,7 +576,12 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         updatedAdditional.push(updatedDue);
       });
 
-      // Update feeStatus.monthlyDues for manual mode
+      // Update feeStatus
+      feeStatus.lateFines = updatedLateFines;
+      feeStatus.totalLateFines = updatedLateFines.reduce(
+        (sum, lf) => sum + lf.dueAmount,
+        0
+      );
       const otherRegularDues = feeStatus.monthlyDues.regularDues.filter(
         (due) => !regularFees.some((r) => r.month === due.month)
       );
@@ -598,10 +602,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       ];
 
       feeStatus.pastDues = Math.max(0, totalPastDues - paidPastDues);
-      feeStatus.totalLateFines = updatedLateFines.reduce(
-        (sum, lf) => sum + lf.dueAmount,
-        0
-      );
       feeStatus.dues =
         feeStatus.monthlyDues.regularDues.reduce(
           (sum, d) => sum + d.dueAmount,
@@ -1398,23 +1398,57 @@ exports.getStudentFeeInfo = async (req, res) => {
       "February",
       "March",
     ];
+    // Calculate late fines dynamically for all unpaid months up to the current date
     const currentDate = new Date();
-    let lateFines = [];
-    if (
-      lateFineConfig &&
-      currentDate.getDate() > lateFineConfig.lateFineDueDay
-    ) {
-      feeStatus.monthlyDues.regularDues.forEach((d) => {
-        if (
-          d.dueAmount > 0 &&
-          months.indexOf(d.month) <= currentDate.getMonth()
-        ) {
-          lateFines.push({
-            amount: lateFineConfig.amount,
-            paidAmount: 0,
-            dueAmount: lateFineConfig.amount,
-            appliedOn: new Date(),
-          });
+    const currentMonthIndex = currentDate.getMonth(); // 0-11 (January-December)
+    const lateFines = [];
+    let totalLateFinesBefore = feeStatus.totalLateFines || 0;
+
+    // Initialize late fines array in feeStatus if not present
+    if (!feeStatus.lateFines) {
+      feeStatus.lateFines = [];
+    }
+
+    // Check for late fines on all unpaid regular dues up to the current month
+    if (lateFineConfig) {
+      months.forEach((month, monthIndex) => {
+        // Only apply late fines for months up to the current month
+        if (monthIndex > currentMonthIndex) return;
+
+        const regularDue = feeStatus.monthlyDues.regularDues.find(
+          (d) => d.month === month
+        );
+
+        // If there's an unpaid or partially paid due for this month
+        if (regularDue && regularDue.dueAmount > 0) {
+          // Check if the current date is past the due date for this month
+          const dueDateForMonth = new Date(
+            currentDate.getFullYear(),
+            monthIndex,
+            lateFineConfig.lateFineDueDay
+          );
+          if (currentDate > dueDateForMonth) {
+            // Check if a late fine has already been applied for this month
+            const existingLateFine = feeStatus.lateFines.find(
+              (lf) =>
+                lf.month === month &&
+                lf.year === currentDate.getFullYear().toString()
+            );
+
+            if (!existingLateFine) {
+              // Apply a new late fine
+              const lateFine = {
+                month,
+                year: currentDate.getFullYear().toString(),
+                amount: lateFineConfig.amount,
+                paidAmount: 0,
+                dueAmount: lateFineConfig.amount,
+                appliedOn: new Date(),
+              };
+              lateFines.push(lateFine);
+              feeStatus.lateFines.push(lateFine);
+            }
+          }
         }
       });
     }

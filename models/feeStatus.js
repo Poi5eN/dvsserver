@@ -97,12 +97,16 @@ const feeHistorySchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    lateFines: [{
-      amount: { type: Number, required: true },
-      appliedOn: { type: Date, default: Date.now },
-      paidAmount: { type: Number, default: 0 },
-      dueAmount: { type: Number, required: true },
-    }],
+    lateFines: [
+      {
+        month: { type: String, required: true }, // e.g., "April"
+        year: { type: String, required: true }, // e.g., "2025"
+        amount: { type: Number, required: true },
+        paidAmount: { type: Number, default: 0 },
+        dueAmount: { type: Number, required: true },
+        appliedOn: { type: Date, default: Date.now },
+      },
+    ],
     lateFinesPaid: { type: Number, default: 0 },
     concessionApplied: { type: Number, default: 0 },
     paymentMessage: { type: String },

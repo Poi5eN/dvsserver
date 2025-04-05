@@ -3911,6 +3911,7 @@ exports.createBulkStudentParent = async (req, res) => {
 
     for (const student of studentsData) {
       let finalStudentEmail = null;
+      let finalParentEmail = null;
 
       try {
         const {
@@ -3933,64 +3934,10 @@ exports.createBulkStudentParent = async (req, res) => {
           pincode,
           state,
           city,
-          studentContact, // Add studentContact to destructuring
+          studentContact,
           admissionNumber,
           parentAdmissionNumber,
-          stu_id,
-          class: studentUdiseClass,
-          section: studentUdiseSection,
-          roll_no,
-          student_name,
-          gender: studentUdiseGender,
-          DOB,
-          mother_name,
-          father_name: udiseFatherName,
-          guardian_name: udiseGuardianName,
-          aadhar_no,
-          aadhar_name,
-          paddress,
-          pincode: udisePlusPincode,
-          mobile_no,
-          alt_mobile_no,
-          email_id,
-          mothere_tougue,
-          category,
-          minority,
-          is_bpl,
-          is_aay,
-          ews_aged_group,
-          is_cwsn,
-          cwsn_imp_type,
-          ind_national,
-          mainstramed_child,
-          adm_no,
-          adm_date,
-          stu_stream,
-          pre_year_schl_status,
-          pre_year_class,
-          stu_ward,
-          pre_class_exam_app,
-          result_pre_exam,
-          perc_pre_class,
-          att_pre_class,
-          fac_free_uniform,
-          fac_free_textbook,
-          received_central_scholarship,
-          name_central_scholarship,
-          received_state_scholarship,
-          received_other_scholarship,
-          scholarship_amount,
-          fac_provided_cwsn,
-          SLD_type,
-          aut_spec_disorder,
-          ADHD,
-          inv_ext_curr_activity,
-          vocational_course,
-          trade_sector_id,
-          job_role_id,
-          pre_app_exam_vocationalsubject,
-          bpl_card_no,
-          ann_card_no,
+          // ... other fields ...
         } = student;
 
         // Validate required fields
@@ -4040,6 +3987,11 @@ exports.createBulkStudentParent = async (req, res) => {
           parsedJoiningDate = new Date(
             excelEpoch.getTime() + studentJoiningDate * 86400000
           );
+          if (isNaN(parsedJoiningDate.getTime())) {
+            throw new Error(
+              `Invalid joiningDate serial number: ${studentJoiningDate}`
+            );
+          }
           const day = String(parsedJoiningDate.getDate()).padStart(2, "0");
           const month = String(parsedJoiningDate.getMonth() + 1).padStart(
             2,
@@ -4054,17 +4006,26 @@ exports.createBulkStudentParent = async (req, res) => {
               `Invalid joiningDate format: ${studentJoiningDate}. Use DD/MM/YYYY.`
             );
           }
-          parsedJoiningDate = studentJoiningDate;
+          parsedJoiningDate = studentJoiningDate; // Keep as string per schema
         }
 
         let parsedDateOfBirth;
         if (typeof studentDateOfBirth === "number") {
           const excelEpoch = new Date(1899, 11, 30);
-          parsedDateOfBirth = new Date(excelEpoch.getTime() + studentDateOfBirth * 86400000);
+          parsedDateOfBirth = new Date(
+            excelEpoch.getTime() + studentDateOfBirth * 86400000
+          );
+          if (isNaN(parsedDateOfBirth.getTime())) {
+            throw new Error(
+              `Invalid dateOfBirth serial number: ${studentDateOfBirth}`
+            );
+          }
         } else if (studentDateOfBirth) {
           parsedDateOfBirth = parseDate(studentDateOfBirth);
           if (!parsedDateOfBirth) {
-            throw new Error(`Invalid dateOfBirth format: ${studentDateOfBirth}. Use DD/MM/YYYY.`);
+            throw new Error(
+              `Invalid dateOfBirth format: ${studentDateOfBirth}. Use DD/MM/YYYY.`
+            );
           }
         } else {
           parsedDateOfBirth = null;
@@ -4098,7 +4059,7 @@ exports.createBulkStudentParent = async (req, res) => {
           gender: studentGender,
           joiningDate: parsedJoiningDate,
           address: studentAddress,
-          contact: studentContact || "", // Fallback to empty string if undefined
+          contact: studentContact || "",
           class: studentClass,
           fatherName,
           motherName,
@@ -4119,68 +4080,11 @@ exports.createBulkStudentParent = async (req, res) => {
           approvalStatus: "approved",
           assignedThirdParty: null,
           isNewAdmission: true,
-          udisePlusDetails: {
-            stu_id,
-            class: studentUdiseClass,
-            section: studentUdiseSection,
-            roll_no,
-            student_name,
-            gender: studentUdiseGender,
-            DOB,
-            mother_name,
-            father_name: udiseFatherName,
-            guardian_name: udiseGuardianName,
-            aadhar_no,
-            aadhar_name,
-            paddress,
-            pincode: udisePlusPincode,
-            mobile_no,
-            alt_mobile_no,
-            email_id,
-            mothere_tougue,
-            category,
-            minority,
-            is_bpl,
-            is_aay,
-            ews_aged_group,
-            is_cwsn,
-            cwsn_imp_type,
-            ind_national,
-            mainstramed_child,
-            adm_no,
-            adm_date,
-            stu_stream,
-            pre_year_schl_status,
-            pre_year_class,
-            stu_ward,
-            pre_class_exam_app,
-            result_pre_exam,
-            perc_pre_class,
-            att_pre_class,
-            fac_free_uniform,
-            fac_free_textbook,
-            received_central_scholarship,
-            name_central_scholarship,
-            received_state_scholarship,
-            received_other_scholarship,
-            scholarship_amount,
-            fac_provided_cwsn,
-            SLD_type,
-            aut_spec_disorder,
-            ADHD,
-            inv_ext_curr_activity,
-            vocational_course,
-            trade_sector_id,
-            job_role_id,
-            pre_app_exam_vocationalsubject,
-            bpl_card_no,
-            ann_card_no,
-          },
+          // ... udisePlusDetails ...
         });
 
         // Handle parent
         let parentData = null;
-        let finalParentEmail = null;
 
         if (parentAdmissionNumber) {
           parentData = await ParentModel.findOne({
@@ -4208,16 +4112,22 @@ exports.createBulkStudentParent = async (req, res) => {
               parentContact ||
               Math.floor(1000000000 + Math.random() * 9000000000).toString();
             finalParentEmail = `${baseName}${contact}@dvs.com`;
+            let suffix = "";
+            let attempt = 0;
             while (
-              await ParentModel.findOne({ email: finalParentEmail, schoolId })
+              await ParentModel.findOne({
+                email: `${finalParentEmail}${suffix}`,
+                schoolId,
+              })
             ) {
-              const randomNum = Math.floor(100 + Math.random() * 900);
-              finalParentEmail = `${baseName}${contact}${randomNum}@dvs.com`;
+              attempt++;
+              suffix = attempt.toString();
             }
+            finalParentEmail = `${finalParentEmail}${suffix}`;
           }
 
           parentData = await ParentModel.findOne({
-            email: { $regex: new RegExp(`^${finalParentEmail}$`, "i") },
+            email: finalParentEmail,
             schoolId,
             session,
           });

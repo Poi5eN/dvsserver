@@ -17,7 +17,7 @@ const parentSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, "Please Enter Email Address"],
-    unique: true,
+    // unique: true,
   },
   password: {
     type: String,

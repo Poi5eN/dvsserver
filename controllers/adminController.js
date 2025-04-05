@@ -4057,13 +4057,17 @@ exports.createBulkStudentParent = async (req, res) => {
           parsedJoiningDate = studentJoiningDate;
         }
 
-        const parsedDateOfBirth = studentDateOfBirth
-          ? parseDate(studentDateOfBirth)
-          : null;
-        if (studentDateOfBirth && !parsedDateOfBirth) {
-          throw new Error(
-            `Invalid dateOfBirth format: ${studentDateOfBirth}. Use DD/MM/YYYY.`
-          );
+        let parsedDateOfBirth;
+        if (typeof studentDateOfBirth === "number") {
+          const excelEpoch = new Date(1899, 11, 30);
+          parsedDateOfBirth = new Date(excelEpoch.getTime() + studentDateOfBirth * 86400000);
+        } else if (studentDateOfBirth) {
+          parsedDateOfBirth = parseDate(studentDateOfBirth);
+          if (!parsedDateOfBirth) {
+            throw new Error(`Invalid dateOfBirth format: ${studentDateOfBirth}. Use DD/MM/YYYY.`);
+          }
+        } else {
+          parsedDateOfBirth = null;
         }
 
         // Set passwords

@@ -4,12 +4,12 @@ const FeeStatus = require("../models/feeStatus");
 const FeeStructure = require("../models/feeStructureModel");
 
 // Connect to MongoDB (update with your connection string)
-mongoose.connect("mongodb://localhost:27017/yourDatabase", {
+mongoose.connect("mongodb://admin:digividya@147.93.106.220:27017/DigitalVidyaSaarthi?authSource=admin", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
 
-const schoolId = "school123";
+const schoolId = "dad9e8ba-e50c-4f10-ad7d-de75bffa4b51";
 const session = "2025-2026";
 const months = [
   "April",
@@ -31,24 +31,24 @@ const generateMockStudents = async () => {
   const students = [
     {
       schoolId,
-      studentId: "STU001",
-      class: "Class 5",
-      studentName: "John Doe",
-      parentId: "PAR001",
+      studentId: "STUbb015fc0-d8e7-4553-8756-b327df27a1c2001",
+      class: "5",
+      studentName: "Arjun Sharma",
+      parentId: "bbd2dec9-0238-4b09-b0ca-512daed93ba8",
     },
     {
       schoolId,
-      studentId: "STU002",
-      class: "Class 6",
-      studentName: "Jane Smith",
-      parentId: "PAR002",
+      studentId: "5e42e521-6301-4cf0-8d69-379a9795c2b8",
+      class: "4",
+      studentName: "Priya Patel",
+      parentId: "3ff12332-6a0f-455c-9867-3a8b6597605e",
     },
     {
       schoolId,
-      studentId: "STU003",
-      class: "Class 7",
-      studentName: "Alice Johnson",
-      parentId: "PAR003",
+      studentId: "e8c7058f-334b-4814-ac3b-c483d8b07626",
+      class: "6",
+      studentName: "Rohan Gupta",
+      parentId: "0f03a9b6-03bb-492e-858f-04cc135e82f4",
     },
   ];
 
@@ -63,13 +63,13 @@ const generateMockFeeStructures = async () => {
     // Fee structure for Class 5
     {
       schoolId,
-      className: "Class 5",
+      className: "5",
       amount: 5000, // Regular monthly fee
       additional: false,
     },
     {
       schoolId,
-      className: "Class 5",
+      className: "5",
       name: "Transport Fee",
       amount: 1000,
       additional: true,
@@ -77,7 +77,7 @@ const generateMockFeeStructures = async () => {
     },
     {
       schoolId,
-      className: "Class 5",
+      className: "5",
       name: "Library Fee",
       amount: 500,
       additional: true,
@@ -85,7 +85,7 @@ const generateMockFeeStructures = async () => {
     },
     {
       schoolId,
-      className: "Class 5",
+      className: "5",
       amount: 200,
       lateFineDueDay: 10,
       additional: true,
@@ -94,13 +94,13 @@ const generateMockFeeStructures = async () => {
     // Fee structure for Class 6
     {
       schoolId,
-      className: "Class 6",
+      className: "4",
       amount: 6000,
       additional: false,
     },
     {
       schoolId,
-      className: "Class 6",
+      className: "4",
       name: "Lab Fee",
       amount: 800,
       additional: true,
@@ -108,7 +108,7 @@ const generateMockFeeStructures = async () => {
     },
     {
       schoolId,
-      className: "Class 6",
+      className: "4",
       amount: 250,
       lateFineDueDay: 15,
       additional: true,
@@ -117,13 +117,13 @@ const generateMockFeeStructures = async () => {
     // Fee structure for Class 7
     {
       schoolId,
-      className: "Class 7",
+      className: "6",
       amount: 7000,
       additional: false,
     },
     {
       schoolId,
-      className: "Class 7",
+      className: "6",
       amount: 300,
       lateFineDueDay: 20,
       additional: true,
@@ -142,7 +142,7 @@ const generateMockFeeStatuses = async () => {
     // Scenario 1: STU001 - Some months paid, some unpaid, with past dues and late fines
     {
       schoolId,
-      studentId: "STU001",
+      studentId: "STUbb015fc0-d8e7-4553-8756-b327df27a1c2001",
       session,
       year: "2025",
       pastDues: 10000, // Past dues from previous session
@@ -194,7 +194,7 @@ const generateMockFeeStatuses = async () => {
     // Scenario 2: STU002 - No payments made, all months unpaid, no past dues
     {
       schoolId,
-      studentId: "STU002",
+      studentId: "5e42e521-6301-4cf0-8d69-379a9795c2b8",
       session,
       year: "2025",
       pastDues: 0,
@@ -221,7 +221,7 @@ const generateMockFeeStatuses = async () => {
     // Scenario 3: STU003 - All months paid, with past dues
     {
       schoolId,
-      studentId: "STU003",
+      studentId: "e8c7058f-334b-4814-ac3b-c483d8b07626",
       session,
       year: "2025",
       pastDues: 5000,

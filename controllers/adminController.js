@@ -3362,13 +3362,41 @@ exports.createParentOnly = async (req, res) => {
 };
 
 // Updated parseDate to handle malformed input gracefully
+// Updated helper function to parse DD/MM/YYYY strings into Date objects
 const parseDate = (dateString) => {
-  if (!dateString) return null;
-  if (typeof dateString !== "string") return null;
-  const [day, month, year] = dateString.split(/[-\/]/);
-  if (!day || !month || !year) return null;
-  const date = new Date(`${year}-${month}-${day}`);
-  return isNaN(date.getTime()) ? null : date;
+  if (!dateString || typeof dateString !== "string") return null;
+  
+  // Trim whitespace from the input string
+  const trimmedDate = dateString.trim();
+  
+  // Split by '/' or '-' and ensure we get exactly 3 parts
+  const parts = trimmedDate.split(/[-\/]/);
+  if (parts.length !== 3) return null;
+
+  const [day, month, year] = parts.map(part => part.trim()); // Trim each part to remove any extra spaces
+  
+  // Validate day, month, and year are numeric and within valid ranges
+  const dayNum = parseInt(day, 10);
+  const monthNum = parseInt(month, 10);
+  const yearNum = parseInt(year, 10);
+
+  if (isNaN(dayNum) || isNaN(monthNum) || isNaN(yearNum)) return null;
+  if (dayNum < 1 || dayNum > 31 || monthNum < 1 || monthNum > 12 || yearNum < 1900) return null;
+
+  // Construct Date object (month is 0-based in JS, so subtract 1)
+  const date = new Date(yearNum, monthNum - 1, dayNum);
+  
+  // Check if the date is valid and matches the input (e.g., handles invalid days like 31/04)
+  if (
+    isNaN(date.getTime()) ||
+    date.getDate() !== dayNum ||
+    date.getMonth() + 1 !== monthNum ||
+    date.getFullYear() !== yearNum
+  ) {
+    return null;
+  }
+
+  return date;
 };
 
 // Utility function to generate unique email

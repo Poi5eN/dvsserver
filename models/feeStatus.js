@@ -78,6 +78,7 @@ const feeHistorySchema = new mongoose.Schema(
       required: true,
     },
     pastDuesPaid: { type: Number, default: 0 },
+    duesPaid: { type: Number, default: 0 },
     previousDues: {
       type: Number,
       default: 0,
@@ -187,6 +188,14 @@ const feeStatus = new mongoose.Schema({
     required: true,
   },
   dues: {
+    type: Number,
+    default: 0,
+  },
+  overallAmountPaid: {
+    type: Number,
+    default: 0,
+  },
+  overallConcessionApplied:{
     type: Number,
     default: 0,
   },

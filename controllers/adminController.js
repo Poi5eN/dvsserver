@@ -803,6 +803,83 @@ exports.createAdditionalFee = async (req, res) => {
   }
 };
 
+// Create a late fine fee structure
+exports.createLateFineFee = async (req, res) => {
+  try {
+    const { className, amount, lateFineDueDay } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!className) {
+      return res.status(400).json({
+        success: false,
+        message: "Class name is required.",
+      });
+    }
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid late fine amount is required.",
+      });
+    }
+    if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
+      return res.status(400).json({
+        success: false,
+        message: "Late fine due day must be between 1 and 31.",
+      });
+    }
+
+    const existingLateFine = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      feeType: "LateFine",
+      additional: true,
+    });
+
+    if (existingLateFine) {
+      return res.status(400).json({
+        success: false,
+        message: "Late fine fee already exists for this class.",
+      });
+    }
+
+    const feeStructure = new FeeStructure({
+      schoolId,
+      session,
+      className,
+      name: "Late Fine",
+      feeType: "LateFine",
+      amount,
+      additional: true,
+      lateFineDueDay,
+      updatedBy,
+    });
+
+    await feeStructure.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Late fine fee structure created successfully",
+      data: feeStructure,
+    });
+  } catch (error) {
+    console.error("Error in createLateFineFee:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create late fine fee structure",
+      error: error.message,
+    });
+  }
+};
+
 // Get fee structures for all classes in a school (Regular Fees)
 exports.getAllFeeStructures = async (req, res) => {
   try {
@@ -1124,82 +1201,6 @@ exports.getFeeStructures = async (req, res) => {
   }
 };
 
-// Create a late fine fee structure
-exports.createLateFineFee = async (req, res) => {
-  try {
-    const { className, amount, lateFineDueDay } = req.body;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id;
-
-    if (!schoolId || !session) {
-      return res.status(400).json({
-        success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!className) {
-      return res.status(400).json({
-        success: false,
-        message: "Class name is required.",
-      });
-    }
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid late fine amount is required.",
-      });
-    }
-    if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
-      return res.status(400).json({
-        success: false,
-        message: "Late fine due day must be between 1 and 31.",
-      });
-    }
-
-    const existingLateFine = await FeeStructure.findOne({
-      schoolId,
-      session,
-      className,
-      feeType: "LateFine",
-      additional: true,
-    });
-
-    if (existingLateFine) {
-      return res.status(400).json({
-        success: false,
-        message: "Late fine fee already exists for this class.",
-      });
-    }
-
-    const feeStructure = new FeeStructure({
-      schoolId,
-      session,
-      className,
-      name: "Late Fine",
-      feeType: "LateFine",
-      amount,
-      additional: true,
-      lateFineDueDay,
-      updatedBy,
-    });
-
-    await feeStructure.save();
-
-    res.status(201).json({
-      success: true,
-      message: "Late fine fee structure created successfully",
-      data: feeStructure,
-    });
-  } catch (error) {
-    console.error("Error in createLateFineFee:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create late fine fee structure",
-      error: error.message,
-    });
-  }
-};
 
 // Edit a late fine fee structure using feeStructureId
 exports.editLateFineFee = async (req, res) => {

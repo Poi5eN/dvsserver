@@ -186,6 +186,7 @@ router.get('/pendingAdmissions', verifyToken, admin.getPendingAdmissions);
 
 // router.get('/getAllStudentOfClass', verifyToken, admin.getAllStudentOfClass);
 router.put('/promotionOfStudent', verifyToken, admin.promotionOfStudent);
+router.put('/getStudentsBySession', verifyToken, admin.getStudentsBySession);
 
 
 

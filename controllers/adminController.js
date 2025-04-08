@@ -7985,39 +7985,43 @@ exports.deleteNotice = async (req, res) => {
 };
 
 // Helper function to compute next session from a session string like "2024-2025"
-function getNextSession(currentSession) {
-  // Expecting format "YYYY-YYYY"
-  const parts = currentSession.split("-");
-  if (parts.length !== 2) {
-    throw new Error("Invalid session format");
-  }
-  const startYear = parseInt(parts[0], 10);
-  const endYear = parseInt(parts[1], 10);
-  if (isNaN(startYear) || isNaN(endYear)) {
-    throw new Error("Invalid session numbers");
-  }
-  const newStart = startYear + 1;
-  const newEnd = endYear + 1;
-  return `${newStart}-${newEnd}`;
-}
+// function getNextSession(currentSession) {
+//   // Expecting format "YYYY-YYYY"
+//   const parts = currentSession.split("-");
+//   if (parts.length !== 2) {
+//     throw new Error("Invalid session format");
+//   }
+//   const startYear = parseInt(parts[0], 10);
+//   const endYear = parseInt(parts[1], 10);
+//   if (isNaN(startYear) || isNaN(endYear)) {
+//     throw new Error("Invalid session numbers");
+//   }
+//   const newStart = startYear + 1;
+//   const newEnd = endYear + 1;
+//   return `${newStart}-${newEnd}`;
+// }
 
+// Helper function to get next session
+const getNextSession = (currentSession) => {
+  const [startYear, endYear] = currentSession.split('-').map(Number);
+  return `${startYear + 1}-${endYear + 1}`;
+};
+
+// Updated Promotion API
 exports.promotionOfStudent = async (req, res) => {
   try {
-    const { students, promotedClass, promotedSection } = req.body;
-    console.log("students", students, promotedClass, promotedSection);
-    if (!students || !promotedClass || !promotedSection) {
+    const { students, promotedClass, promotedSection, promotedSession } = req.body;
+    
+    if (!students || !promotedClass || !promotedSection || !promotedSession) {
       return res.status(400).json({
         success: false,
-        message: "Missing Parameters",
+        message: "Missing Parameters (students, class, section, or session)",
       });
     }
 
-    // Use a Set to avoid updating the same parent multiple times
     let parentIds = new Set();
 
-    // Update each student record
     for (const studentId of students) {
-      // Fetch the student document
       const student = await NewStudentModel.findById(studentId);
       if (!student) {
         return res.status(404).json({
@@ -8026,46 +8030,74 @@ exports.promotionOfStudent = async (req, res) => {
         });
       }
 
-      // Calculate next session for the student
-      const currentSession = student.session;
-      const nextSession = getNextSession(currentSession);
-
       // Save current session in history
       student.sessionHistory = student.sessionHistory || [];
-      student.sessionHistory.push(currentSession);
+      student.sessionHistory.push(student.session);
 
-      // Update student's session, class, and section
-      student.session = nextSession;
+      // Update student's details with provided session instead of calculated next session
+      student.session = promotedSession;
       student.class = promotedClass;
       student.section = promotedSection;
 
       await student.save();
 
-      // Collect the parent's id if it exists
       if (student.parentId) {
         parentIds.add(student.parentId);
       }
     }
 
-    // Update each parent record once using the set of distinct parentIds
     for (const parentId of parentIds) {
       const parent = await ParentModel.findOne({ parentId });
       if (parent) {
         parent.sessionHistory = parent.sessionHistory || [];
         parent.sessionHistory.push(parent.session);
-        parent.session = getNextSession(parent.session);
+        parent.session = promotedSession;
         await parent.save();
       }
     }
 
     res.status(200).json({
       success: true,
-      message: "Selected Student is Promoted Successfully",
+      message: "Selected Students Promoted Successfully",
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Promotion Of Student not done successfully",
+      message: "Promotion failed",
+      error: error.message,
+    });
+  }
+};
+
+// New GET API to fetch students by session
+exports.getStudentsBySession = async (req, res) => {
+  try {
+    const { session } = req.query;
+    
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        message: "Session parameter is required",
+      });
+    }
+
+    // Find students where session matches or sessionHistory contains the session
+    const students = await NewStudentModel.find({
+      $or: [
+        { session },
+        { sessionHistory: session }
+      ]
+    }).select('studentName class section session sessionHistory admissionNumber');
+
+    res.status(200).json({
+      success: true,
+      message: "Students retrieved successfully",
+      students,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve students",
       error: error.message,
     });
   }

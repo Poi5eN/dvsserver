@@ -7564,33 +7564,37 @@ exports.toggleEmployeeStatus = async (req, res) => {
 
 // CLASS CONTROLLERS FOR THE SCHOOL
 
+// CLASS CONTROLLERS (Updated with whitespace trimming)
+
 // Create a new class
 exports.createClass = async (req, res) => {
   try {
     let { className, sections, subjects } = req.body;
 
-    sections = sections ? sections.split(",").map((s) => s.trim()) : [];
-    subjects = subjects ? subjects.split(",").map((s) => s.trim()) : [];
+    // Trim className
+    className = className?.trim();
+    
+    // Trim sections and subjects arrays
+    sections = sections ? sections.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    subjects = subjects ? subjects.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
     const classId = uuidv4();
 
     const existClass = await classModel.findOne({
       schoolId: req.user.schoolId,
       className,
-      session: req.user.session,
     });
 
     if (existClass) {
       return res.status(400).json({
         success: false,
-        message: "This class already exists for this session.",
+        message: "This class already exists.",
       });
     }
 
     const newClass = await classModel.create({
       classId,
       schoolId: req.user.schoolId,
-      session: req.user.session,
       className,
       sections,
       subjects,
@@ -7610,12 +7614,11 @@ exports.createClass = async (req, res) => {
   }
 };
 
-// Get all classes for the logged-in session
+// Get all classes
 exports.getAllClasses = async (req, res) => {
   try {
     const classes = await classModel.find({
       schoolId: req.user.schoolId,
-      session: req.user.session,
     });
 
     res.status(200).json({
@@ -7639,7 +7642,6 @@ exports.getClassById = async (req, res) => {
     const classItem = await classModel.findOne({
       classId,
       schoolId: req.user.schoolId,
-      session: req.user.session,
     });
 
     if (!classItem) {
@@ -7664,19 +7666,19 @@ exports.getClassById = async (req, res) => {
 };
 
 // Update a class
-// Update a class
 exports.updateClass = async (req, res) => {
   try {
-    const { classId } = req.params; // Get classId from URL params
+    const { classId } = req.params;
     let { className, sections, subjects } = req.body;
 
-    sections = sections ? sections.split(",").map((s) => s.trim()) : [];
-    subjects = subjects ? subjects.split(",").map((s) => s.trim()) : [];
+    // Trim all inputs
+    className = className?.trim();
+    sections = sections ? sections.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    subjects = subjects ? subjects.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
     const classToUpdate = await classModel.findOne({
       classId,
       schoolId: req.user.schoolId,
-      session: req.user.session,
     });
 
     if (!classToUpdate) {
@@ -7686,7 +7688,19 @@ exports.updateClass = async (req, res) => {
       });
     }
 
-    // Update class fields
+    if (className && className !== classToUpdate.className) {
+      const existingClass = await classModel.findOne({
+        schoolId: req.user.schoolId,
+        className,
+      });
+      if (existingClass) {
+        return res.status(400).json({
+          success: false,
+          message: "Another class with this name already exists",
+        });
+      }
+    }
+
     if (className) classToUpdate.className = className;
     if (sections.length > 0) classToUpdate.sections = sections;
     if (subjects.length > 0) classToUpdate.subjects = subjects;
@@ -7714,7 +7728,6 @@ exports.deleteClass = async (req, res) => {
     const classToDelete = await classModel.findOneAndDelete({
       classId,
       schoolId: req.user.schoolId,
-      session: req.user.session,
     });
 
     if (!classToDelete) {

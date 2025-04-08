@@ -3160,7 +3160,7 @@ exports.getFeeHistory = async (req, res) => {
     for (const feeStatus of feeStatusData) {
       const studentData = await NewStudentModel.findOne(
         { studentId: feeStatus.studentId },
-        "studentName class studentId parentId"
+        "studentName class studentId parentId admissionNumber fatherName" // Added admissionNumber and fatherName
       ).exec();
       const parent = studentData?.parentId
         ? await ParentModel.findOne({
@@ -3176,6 +3176,8 @@ exports.getFeeHistory = async (req, res) => {
             studentName: studentData.studentName,
             studentClass: studentData.class,
             parentContact: parent?.contact || null,
+            admissionNumber: studentData.admissionNumber, // Added admissionNumber
+            fatherName: studentData.fatherName, // Added fatherName
             feeReceiptNumber: history.feeReceiptNumber,
             paymentMode: history.paymentMode,
             dues:

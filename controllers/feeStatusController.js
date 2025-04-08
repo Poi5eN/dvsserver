@@ -2185,7 +2185,13 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Fee payment processed successfully",
-      data: { feeReceiptNumber, feeStatus },
+      data: { 
+        feeReceiptNumber, 
+        feeStatus,
+        studentAdmissionNumber: student.admissionNumber,
+        studentName: student.studentName,
+        parentContact: student.parentContact
+      },
     });
   } catch (error) {
     res.status(500).json({

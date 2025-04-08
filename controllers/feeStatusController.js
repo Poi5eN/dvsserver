@@ -3137,8 +3137,19 @@ exports.feeIncomeMonths = async (req, res) => {
 exports.getFeeHistory = async (req, res) => {
   try {
     const { studentId } = req.query;
+    const session = req.user.session; // Assuming session is available in the token
+
+    // Validate session presence (optional, depending on your requirements)
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        message: "Session not found in user token.",
+      });
+    }
+
     let filter = {
       schoolId: req.user.schoolId,
+      session, // Add session to the filter
       ...(studentId ? { studentId } : {}),
     };
 

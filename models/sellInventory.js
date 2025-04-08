@@ -2,24 +2,22 @@ const mongoose = require("mongoose");
 
 const sellInventorySchema = new mongoose.Schema({
   schoolId: { type: String, required: true },
-  studentId: { type: String, required: true }, // Links to student
-  receiptId: { type: String, required: true }, // Links to receipt
-  items: [
-    {
-      itemId: { type: String, required: true },
-      itemName: { type: String, required: true },
-      category: { type: String, required: true },
-      price: { type: Number, required: true },
-      sellQuantity: { type: Number, required: true },
-      sellAmount: { type: Number, required: true },
-    },
-  ],
+  studentId: { type: String, required: true },
+  receiptId: { type: String, required: true },
+  items: [{
+    itemId: String,
+    itemName: String,
+    category: String,
+    price: Number,
+    sellQuantity: Number,
+    sellAmount: Number,
+  }],
   totalAmount: { type: Number, required: true },
-  dueAmount: { type: Number, default: 0 }, // Tracks unpaid amounts
+  dueAmount: { type: Number, default: 0 },
   saleDate: { type: Date, default: Date.now },
   session: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
 });
 
-const SellInventory = mongoose.model("SellInventory", sellInventorySchema);
-module.exports = SellInventory;
+// Only define the model if it hasn't been defined yet
+module.exports = mongoose.models.SellInventory || mongoose.model("SellInventory", sellInventorySchema);

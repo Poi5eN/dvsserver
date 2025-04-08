@@ -1765,6 +1765,7 @@ exports.multiSellItem = async (req, res) => {
       });
     }
 
+    // Check stock availability
     for (const { itemId, sellQuantity } of items) {
       const item = await ItemModel.findOne({ itemId, schoolId, session });
       if (!item || item.quantity < sellQuantity) {
@@ -1776,38 +1777,54 @@ exports.multiSellItem = async (req, res) => {
     }
 
     const receiptId = `REC-${Date.now()}`;
+
+    // Fetch item details asynchronously
+    const itemDetailsPromises = items.map(async (item) => {
+      const dbItem = await ItemModel.findOne({ itemId: item.itemId });
+      return {
+        itemId: item.itemId,
+        itemName: dbItem.itemName,
+        category: dbItem.category,
+        price: dbItem.price,
+        sellQuantity: item.sellQuantity,
+        sellAmount: item.sellQuantity * dbItem.price,
+      };
+    });
+    const saleItems = await Promise.all(itemDetailsPromises);
+
     const sale = await SellInventory.create({
       schoolId,
       studentId,
       receiptId,
-      items: items.map(item => ({
-        itemId: item.itemId,
-        itemName: (await ItemModel.findOne({ itemId: item.itemId })).itemName,
-        category: (await ItemModel.findOne({ itemId: item.itemId })).category,
-        price: (await ItemModel.findOne({ itemId: item.itemId })).price,
-        sellQuantity: item.sellQuantity,
-        sellAmount: item.sellQuantity * (await ItemModel.findOne({ itemId: item.itemId })).price,
-      })),
+      items: saleItems,
       totalAmount,
       dueAmount,
       saleDate: new Date(),
       session,
     });
 
+    // Fetch item details for receipt
+    const itemsSoldPromises = items.map(async (item) => {
+      const dbItem = await ItemModel.findOne({ itemId: item.itemId });
+      return {
+        itemName: dbItem.itemName,
+        sellQuantity: item.sellQuantity,
+        sellAmount: item.sellQuantity * dbItem.price,
+      };
+    });
+    const soldItems = await Promise.all(itemsSoldPromises);
+
     await ReceiptModel.create({
       receiptId,
       saleId: sale._id,
       studentId,
-      itemsSold: items.map(item => ({
-        itemName: (await ItemModel.findOne({ itemId: item.itemId })).itemName,
-        sellQuantity: item.sellQuantity,
-        sellAmount: item.sellQuantity * (await ItemModel.findOne({ itemId: item.itemId })).price,
-      })),
+      itemsSold: soldItems,
       totalAmount,
       dueAmount,
       paymentStatus: dueAmount > 0 ? "Pending" : "Paid",
     });
 
+    // Update item quantities
     for (const { itemId, sellQuantity } of items) {
       const item = await ItemModel.findOne({ itemId, schoolId, session });
       item.quantity -= sellQuantity;
@@ -1832,6 +1849,7 @@ exports.multiSellItem = async (req, res) => {
     });
   }
 };
+
 
 // Delete Item
 exports.deleteItem = async (req, res) => {

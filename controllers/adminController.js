@@ -8074,6 +8074,8 @@ exports.getStudentsBySession = async (req, res) => {
   try {
     const { session } = req.query;
     
+    console.log("Received session query:", session); // Debug log
+    
     if (!session) {
       return res.status(400).json({
         success: false,
@@ -8081,13 +8083,14 @@ exports.getStudentsBySession = async (req, res) => {
       });
     }
 
-    // Find students where session matches or sessionHistory contains the session
     const students = await NewStudentModel.find({
       $or: [
-        { session },
-        { sessionHistory: session }
+        { session: session }, // Match current session
+        { sessionHistory: session } // Match session history
       ]
     }).select('studentName class section session sessionHistory admissionNumber');
+
+    console.log("Found students:", students); // Debug log
 
     res.status(200).json({
       success: true,
@@ -8095,6 +8098,7 @@ exports.getStudentsBySession = async (req, res) => {
       students,
     });
   } catch (error) {
+    console.error("Error in getStudentsBySession:", error);
     res.status(500).json({
       success: false,
       message: "Failed to retrieve students",

@@ -8070,11 +8070,48 @@ exports.promotionOfStudent = async (req, res) => {
 };
 
 // New GET API to fetch students by session
+// exports.getStudentsBySession = async (req, res) => {
+//   try {
+//     const { session } = req.query;
+    
+//     console.log("Received session query:", session); // Debug log
+    
+//     if (!session) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Session parameter is required",
+//       });
+//     }
+
+//     const students = await NewStudentModel.find({
+//       $or: [
+//         { session: session }, // Match current session
+//         { sessionHistory: session } // Match session history
+//       ]
+//     }).select('studentName class section session sessionHistory admissionNumber');
+
+//     console.log("Found students:", students); // Debug log
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Students retrieved successfully",
+//       students,
+//     });
+//   } catch (error) {
+//     console.error("Error in getStudentsBySession:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to retrieve students",
+//       error: error.message,
+//     });
+//   }
+// };
 exports.getStudentsBySession = async (req, res) => {
   try {
-    const { session } = req.query;
+    // Accept session from body first, then query as fallback
+    const session = req.body.session || req.query.session;
     
-    console.log("Received session query:", session); // Debug log
+    console.log("Received session:", session); // Debug log
     
     if (!session) {
       return res.status(400).json({
@@ -8085,8 +8122,8 @@ exports.getStudentsBySession = async (req, res) => {
 
     const students = await NewStudentModel.find({
       $or: [
-        { session: session }, // Match current session
-        { sessionHistory: session } // Match session history
+        { session: session },
+        { sessionHistory: session }
       ]
     }).select('studentName class section session sessionHistory admissionNumber');
 

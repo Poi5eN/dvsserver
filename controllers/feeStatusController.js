@@ -1577,13 +1577,14 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //   }
 // };
 
+// WORKING PRIOR TO MONTH ADDITIONAL REMOVAL
 exports.createOrUpdateFeePayment = async (req, res) => {
   try {
     let { studentId, session, paymentDetails, mode = "auto" } = req.body;
     const schoolId = req.user.schoolId;
     console.log("Processing fee payment:", req.body);
 
-    // Input validation
+    // Input validation (unchanged)
     if (
       !studentId ||
       !session ||
@@ -1628,12 +1629,10 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       "March",
     ];
 
-    // regularFeeMap holds the full fee amount for regular fees
     const regularFeeMap = {
       Monthly: fees.find((f) => !f.additional)?.amount || 0,
     };
 
-    // additionalFeeMap holds the full fee amounts for additional fees (excluding late fine)
     const additionalFeeMap = fees
       .filter((f) => f.additional && f.feeType !== "LateFine")
       .reduce((map, f) => {
@@ -1668,7 +1667,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       remark,
     } = paymentDetails;
 
-    // Calculate current dues from feeStatus
+    // Calculate current dues from feeStatus (unchanged)
     const totalPastDues = feeStatus.pastDues || 0;
     const totalRegularDues = feeStatus.monthlyDues.regularDues.reduce(
       (sum, d) => sum + d.dueAmount,
@@ -1681,30 +1680,30 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     const totalDuesBefore =
       totalPastDues + totalRegularDues + totalAdditionalDues;
 
-    // For validation and full fee calculation for this payment,
-    // use the due record if one exists; otherwise, use the full fee from the structure.
     const computedFullRegularFeeTotal = regularFees.reduce((sum, r) => {
       const due = feeStatus.monthlyDues.regularDues.find(
         (d) => d.month === r.month
       );
       return sum + (due ? due.dueAmount : regularFeeMap.Monthly);
     }, 0);
+
+    // Handle optional month in additional fees
     const computedFullAdditionalFeeTotal = additionalFees.reduce((sum, a) => {
       const due = feeStatus.monthlyDues.additionalDues.find(
-        (d) => d.name === a.name && d.month === a.month
+        (d) =>
+          d.name === a.name && (d.month === a.month || (!d.month && !a.month))
       );
       return (
         sum + (due ? due.dueAmount : additionalFeeMap[a.name]?.amount || 0)
       );
     }, 0);
-    // Use the current past dues from feeStatus
+
     const computedPastDues = feeStatus.pastDues;
     const totalFeeAmount =
       computedFullRegularFeeTotal +
       computedFullAdditionalFeeTotal +
       computedPastDues;
 
-    // Validate that the entered amount does not exceed the full outstanding amount.
     if (parseFloat(totalAmount) > totalFeeAmount) {
       return res.status(400).json({
         success: false,
@@ -1712,14 +1711,11 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       });
     }
 
-    // Handle past dues on first payment
     if (feeStatus.feeHistory.length === 0 && totalPastDues > 0) {
-      feeStatus.dues += totalPastDues; // add past dues to total dues on first payment
-      feeStatus.pastDues = 0; // reset past dues after applying
+      feeStatus.dues += totalPastDues;
+      feeStatus.pastDues = 0;
     }
 
-    // Capture previous dues (i.e. outstanding before processing current payment).
-    // For the first payment, use the computed full fee amount; otherwise, use feeStatus.dues.
     const previousDuesValue =
       feeStatus.feeHistory.length === 0
         ? computedFullRegularFeeTotal +
@@ -1734,13 +1730,9 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       let remainingConcession = roundedConcession;
       let remaining = totalAmount;
 
-      // First, pay existing dues before processing new fees
-
-      // Pay past dues
       const paidPastDues = Math.min(remaining, totalPastDues);
       remaining -= paidPastDues;
 
-      // Pay any existing regular dues (for fees not included in this payment)
       const existingRegularDues = feeStatus.monthlyDues.regularDues.filter(
         (due) =>
           !regularFees.some((r) => r.month === due.month) && due.dueAmount > 0
@@ -1754,12 +1746,13 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         remaining -= payment;
       }
 
-      // Pay any existing additional dues (for fees not included in this payment)
       const existingAdditionalDues =
         feeStatus.monthlyDues.additionalDues.filter(
           (due) =>
             !additionalFees.some(
-              (a) => a.name === due.name && a.month === due.month
+              (a) =>
+                a.name === due.name &&
+                (a.month === due.month || (!a.month && !due.month))
             ) && due.dueAmount > 0
         );
       for (const due of existingAdditionalDues) {
@@ -1771,14 +1764,12 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         remaining -= payment;
       }
 
-      // Process regular fees in the current payment
       const updatedRegular = [];
       regularFees.forEach((r) => {
         let due = feeStatus.monthlyDues.regularDues.find(
           (d) => d.month === r.month
         );
         if (!due) {
-          // if no due record exists, create one with the full fee amount
           due = {
             month: r.month,
             paidAmount: 0,
@@ -1802,16 +1793,17 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
 
-      // Process additional fees in the current payment
+      // Process additional fees with optional month
       const updatedAdditional = [];
       additionalFees.forEach((a) => {
         let due = feeStatus.monthlyDues.additionalDues.find(
-          (d) => d.name === a.name && d.month === a.month
+          (d) =>
+            d.name === a.name && (d.month === a.month || (!d.month && !a.month))
         );
         if (!due && additionalFeeMap[a.name]) {
           due = {
             name: a.name,
-            month: a.month,
+            month: a.month || undefined, // Allow month to be optional
             paidAmount: 0,
             dueAmount: additionalFeeMap[a.name].amount,
             status: "Unpaid",
@@ -1822,7 +1814,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
             const maxPayment = Math.min(remaining, due.dueAmount);
             const updatedDue = {
               name: due.name,
-              month: due.month,
+              month: due.month || undefined, // Preserve optional month
               paidAmount: due.paidAmount + maxPayment,
               dueAmount: Math.max(0, due.dueAmount - maxPayment),
               status:
@@ -1836,7 +1828,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
 
-      // Prepare dues for concession application (regular and additional only)
       const allDuesToApplyConcession = [
         ...updatedRegular
           .filter((r) => r.dueAmount > 0)
@@ -1854,7 +1845,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           })),
       ];
 
-      // Sort dues so that partially paid dues get concession applied first
       allDuesToApplyConcession.sort((a, b) => {
         if (
           a.item.status === "Partial Payment" &&
@@ -1869,7 +1859,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         return 0;
       });
 
-      // Apply concession amount if any
       if (remainingConcession > 0) {
         for (const dueItem of allDuesToApplyConcession) {
           if (dueItem.dueAmount > 0) {
@@ -1889,14 +1878,15 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       }
 
-      // Update feeStatus dues records with updated values for fees processed in this payment.
       const otherRegularDues = feeStatus.monthlyDues.regularDues.filter(
         (due) => !regularFees.some((r) => r.month === due.month)
       );
       const otherAdditionalDues = feeStatus.monthlyDues.additionalDues.filter(
         (due) =>
           !additionalFees.some(
-            (a) => a.name === due.name && a.month === due.month
+            (a) =>
+              a.name === due.name &&
+              (a.month === due.month || (!a.month && !due.month))
           )
       );
       feeStatus.monthlyDues.regularDues = [
@@ -1908,10 +1898,8 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         ...updatedAdditional,
       ];
 
-      // Update past dues if any were paid.
       feeStatus.pastDues = Math.max(0, totalPastDues - paidPastDues);
 
-      // Recalculate overall remaining dues.
       const totalRegularDuesAfter = feeStatus.monthlyDues.regularDues.reduce(
         (sum, d) => sum + d.dueAmount,
         0
@@ -1924,7 +1912,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       feeStatus.dues =
         totalRegularDuesAfter + totalAdditionalDuesAfter + feeStatus.pastDues;
 
-      // Record this payment by generating a receipt number.
       feeReceiptNumber = await generateFeeReceiptNumber(schoolId);
 
       const concessionDetails = allDuesToApplyConcession
@@ -1933,7 +1920,9 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           if (item.type === "regular") {
             return `Regular Fee (${item.item.month}): ${item.item.concessionApplied}`;
           } else {
-            return `${item.item.name} (${item.item.month}): ${item.item.concessionApplied}`;
+            return `${item.item.name} (${item.item.month || "N/A"}): ${
+              item.item.concessionApplied
+            }`;
           }
         })
         .join(", ");
@@ -1950,7 +1939,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         `Additional Fees - ${
           updatedAdditional.length > 0
             ? updatedAdditional
-                .map((a) => `${a.name} (${a.month}): ${a.paidAmount}`)
+                .map((a) => `${a.name} (${a.month || "N/A"}): ${a.paidAmount}`)
                 .join(", ")
             : "None"
         }, ` +
@@ -1960,7 +1949,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }, ` +
         `Remaining Dues: ${feeStatus.dues}`;
 
-      // Add a record to feeHistory with details of this transaction.
       feeStatus.feeHistory.push({
         date: new Date(),
         status: "active",
@@ -1970,23 +1958,20 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         concessionApplied: roundedConcession,
         paymentMode: paymentMode || "Cash",
         transactionId: transactionId || "N/A",
-        totalFeeAmount, // Full outstanding amount computed for this payment
+        totalFeeAmount,
         totalAmountPaid: totalAmount,
         totalDues: feeStatus.dues,
         remark,
         feeReceiptNumber,
         paymentMessage,
-        // Use previousDuesValue captured earlier
         previousDues: previousDuesValue,
       });
 
-      // Update overall totals in feeStatus.
       feeStatus.overallAmountPaid =
         (feeStatus.overallAmountPaid || 0) + parseFloat(totalAmount);
       feeStatus.overallConcessionApplied =
         (feeStatus.overallConcessionApplied || 0) + roundedConcession;
     } else if (mode === "manual") {
-      // Similar processing for manual mode.
       let remaining = totalAmount;
       const paidPastDues = Math.min(pastDuesPaid, totalPastDues);
       remaining -= paidPastDues;
@@ -2021,10 +2006,12 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         updatedRegular.push(updatedDue);
       });
 
+      // Process additional fees with optional month in manual mode
       const updatedAdditional = [];
       additionalFees.forEach((a) => {
         let due = feeStatus.monthlyDues.additionalDues.find(
-          (d) => d.name === a.name && d.month === a.month
+          (d) =>
+            d.name === a.name && (d.month === a.month || (!d.month && !a.month))
         );
         if (!due) {
           if (!additionalFeeMap[a.name]) {
@@ -2032,7 +2019,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           }
           due = {
             name: a.name,
-            month: a.month,
+            month: a.month || undefined, // Allow month to be optional
             paidAmount: 0,
             dueAmount: additionalFeeMap[a.name].amount,
             status: "Unpaid",
@@ -2041,12 +2028,14 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         const paidAmount = parseFloat(a.paidAmount) || 0;
         if (paidAmount > due.dueAmount) {
           throw new Error(
-            `Payment for ${a.name} (${a.month}) (₹${paidAmount}) exceeds remaining dues (₹${due.dueAmount}).`
+            `Payment for ${a.name} (${
+              a.month || "N/A"
+            }) (₹${paidAmount}) exceeds remaining dues (₹${due.dueAmount}).`
           );
         }
         const updatedDue = {
           name: due.name,
-          month: due.month,
+          month: due.month || undefined, // Preserve optional month
           paidAmount: due.paidAmount + paidAmount,
           dueAmount: Math.max(0, due.dueAmount - paidAmount),
           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
@@ -2106,7 +2095,9 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       const otherAdditionalDues = feeStatus.monthlyDues.additionalDues.filter(
         (due) =>
           !additionalFees.some(
-            (a) => a.name === due.name && a.month === due.month
+            (a) =>
+              a.name === due.name &&
+              (a.month === due.month || (!a.month && !due.month))
           )
       );
 
@@ -2137,7 +2128,9 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           if (item.type === "regular") {
             return `Regular Fee (${item.item.month}): ${item.item.concessionApplied}`;
           } else {
-            return `${item.item.name} (${item.item.month}): ${item.item.concessionApplied}`;
+            return `${item.item.name} (${item.item.month || "N/A"}): ${
+              item.item.concessionApplied
+            }`;
           }
         })
         .join(", ");
@@ -2153,7 +2146,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         `Additional Fees - ${
           updatedAdditional.length > 0
             ? updatedAdditional
-                .map((a) => `${a.name} (${a.month}): ${a.paidAmount}`)
+                .map((a) => `${a.name} (${a.month || "N/A"}): ${a.paidAmount}`)
                 .join(", ")
             : "None"
         }, ` +
@@ -2178,12 +2171,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         remark,
         feeReceiptNumber,
         paymentMessage,
-        previousDues:
-          feeStatus.feeHistory.length === 0
-            ? computedFullRegularFeeTotal +
-              computedFullAdditionalFeeTotal +
-              computedPastDues
-            : feeStatus.dues,
+        previousDues: previousDuesValue,
       });
 
       feeStatus.overallAmountPaid =

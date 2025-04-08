@@ -100,7 +100,7 @@ const feeHistorySchema = new mongoose.Schema(
     },
     lateFines: [
       {
-        month: { type: String, required: true }, // e.g., "April"
+        month: { type: String, required: false }, // e.g., "April"
         year: { type: String, required: true }, // e.g., "2025"
         amount: { type: Number, required: true },
         paidAmount: { type: Number, default: 0 },
@@ -151,7 +151,7 @@ const monthlyAdditionalDuesSchema = new mongoose.Schema({
   },
   month: {
     type: String,
-    required: true,
+    required: false,
   },
   paidAmount: {
     type: Number,

@@ -1607,12 +1607,23 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         .json({ success: false, message: "Student not found." });
     }
 
-    const fees = await getAllApplicableFees(schoolId, student.class, studentId);
-    const addiFees = await FeeStructure.find({
-      schoolId,
-      session,
-      additional: true,
-    });
+   // Fetch parent details using parentId from student
+   const parent = await ParentModel.findOne({
+    schoolId,
+    parentId: student.parentId,
+  }).lean();
+  if (!parent) {
+    return res
+      .status(404)
+      .json({ success: false, message: "Parent not found for this student." });
+  }
+
+  const fees = await getAllApplicableFees(schoolId, student.class, studentId);
+  const addiFees = await FeeStructure.find({
+    schoolId,
+    session,
+    additional: true,
+  });
 
     const months = [
       "April",
@@ -2190,7 +2201,8 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         feeStatus,
         studentAdmissionNumber: student.admissionNumber,
         studentName: student.studentName,
-        parentContact: student.parentContact
+        fatherContact: student.parentContact,
+        parentContact: parent.contact
       },
     });
   } catch (error) {

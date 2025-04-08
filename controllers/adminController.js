@@ -28,6 +28,8 @@ const FeeStatus = require("../models/feeStatus");
 // const classModel = require("../models/classModel");
 const classModel = require("../models/classModel");
 const NoticeModel = require("../models/noticeModel");
+const SellInventory = require("../models/SellInventory");
+const ReceiptModel = require("../models/receiptModel");
 const Curriculum = require("../models/curriculumModel");
 const Assignment = require("../models/assignmentModel");
 const IssueBook = require("../models/issueBookModel");
@@ -1642,10 +1644,11 @@ exports.getAllItems = async (req, res) => {
   }
 };
 
+
 exports.sellItem = async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { quantitySold } = req.body;
+    const { quantitySold, studentId } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
@@ -1668,13 +1671,18 @@ exports.sellItem = async (req, res) => {
         message: "Valid quantity sold is required.",
       });
     }
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID is required.",
+      });
+    }
 
     const item = await ItemModel.findOne({ itemId, schoolId, session });
     if (!item) {
       return res.status(404).json({
         success: false,
-        message:
-          "Item not found or does not belong to this school and session.",
+        message: "Item not found or does not belong to this school and session.",
       });
     }
 
@@ -1685,24 +1693,141 @@ exports.sellItem = async (req, res) => {
       });
     }
 
+    const totalAmount = quantitySold * item.price;
+    const receiptId = `REC-${Date.now()}`;
+    const sale = await SellInventory.create({
+      schoolId,
+      studentId,
+      receiptId,
+      items: [{
+        itemId,
+        itemName: item.itemName,
+        category: item.category,
+        price: item.price,
+        sellQuantity: quantitySold,
+        sellAmount: totalAmount,
+      }],
+      totalAmount,
+      dueAmount: 0, // Assuming full payment for single sale
+      saleDate: new Date(),
+      session,
+    });
+
+    await ReceiptModel.create({
+      receiptId,
+      saleId: sale._id,
+      studentId,
+      itemsSold: [{ itemName: item.itemName, sellQuantity: quantitySold, sellAmount: totalAmount }],
+      totalAmount,
+      dueAmount: 0,
+      paymentStatus: "Paid",
+    });
+
     item.quantity -= quantitySold;
     item.sellQuantity += quantitySold;
-    item.sellAmount += quantitySold * item.price;
+    item.sellAmount += totalAmount;
     item.updatedBy = updatedBy;
     item.updatedAt = new Date();
-
     await item.save();
 
     res.status(200).json({
       success: true,
       message: "Item sold successfully",
-      item,
+      sale,
     });
   } catch (error) {
     console.error("Error in sellItem:", error);
     res.status(500).json({
       success: false,
       message: "Item not sold due to error",
+      error: error.message,
+    });
+  }
+};
+
+exports.multiSellItem = async (req, res) => {
+  try {
+    const { items, studentId, totalAmount, dueAmount = 0 } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!studentId || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and valid items array are required.",
+      });
+    }
+
+    for (const { itemId, sellQuantity } of items) {
+      const item = await ItemModel.findOne({ itemId, schoolId, session });
+      if (!item || item.quantity < sellQuantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for item ${item?.itemName || itemId}`,
+        });
+      }
+    }
+
+    const receiptId = `REC-${Date.now()}`;
+    const sale = await SellInventory.create({
+      schoolId,
+      studentId,
+      receiptId,
+      items: items.map(item => ({
+        itemId: item.itemId,
+        itemName: (await ItemModel.findOne({ itemId: item.itemId })).itemName,
+        category: (await ItemModel.findOne({ itemId: item.itemId })).category,
+        price: (await ItemModel.findOne({ itemId: item.itemId })).price,
+        sellQuantity: item.sellQuantity,
+        sellAmount: item.sellQuantity * (await ItemModel.findOne({ itemId: item.itemId })).price,
+      })),
+      totalAmount,
+      dueAmount,
+      saleDate: new Date(),
+      session,
+    });
+
+    await ReceiptModel.create({
+      receiptId,
+      saleId: sale._id,
+      studentId,
+      itemsSold: items.map(item => ({
+        itemName: (await ItemModel.findOne({ itemId: item.itemId })).itemName,
+        sellQuantity: item.sellQuantity,
+        sellAmount: item.sellQuantity * (await ItemModel.findOne({ itemId: item.itemId })).price,
+      })),
+      totalAmount,
+      dueAmount,
+      paymentStatus: dueAmount > 0 ? "Pending" : "Paid",
+    });
+
+    for (const { itemId, sellQuantity } of items) {
+      const item = await ItemModel.findOne({ itemId, schoolId, session });
+      item.quantity -= sellQuantity;
+      item.sellQuantity += sellQuantity;
+      item.sellAmount += sellQuantity * item.price;
+      item.updatedBy = updatedBy;
+      item.updatedAt = new Date();
+      await item.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Multi-item sale recorded successfully",
+      sale,
+    });
+  } catch (error) {
+    console.error("Error in multiSellItem:", error);
+    res.status(500).json({
+      success: false,
+      message: "Multi-item sale failed due to error",
       error: error.message,
     });
   }

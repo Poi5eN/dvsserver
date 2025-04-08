@@ -104,9 +104,11 @@ router.delete("/library/:bookId", verifyToken, admin.deleteBook);
 // ITEM RELATED CONTROLLERS FLOW
 router.post("/inventory", verifyToken, admin.createItemDetails);
 router.get("/inventory", verifyToken, admin.getItems); // Dynamic GET
+router.get("/inventory/all", verifyToken, admin.getAllItems); 
 router.put("/inventory/:itemId", verifyToken, admin.updateItem);
 router.delete("/inventory/:itemId", verifyToken, admin.deleteItem);
 router.post("/inventory/sell/:itemId", verifyToken, admin.sellItem);
+router.post("/inventory/multi-sell", verifyToken, admin.multiSellItem);
 
 
 

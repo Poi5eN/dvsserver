@@ -2136,54 +2136,97 @@ exports.createPurchaseOrder = async (req, res) => {
 
 
   exports.getInventoryStats = async (req, res) => {
-    try {
-      const { schoolId, session } = req.user;
-      const { period = "month" } = req.query; // Filter by day, month, year
-  
-      if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
-  
-      const match = { schoolId, session };
-      const dateFilter = {};
-      const now = new Date();
-      if (period === "day") dateFilter.$gte = new Date(now.setHours(0, 0, 0, 0));
-      else if (period === "month") dateFilter.$gte = new Date(now.setDate(1));
-      else if (period === "year") dateFilter.$gte = new Date(now.setMonth(0, 1));
-  
-      const totalQuantity = await ItemModel.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$quantity" } } }]);
-      const totalItemsSold = await Sale.aggregate([{ $match: { ...match, date: dateFilter } }, { $unwind: "$items" }, { $group: { _id: null, total: { $sum: "$items.quantity" } } }]);
-      const totalRevenue = await Sale.aggregate([{ $match: { ...match, date: dateFilter } }, { $group: { _id: null, total: { $sum: "$totalAmount" } } }]);
-      const avgOrderValue = await Sale.aggregate([{ $match: { ...match, date: dateFilter } }, { $group: { _id: null, avg: { $avg: "$totalAmount" } } }]);
-      const lowStockItems = await ItemModel.find({ ...match, quantity: { $lt: "$lowStockThreshold" } }).lean();
-      const totalCategories = await ItemModel.distinct("category", match);
-      const topSellingItems = await Sale.aggregate([
-        { $match: { ...match, date: dateFilter } },
-        { $unwind: "$items" },
-        { $group: { _id: "$items.itemId", totalSold: { $sum: "$items.quantity" } } },
-        { $sort: { totalSold: -1 } },
-        { $limit: 3 },
-        { $lookup: { from: "itemmodels", localField: "_id", foreignField: "itemId", as: "itemDetails" } },
-        { $unwind: "$itemDetails" },
-        { $project: { itemId: "$_id", itemName: "$itemDetails.itemName", category: "$itemDetails.category", totalSold: 1, icon: "$itemDetails.icon", color: "$itemDetails.color" } },
-      ]);
-  
-      res.status(200).json({
-        success: true,
-        message: "Inventory statistics fetched",
-        stats: {
-          totalQuantity: totalQuantity[0]?.total || 0,
-          totalItemsSold: totalItemsSold[0]?.total || 0,
-          totalRevenue: totalRevenue[0]?.total || 0,
-          avgOrderValue: avgOrderValue[0]?.avg || 0,
-          lowStockItems,
-          totalCategories: totalCategories.length,
-          topSellingItems,
-          period,
+  try {
+    const { schoolId, session } = req.user;
+    const { period = "month", lowStockThreshold = 5 } = req.query; // Default low stock threshold to 5, adjustable via query
+
+    if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
+
+    const match = { schoolId, session };
+    const dateFilter = {};
+    const now = new Date();
+    if (period === "day") dateFilter.$gte = new Date(now.setHours(0, 0, 0, 0));
+    else if (period === "month") dateFilter.$gte = new Date(now.setDate(1));
+    else if (period === "year") dateFilter.$gte = new Date(now.setMonth(0, 1));
+
+    // Fetch total quantity
+    const totalQuantity = await ItemModel.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$quantity" } } }]);
+
+    // Fetch total items sold
+    const totalItemsSold = await Sale.aggregate([
+      { $match: { ...match, date: dateFilter } },
+      { $unwind: "$items" },
+      { $group: { _id: null, total: { $sum: "$items.quantity" } } },
+    ]);
+
+    // Fetch total revenue
+    const totalRevenue = await Sale.aggregate([
+      { $match: { ...match, date: dateFilter } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]);
+
+    // Fetch average order value
+    const avgOrderValue = await Sale.aggregate([
+      { $match: { ...match, date: dateFilter } },
+      { $group: { _id: null, avg: { $avg: "$totalAmount" } } },
+    ]);
+
+    // Fetch low stock items (using the threshold as a number)
+    const lowStockThresholdNum = parseInt(lowStockThreshold, 10);
+    if (isNaN(lowStockThresholdNum) || lowStockThresholdNum <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid low stock threshold. Must be a positive number." });
+    }// Convert to number
+    const lowStockItems = await ItemModel.find({ ...match, quantity: { $lt: lowStockThresholdNum } }).lean();
+
+    // Fetch total categories
+    const totalCategories = await ItemModel.distinct("category", match);
+
+    // Fetch top selling items
+    const topSellingItems = await Sale.aggregate([
+      { $match: { ...match, date: dateFilter } },
+      { $unwind: "$items" },
+      { $group: { _id: "$items.itemId", totalSold: { $sum: "$items.quantity" } } },
+      { $sort: { totalSold: -1 } },
+      { $limit: 3 },
+      {
+        $lookup: {
+          from: "itemmodels",
+          localField: "_id",
+          foreignField: "itemId",
+          as: "itemDetails",
         },
-      });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Error fetching stats", error: error.message });
-    }
-  };
+      },
+      { $unwind: "$itemDetails" },
+      {
+        $project: {
+          itemId: "$_id",
+          itemName: "$itemDetails.itemName",
+          category: "$itemDetails.category",
+          totalSold: 1,
+          icon: "$itemDetails.icon",
+          color: "$itemDetails.color",
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Inventory statistics fetched",
+      stats: {
+        totalQuantity: totalQuantity[0]?.total || 0,
+        totalItemsSold: totalItemsSold[0]?.total || 0,
+        totalRevenue: totalRevenue[0]?.total || 0,
+        avgOrderValue: avgOrderValue[0]?.avg || 0,
+        lowStockItems,
+        totalCategories: totalCategories.length,
+        topSellingItems,
+        period,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching stats", error: error.message });
+  }
+};
 
 
 

@@ -4,9 +4,9 @@ const {
   returnsellItem,
   getSalesRecords,
   multiItemSell,
-  getInventorySummary,
+  // getInventorySummary,
   getTopSellingItems,
-  generateReceipt,
+  // generateReceipt,
 } = require("../controllers/inventoryController");
 const verifyToken = require("../middleware/auth");
 
@@ -19,10 +19,10 @@ router.put("/returnsellItem", verifyToken, returnsellItem);
 router.get("/getSalesRecords", verifyToken, getSalesRecords);
 
 // Inventory summary and analytics
-router.get("/getInventorySummary", verifyToken, getInventorySummary);
+// router.get("/getInventorySummary", verifyToken, getInventorySummary);
 router.get("/getTopSellingItems", verifyToken, getTopSellingItems);
 
 // Receipt generation
-router.get("/generateReceipt/:saleId", verifyToken, generateReceipt);
+// router.get("/generateReceipt/:saleId", verifyToken, generateReceipt);
 
 module.exports = router;

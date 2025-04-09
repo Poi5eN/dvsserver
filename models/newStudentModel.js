@@ -71,13 +71,13 @@ const studentSchema = new mongoose.Schema({
     type: String,
     unique: true,
     required: true,
-    validate: {
-      validator: function (v) {
-        return this.isGenerated ? /^[A-Z]{2}\d{4}$/.test(v) : true;
-      },
-      message:
-        "Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000)",
-    },
+    // validate: {
+    //   validator: function (v) {
+    //     return this.isGenerated ? /^[A-Z]{2}\d{4}$/.test(v) : true;
+    //   },
+    //   message:
+    //     "Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000)",
+    // },
   },
   isGenerated: { type: Boolean, default: false },
   religion: { type: String },

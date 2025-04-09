@@ -36,9 +36,8 @@ const parentSchema = new mongoose.Schema({
     type: String,
     unique: true,
     required: true,
-    match: /^[A-Z]{2}\d{4}$/,
-    message:
-      "Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000)",
+    // match: /^[A-Z]{2}\d{4}$/,
+    // message:"Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000)",
   },
   sessionHistory: {
     type: [String],

@@ -1607,23 +1607,23 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         .json({ success: false, message: "Student not found." });
     }
 
-   // Fetch parent details using parentId from student
-   const parent = await ParentModel.findOne({
-    schoolId,
-    parentId: student.parentId,
-  }).lean();
-  if (!parent) {
-    return res
-      .status(404)
-      .json({ success: false, message: "Parent not found for this student." });
-  }
+    // Fetch parent details using parentId from student
+    const parent = await ParentModel.findOne({
+      schoolId,
+      parentId: student.parentId,
+    }).lean();
+    if (!parent) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Parent not found for this student." });
+    }
 
-  const fees = await getAllApplicableFees(schoolId, student.class, studentId);
-  const addiFees = await FeeStructure.find({
-    schoolId,
-    session,
-    additional: true,
-  });
+    const fees = await getAllApplicableFees(schoolId, student.class, studentId);
+    const addiFees = await FeeStructure.find({
+      schoolId,
+      session,
+      additional: true,
+    });
 
     const months = [
       "April",
@@ -1698,7 +1698,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
       return sum + (due ? due.dueAmount : regularFeeMap.Monthly);
     }, 0);
 
-    // Handle optional month in additional fees
     const computedFullAdditionalFeeTotal = additionalFees.reduce((sum, a) => {
       const due = feeStatus.monthlyDues.additionalDues.find(
         (d) =>
@@ -1804,7 +1803,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
       });
 
-      // Process additional fees with optional month
       const updatedAdditional = [];
       additionalFees.forEach((a) => {
         let due = feeStatus.monthlyDues.additionalDues.find(
@@ -1814,7 +1812,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         if (!due && additionalFeeMap[a.name]) {
           due = {
             name: a.name,
-            month: a.month || undefined, // Allow month to be optional
+            month: a.month || undefined,
             paidAmount: 0,
             dueAmount: additionalFeeMap[a.name].amount,
             status: "Unpaid",
@@ -1825,7 +1823,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
             const maxPayment = Math.min(remaining, due.dueAmount);
             const updatedDue = {
               name: due.name,
-              month: due.month || undefined, // Preserve optional month
+              month: due.month || undefined,
               paidAmount: due.paidAmount + maxPayment,
               dueAmount: Math.max(0, due.dueAmount - maxPayment),
               status:
@@ -2017,7 +2015,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         updatedRegular.push(updatedDue);
       });
 
-      // Process additional fees with optional month in manual mode
       const updatedAdditional = [];
       additionalFees.forEach((a) => {
         let due = feeStatus.monthlyDues.additionalDues.find(
@@ -2030,7 +2027,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           }
           due = {
             name: a.name,
-            month: a.month || undefined, // Allow month to be optional
+            month: a.month || undefined,
             paidAmount: 0,
             dueAmount: additionalFeeMap[a.name].amount,
             status: "Unpaid",
@@ -2046,7 +2043,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         }
         const updatedDue = {
           name: due.name,
-          month: due.month || undefined, // Preserve optional month
+          month: due.month || undefined,
           paidAmount: due.paidAmount + paidAmount,
           dueAmount: Math.max(0, due.dueAmount - paidAmount),
           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
@@ -2193,6 +2190,57 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
     await feeStatus.save();
 
+    // Create receipt details object
+    const latestFeeHistory = feeStatus.feeHistory[feeStatus.feeHistory.length - 1];
+    const receiptDetails = {
+      receiptNumber: feeReceiptNumber,
+      paymentDate: latestFeeHistory.date,
+      studentDetails: {
+        admissionNumber: student.admissionNumber,
+        name: student.studentName,
+        class: student.class,
+        section: student.section || "N/A",
+        rollNo: student.rollNo || "N/A",
+      },
+      parentDetails: {
+        fatherName: parent.fatherName,
+        motherName: parent.motherName || "N/A",
+        contact: parent.contact,
+      },
+      paymentDetails: {
+        totalAmountPaid: latestFeeHistory.totalAmountPaid,
+        paymentMode: latestFeeHistory.paymentMode,
+        transactionId: latestFeeHistory.transactionId,
+        regularFees: latestFeeHistory.regularFees.map(fee => ({
+          month: fee.month,
+          paidAmount: fee.paidAmount,
+          dueAmount: fee.dueAmount,
+          status: fee.status,
+          concessionApplied: fee.concessionApplied || 0
+        })),
+        additionalFees: latestFeeHistory.additionalFees.map(fee => ({
+          name: fee.name,
+          month: fee.month || "N/A",
+          paidAmount: fee.paidAmount,
+          dueAmount: fee.dueAmount,
+          status: fee.status,
+          concessionApplied: fee.concessionApplied || 0
+        })),
+        pastDuesPaid: latestFeeHistory.pastDuesPaid,
+        concessionApplied: latestFeeHistory.concessionApplied,
+        remark: latestFeeHistory.remark || "N/A",
+      },
+      feeSummary: {
+        previousDues: latestFeeHistory.previousDues,
+        totalFeeAmount: latestFeeHistory.totalFeeAmount,
+        totalDuesAfterPayment: latestFeeHistory.totalDues,
+        overallAmountPaid: feeStatus.overallAmountPaid,
+        overallConcessionApplied: feeStatus.overallConcessionApplied,
+      },
+      session: session,
+      paymentMessage: latestFeeHistory.paymentMessage,
+    };
+
     res.status(201).json({
       success: true,
       message: "Fee payment processed successfully",
@@ -2202,7 +2250,8 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         studentAdmissionNumber: student.admissionNumber,
         studentName: student.studentName,
         fatherContact: student.parentContact,
-        parentContact: parent.contact
+        parentContact: parent.contact,
+        receiptDetails // Adding the new receipt details object
       },
     });
   } catch (error) {

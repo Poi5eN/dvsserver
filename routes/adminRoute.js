@@ -110,6 +110,15 @@ router.delete("/inventory/:itemId", verifyToken, admin.deleteItem);
 router.post("/inventory/sell/:itemId", verifyToken, admin.sellItem);
 router.post("/inventory/multi-sell", verifyToken, admin.multiSellItem);
 
+router.post("/items", verifyToken, admin.createItem);
+router.post("/purchase-orders", verifyToken, admin.createPurchaseOrder);
+router.put("/purchase-orders/:orderId/receive", verifyToken, admin.receivePurchaseOrder);
+router.post("/sales", verifyToken, admin.createSale);
+router.post("/returns", verifyToken, admin.processReturn);
+router.get("/sales", verifyToken, admin.getAllSales);
+router.get("/inventory/stats", verifyToken, admin.getInventoryStats);
+router.get("/items", verifyToken, admin.getAllItems); // Existing endpoint
+
 
 
 

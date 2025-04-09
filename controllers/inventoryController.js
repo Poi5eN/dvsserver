@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const SellInventory = require('../models/sellInventory'); 
+const sellInventory = require('../models/sellInventory'); 
 const ItemModel = require('../models/inventoryItemModel'); 
 const ReceiptModel = require('../models/receiptModel'); 
 
@@ -276,6 +276,8 @@ exports.createsellItem = async (req, res) => {
     }
   };
 
+
+
   exports.returnsellItem = async (req, res) => {
     const { saleId, returnQuantity } = req.body;
   
@@ -306,6 +308,8 @@ exports.createsellItem = async (req, res) => {
       return res.status(500).json({ success: false, message: error.message });
     }
   };
+
+
 
   exports.multiItemSell = async (req, res) => {
     const { items, studentId, totalAmount, dueAmount = 0 } = req.body;
@@ -363,6 +367,8 @@ exports.createsellItem = async (req, res) => {
   };
 
 
+
+
   exports.getSalesRecords = async (req, res) => {
     const { day, month, year } = req.query;
   
@@ -379,22 +385,6 @@ exports.createsellItem = async (req, res) => {
     }
   };
 
-
-  exports.getInventorySummary = async (req, res) => {
-    try {
-      const items = await ItemModel.find({ schoolId: req.user.schoolId });
-      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-      const lowStockItems = items.filter(item => item.quantity < 10).length;
-      const totalCategories = [...new Set(items.map(item => item.category))].length;
-  
-      return res.status(200).json({
-        success: true,
-        data: { totalQuantity, lowStockItems, totalCategories },
-      });
-    } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
-    }
-  };
 
 
 
@@ -426,17 +416,4 @@ exports.createsellItem = async (req, res) => {
       return res.status(500).json({ success: false, message: error.message });
     }
   };
-
-
-  exports.generateReceipt = async (req, res) => {
-    const { saleId } = req.params;
   
-    try {
-      const receipt = await ReceiptModel.findOne({ saleId }).populate("saleId");
-      if (!receipt) return res.status(404).json({ success: false, message: "Receipt not found" });
-  
-      return res.status(200).json({ success: true, data: receipt });
-    } catch (error) {
-      return res.status(500).json({ success: false, message: error.message });
-    }
-  };

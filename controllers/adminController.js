@@ -1207,7 +1207,6 @@ exports.getFeeStructures = async (req, res) => {
   }
 };
 
-
 // Edit a late fine fee structure using feeStructureId
 exports.editLateFineFee = async (req, res) => {
   try {
@@ -1648,7 +1647,6 @@ exports.getAllItems = async (req, res) => {
   }
 };
 
-
 exports.sellItem = async (req, res) => {
   try {
     const { itemId } = req.params;
@@ -1686,7 +1684,8 @@ exports.sellItem = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: "Item not found or does not belong to this school and session.",
+        message:
+          "Item not found or does not belong to this school and session.",
       });
     }
 
@@ -1703,14 +1702,16 @@ exports.sellItem = async (req, res) => {
       schoolId,
       studentId,
       receiptId,
-      items: [{
-        itemId,
-        itemName: item.itemName,
-        category: item.category,
-        price: item.price,
-        sellQuantity: quantitySold,
-        sellAmount: totalAmount,
-      }],
+      items: [
+        {
+          itemId,
+          itemName: item.itemName,
+          category: item.category,
+          price: item.price,
+          sellQuantity: quantitySold,
+          sellAmount: totalAmount,
+        },
+      ],
       totalAmount,
       dueAmount: 0, // Assuming full payment for single sale
       saleDate: new Date(),
@@ -1721,7 +1722,13 @@ exports.sellItem = async (req, res) => {
       receiptId,
       saleId: sale._id,
       studentId,
-      itemsSold: [{ itemName: item.itemName, sellQuantity: quantitySold, sellAmount: totalAmount }],
+      itemsSold: [
+        {
+          itemName: item.itemName,
+          sellQuantity: quantitySold,
+          sellAmount: totalAmount,
+        },
+      ],
       totalAmount,
       dueAmount: 0,
       paymentStatus: "Paid",
@@ -1854,7 +1861,6 @@ exports.multiSellItem = async (req, res) => {
   }
 };
 
-
 // Delete Item
 exports.deleteItem = async (req, res) => {
   try {
@@ -1952,8 +1958,6 @@ exports.updateItem = async (req, res) => {
   }
 };
 
-
-
 // NEW INVENTORY
 
 exports.createItem = async (req, res) => {
@@ -1961,186 +1965,381 @@ exports.createItem = async (req, res) => {
     const { itemName, category, quantity, price, icon, color } = req.body;
     const { schoolId, session, _id: updatedBy } = req.user;
 
-    if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
-    if (!itemName || !category || !quantity || !price) return res.status(400).json({ success: false, message: "All fields are required." });
+    if (!schoolId || !session)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
+    if (!itemName || !category || !quantity || !price)
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required." });
 
-    const itemExist = await ItemModel.findOne({ schoolId, session, itemName, category });
-    if (itemExist) return res.status(400).json({ success: false, message: "Item already exists." });
+    const itemExist = await ItemModel.findOne({
+      schoolId,
+      session,
+      itemName,
+      category,
+    });
+    if (itemExist)
+      return res
+        .status(400)
+        .json({ success: false, message: "Item already exists." });
 
     const item = new ItemModel({
-      schoolId, session, itemName, category, quantity, price,
-      icon: icon || "🛒", color: color || "#000000", updatedBy,
+      schoolId,
+      session,
+      itemName,
+      category,
+      quantity,
+      price,
+      icon: icon || "🛒",
+      color: color || "#000000",
+      updatedBy,
     });
     await item.save();
 
-    res.status(201).json({ success: true, message: "Item created", data: item });
+    res
+      .status(201)
+      .json({ success: true, message: "Item created", data: item });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Error creating item", error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error creating item",
+        error: error.message,
+      });
   }
 };
 
-
 exports.createPurchaseOrder = async (req, res) => {
-    try {
-      const { items, supplier, expectedDeliveryDate } = req.body;
-      const { schoolId, session, _id: updatedBy } = req.user;
-  
-      if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
-      if (!items || !supplier) return res.status(400).json({ success: false, message: "Items and supplier are required." });
-  
-      let totalCost = 0;
-      for (let item of items) {
-        const inventoryItem = await ItemModel.findOne({ itemId: item.itemId, schoolId, session });
-        if (!inventoryItem) return res.status(404).json({ success: false, message: `Item ${item.itemId} not found.` });
-        item.itemName = inventoryItem.itemName;
-        item.category = inventoryItem.category;
-        item.totalCost = item.quantity * item.price;
-        totalCost += item.totalCost;
-      }
-  
-      const purchaseOrder = new PurchaseOrder({
-        schoolId, session, items, supplier, totalCost, expectedDeliveryDate, updatedBy,
+  try {
+    const { items, supplier, expectedDeliveryDate } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    if (!schoolId || !session)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
+    if (!items || !supplier)
+      return res
+        .status(400)
+        .json({ success: false, message: "Items and supplier are required." });
+
+    let totalCost = 0;
+    for (let item of items) {
+      const inventoryItem = await ItemModel.findOne({
+        itemId: item.itemId,
+        schoolId,
+        session,
       });
-      await purchaseOrder.save();
-  
-      res.status(201).json({ success: true, message: "Purchase order created", data: purchaseOrder });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Error creating purchase order", error: error.message });
+      if (!inventoryItem)
+        return res
+          .status(404)
+          .json({ success: false, message: `Item ${item.itemId} not found.` });
+      item.itemName = inventoryItem.itemName;
+      item.category = inventoryItem.category;
+      item.totalCost = item.quantity * item.price;
+      totalCost += item.totalCost;
     }
-  };
-  
-  exports.receivePurchaseOrder = async (req, res) => {
-    try {
-      const { orderId } = req.params;
-      const { schoolId, session, _id: updatedBy } = req.user;
-  
-      const order = await PurchaseOrder.findOne({ _id: orderId, schoolId, session, status: "ordered" });
-      if (!order) return res.status(404).json({ success: false, message: "Order not found or already received." });
-  
-      for (let item of order.items) {
-        await ItemModel.findOneAndUpdate(
-          { itemId: item.itemId, schoolId, session },
-          { $inc: { quantity: item.quantity, purchaseQuantity: item.quantity, purchaseCost: item.totalCost }, updatedBy, updatedAt: new Date() }
-        );
-      }
-      order.status = "received";
-      order.receivedDate = new Date();
-      order.updatedBy = updatedBy;
-      order.updatedAt = new Date();
-      await order.save();
-  
-      res.status(200).json({ success: true, message: "Order received", data: order });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Error receiving order", error: error.message });
-    }
-  };
 
+    const purchaseOrder = new PurchaseOrder({
+      schoolId,
+      session,
+      items,
+      supplier,
+      totalCost,
+      expectedDeliveryDate,
+      updatedBy,
+    });
+    await purchaseOrder.save();
 
-
-
-  exports.createSale = async (req, res) => {
-    try {
-      const { studentId, items, paymentStatus, paidAmount } = req.body;
-      const { schoolId, session, _id: updatedBy } = req.user;
-  
-      if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
-      if (!studentId || !items) return res.status(400).json({ success: false, message: "Student ID and items are required." });
-  
-      const studentResponse = await axios.get(`https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${studentId}`, {
-        headers: { Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}` },
+    res
+      .status(201)
+      .json({
+        success: true,
+        message: "Purchase order created",
+        data: purchaseOrder,
       });
-      if (!studentResponse.data.success) return res.status(404).json({ success: false, message: "Student not found." });
-  
-      let totalAmount = 0;
-      for (let item of items) {
-        const inventoryItem = await ItemModel.findOne({ itemId: item.itemId, schoolId, session });
-        if (!inventoryItem) return res.status(404).json({ success: false, message: `Item ${item.itemId} not found.` });
-        if (inventoryItem.quantity < item.quantity) return res.status(400).json({ success: false, message: `Insufficient stock for ${inventoryItem.itemName}.` });
-        item.itemName = inventoryItem.itemName;
-        item.category = inventoryItem.category;
-        item.price = inventoryItem.price;
-        item.total = item.quantity * inventoryItem.price;
-        item.icon = inventoryItem.icon;
-        item.color = inventoryItem.color;
-        totalAmount += item.total;
-      }
-  
-      const dueAmount = paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
-      if (paymentStatus === "paid" && paidAmount < totalAmount) return res.status(400).json({ success: false, message: "Paid amount insufficient for paid status." });
-  
-      const sale = new Sale({
-        schoolId, session, studentId, items, totalAmount, paymentStatus, paidAmount, dueAmount, updatedBy,
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error creating purchase order",
+        error: error.message,
       });
-      await sale.save();
-  
-      for (let item of items) {
-        await ItemModel.findOneAndUpdate(
-          { itemId: item.itemId, schoolId, session },
-          { $inc: { quantity: -item.quantity, sellQuantity: item.quantity, sellAmount: item.total }, updatedBy, updatedAt: new Date() }
-        );
-      }
-  
-      res.status(201).json({ success: true, message: "Sale created", data: sale });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Error creating sale", error: error.message });
+  }
+};
+
+exports.receivePurchaseOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    const order = await PurchaseOrder.findOne({
+      _id: orderId,
+      schoolId,
+      session,
+      status: "ordered",
+    });
+    if (!order)
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "Order not found or already received.",
+        });
+
+    for (let item of order.items) {
+      await ItemModel.findOneAndUpdate(
+        { itemId: item.itemId, schoolId, session },
+        {
+          $inc: {
+            quantity: item.quantity,
+            purchaseQuantity: item.quantity,
+            purchaseCost: item.totalCost,
+          },
+          updatedBy,
+          updatedAt: new Date(),
+        }
+      );
     }
-  };
+    order.status = "received";
+    order.receivedDate = new Date();
+    order.updatedBy = updatedBy;
+    order.updatedAt = new Date();
+    await order.save();
 
-
-
-  exports.processReturn = async (req, res) => {
-    try {
-      const { saleId, items, reason } = req.body;
-      const { schoolId, session, _id: updatedBy } = req.user;
-  
-      if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
-      if (!saleId || !items) return res.status(400).json({ success: false, message: "Sale ID and items are required." });
-  
-      const sale = await Sale.findOne({ _id: saleId, schoolId, session });
-      if (!sale) return res.status(404).json({ success: false, message: "Sale not found." });
-  
-      let totalAmount = 0;
-      for (let item of items) {
-        const saleItem = sale.items.find((i) => i.itemId === item.itemId);
-        if (!saleItem || saleItem.quantity < item.quantity) return res.status(400).json({ success: false, message: `Invalid return quantity for ${item.itemId}.` });
-        item.itemName = saleItem.itemName;
-        item.category = saleItem.category;
-        item.price = saleItem.price;
-        item.total = item.quantity * saleItem.price;
-        totalAmount += item.total;
-      }
-  
-      const returnRecord = new Return({
-        schoolId, session, saleId, studentId: sale.studentId, items, totalAmount, reason, updatedBy,
+    res
+      .status(200)
+      .json({ success: true, message: "Order received", data: order });
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error receiving order",
+        error: error.message,
       });
-      await returnRecord.save();
-  
-      for (let item of items) {
-        await ItemModel.findOneAndUpdate(
-          { itemId: item.itemId, schoolId, session },
-          { $inc: { quantity: item.quantity, sellQuantity: -item.quantity, sellAmount: -item.total }, updatedBy, updatedAt: new Date() }
-        );
-        await Sale.findOneAndUpdate(
-          { _id: saleId },
-          { $inc: { dueAmount: -item.total }, updatedBy, updatedAt: new Date() }
-        );
+  }
+};
+
+exports.createSale = async (req, res) => {
+  try {
+    const { studentId, items, paymentStatus, paidAmount } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    if (!schoolId || !session)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
+    if (!studentId || !items)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Student ID and items are required.",
+        });
+
+    const studentResponse = await axios.get(
+      `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${studentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+        },
       }
-  
-      res.status(201).json({ success: true, message: "Return processed", data: returnRecord });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Error processing return", error: error.message });
+    );
+    if (!studentResponse.data.success)
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found." });
+
+    let totalAmount = 0;
+    for (let item of items) {
+      const inventoryItem = await ItemModel.findOne({
+        itemId: item.itemId,
+        schoolId,
+        session,
+      });
+      if (!inventoryItem)
+        return res
+          .status(404)
+          .json({ success: false, message: `Item ${item.itemId} not found.` });
+      if (inventoryItem.quantity < item.quantity)
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: `Insufficient stock for ${inventoryItem.itemName}.`,
+          });
+      item.itemName = inventoryItem.itemName;
+      item.category = inventoryItem.category;
+      item.price = inventoryItem.price;
+      item.total = item.quantity * inventoryItem.price;
+      item.icon = inventoryItem.icon;
+      item.color = inventoryItem.color;
+      totalAmount += item.total;
     }
-  };
 
+    const dueAmount =
+      paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
+    if (paymentStatus === "paid" && paidAmount < totalAmount)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Paid amount insufficient for paid status.",
+        });
 
+    const sale = new Sale({
+      schoolId,
+      session,
+      studentId,
+      items,
+      totalAmount,
+      paymentStatus,
+      paidAmount,
+      dueAmount,
+      updatedBy,
+    });
+    await sale.save();
 
+    for (let item of items) {
+      await ItemModel.findOneAndUpdate(
+        { itemId: item.itemId, schoolId, session },
+        {
+          $inc: {
+            quantity: -item.quantity,
+            sellQuantity: item.quantity,
+            sellAmount: item.total,
+          },
+          updatedBy,
+          updatedAt: new Date(),
+        }
+      );
+    }
 
-  exports.getInventoryStats = async (req, res) => {
+    res
+      .status(201)
+      .json({ success: true, message: "Sale created", data: sale });
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error creating sale",
+        error: error.message,
+      });
+  }
+};
+
+exports.processReturn = async (req, res) => {
+  try {
+    const { saleId, items, reason } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    if (!schoolId || !session)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
+    if (!saleId || !items)
+      return res
+        .status(400)
+        .json({ success: false, message: "Sale ID and items are required." });
+
+    const sale = await Sale.findOne({ _id: saleId, schoolId, session });
+    if (!sale)
+      return res
+        .status(404)
+        .json({ success: false, message: "Sale not found." });
+
+    let totalAmount = 0;
+    for (let item of items) {
+      const saleItem = sale.items.find((i) => i.itemId === item.itemId);
+      if (!saleItem || saleItem.quantity < item.quantity)
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: `Invalid return quantity for ${item.itemId}.`,
+          });
+      item.itemName = saleItem.itemName;
+      item.category = saleItem.category;
+      item.price = saleItem.price;
+      item.total = item.quantity * saleItem.price;
+      totalAmount += item.total;
+    }
+
+    const returnRecord = new Return({
+      schoolId,
+      session,
+      saleId,
+      studentId: sale.studentId,
+      items,
+      totalAmount,
+      reason,
+      updatedBy,
+    });
+    await returnRecord.save();
+
+    for (let item of items) {
+      await ItemModel.findOneAndUpdate(
+        { itemId: item.itemId, schoolId, session },
+        {
+          $inc: {
+            quantity: item.quantity,
+            sellQuantity: -item.quantity,
+            sellAmount: -item.total,
+          },
+          updatedBy,
+          updatedAt: new Date(),
+        }
+      );
+      await Sale.findOneAndUpdate(
+        { _id: saleId },
+        { $inc: { dueAmount: -item.total }, updatedBy, updatedAt: new Date() }
+      );
+    }
+
+    res
+      .status(201)
+      .json({ success: true, message: "Return processed", data: returnRecord });
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error processing return",
+        error: error.message,
+      });
+  }
+};
+
+exports.getInventoryStats = async (req, res) => {
   try {
     const { schoolId, session } = req.user;
     const { period = "month", lowStockThreshold = 5 } = req.query; // Default low stock threshold to 5, adjustable via query
 
-    if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
+    if (!schoolId || !session)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
 
     const match = { schoolId, session };
     const dateFilter = {};
@@ -2150,7 +2349,10 @@ exports.createPurchaseOrder = async (req, res) => {
     else if (period === "year") dateFilter.$gte = new Date(now.setMonth(0, 1));
 
     // Fetch total quantity
-    const totalQuantity = await ItemModel.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$quantity" } } }]);
+    const totalQuantity = await ItemModel.aggregate([
+      { $match: match },
+      { $group: { _id: null, total: { $sum: "$quantity" } } },
+    ]);
 
     // Fetch total items sold
     const totalItemsSold = await Sale.aggregate([
@@ -2174,9 +2376,17 @@ exports.createPurchaseOrder = async (req, res) => {
     // Fetch low stock items (using the threshold as a number)
     const lowStockThresholdNum = parseInt(lowStockThreshold, 10);
     if (isNaN(lowStockThresholdNum) || lowStockThresholdNum <= 0) {
-      return res.status(400).json({ success: false, message: "Invalid low stock threshold. Must be a positive number." });
-    }// Convert to number
-    const lowStockItems = await ItemModel.find({ ...match, quantity: { $lt: lowStockThresholdNum } }).lean();
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid low stock threshold. Must be a positive number.",
+        });
+    } // Convert to number
+    const lowStockItems = await ItemModel.find({
+      ...match,
+      quantity: { $lt: lowStockThresholdNum },
+    }).lean();
 
     // Fetch total categories
     const totalCategories = await ItemModel.distinct("category", match);
@@ -2185,7 +2395,12 @@ exports.createPurchaseOrder = async (req, res) => {
     const topSellingItems = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $unwind: "$items" },
-      { $group: { _id: "$items.itemId", totalSold: { $sum: "$items.quantity" } } },
+      {
+        $group: {
+          _id: "$items.itemId",
+          totalSold: { $sum: "$items.quantity" },
+        },
+      },
       { $sort: { totalSold: -1 } },
       { $limit: 3 },
       {
@@ -2224,50 +2439,72 @@ exports.createPurchaseOrder = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Error fetching stats", error: error.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error fetching stats",
+        error: error.message,
+      });
   }
 };
 
+exports.getAllSales = async (req, res) => {
+  try {
+    const { schoolId, session } = req.user;
+    const {
+      dateStart,
+      dateEnd,
+      studentId,
+      paymentStatus,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
+    if (!schoolId || !session)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "School ID and session are required.",
+        });
 
-
-  exports.getAllSales = async (req, res) => {
-    try {
-      const { schoolId, session } = req.user;
-      const { dateStart, dateEnd, studentId, paymentStatus, page = 1, limit = 10 } = req.query;
-  
-      if (!schoolId || !session) return res.status(400).json({ success: false, message: "School ID and session are required." });
-  
-      const query = { schoolId, session };
-      if (dateStart || dateEnd) {
-        query.date = {};
-        if (dateStart) query.date.$gte = new Date(dateStart);
-        if (dateEnd) query.date.$lte = new Date(dateEnd);
-      }
-      if (studentId) query.studentId = studentId;
-      if (paymentStatus) query.paymentStatus = paymentStatus;
-  
-      const sales = await Sale.find(query)
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit))
-        .lean();
-      const totalSales = await Sale.countDocuments(query);
-  
-      res.status(200).json({
-        success: true,
-        message: "Sales fetched",
-        sales,
-        pagination: { total: totalSales, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalSales / limit) },
-      });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Error fetching sales", error: error.message });
+    const query = { schoolId, session };
+    if (dateStart || dateEnd) {
+      query.date = {};
+      if (dateStart) query.date.$gte = new Date(dateStart);
+      if (dateEnd) query.date.$lte = new Date(dateEnd);
     }
-  };
+    if (studentId) query.studentId = studentId;
+    if (paymentStatus) query.paymentStatus = paymentStatus;
 
+    const sales = await Sale.find(query)
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .lean();
+    const totalSales = await Sale.countDocuments(query);
 
-
-
-  
+    res.status(200).json({
+      success: true,
+      message: "Sales fetched",
+      sales,
+      pagination: {
+        total: totalSales,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(totalSales / limit),
+      },
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Error fetching sales",
+        error: error.message,
+      });
+  }
+};
 
 //creating Subjects
 
@@ -3830,27 +4067,34 @@ exports.createParentOnly = async (req, res) => {
 // Updated helper function to parse DD/MM/YYYY strings into Date objects
 const parseDate = (dateString) => {
   if (!dateString || typeof dateString !== "string") return null;
-  
+
   // Trim whitespace from the input string
   const trimmedDate = dateString.trim();
-  
+
   // Split by '/' or '-' and ensure we get exactly 3 parts
   const parts = trimmedDate.split(/[-\/]/);
   if (parts.length !== 3) return null;
 
-  const [day, month, year] = parts.map(part => part.trim()); // Trim each part to remove any extra spaces
-  
+  const [day, month, year] = parts.map((part) => part.trim()); // Trim each part to remove any extra spaces
+
   // Validate day, month, and year are numeric and within valid ranges
   const dayNum = parseInt(day, 10);
   const monthNum = parseInt(month, 10);
   const yearNum = parseInt(year, 10);
 
   if (isNaN(dayNum) || isNaN(monthNum) || isNaN(yearNum)) return null;
-  if (dayNum < 1 || dayNum > 31 || monthNum < 1 || monthNum > 12 || yearNum < 1900) return null;
+  if (
+    dayNum < 1 ||
+    dayNum > 31 ||
+    monthNum < 1 ||
+    monthNum > 12 ||
+    yearNum < 1900
+  )
+    return null;
 
   // Construct Date object (month is 0-based in JS, so subtract 1)
   const date = new Date(yearNum, monthNum - 1, dayNum);
-  
+
   // Check if the date is valid and matches the input (e.g., handles invalid days like 31/04)
   if (
     isNaN(date.getTime()) ||
@@ -4528,13 +4772,29 @@ exports.createBulkStudentParent = async (req, res) => {
         const studentPassword = "dvs@student";
         const studentHashPassword = await hashPassword(studentPassword);
 
-        // Generate admission number
-        const studentAdmissionNumberToUse =
-          admissionNumber && admissionNumber.trim() !== ""
-            ? admissionNumber
-            : await generateAdmissionNumber(schoolId, NewStudentModel);
+        // Generate or use provided admission number for student
+        let studentAdmissionNumberToUse;
+        if (admissionNumber && admissionNumber.trim() !== "") {
+          // Use provided admission number and check for uniqueness
+          studentAdmissionNumberToUse = admissionNumber.trim();
+          const existingStudent = await NewStudentModel.findOne({
+            admissionNumber: studentAdmissionNumberToUse,
+            schoolId,
+          });
+          if (existingStudent) {
+            throw new Error(
+              `Admission number ${studentAdmissionNumberToUse} is already in use by another student.`
+            );
+          }
+        } else {
+          // Generate default admission number if not provided
+          studentAdmissionNumberToUse = await generateAdmissionNumber(
+            schoolId,
+            NewStudentModel
+          );
+        }
 
-        // Create student
+        // Create student with the determined admission number
         const studentData = await NewStudentModel.create({
           schoolId,
           session,
@@ -4573,7 +4833,6 @@ exports.createBulkStudentParent = async (req, res) => {
           approvalStatus: "approved",
           assignedThirdParty: null,
           isNewAdmission: true,
-          // ... udisePlusDetails ...
         });
 
         // Handle parent
@@ -8037,10 +8296,20 @@ exports.createClass = async (req, res) => {
 
     // Trim className
     className = className?.trim();
-    
+
     // Trim sections and subjects arrays
-    sections = sections ? sections.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    subjects = subjects ? subjects.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    sections = sections
+      ? sections
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    subjects = subjects
+      ? subjects
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
 
     const classId = uuidv4();
 
@@ -8137,8 +8406,18 @@ exports.updateClass = async (req, res) => {
 
     // Trim all inputs
     className = className?.trim();
-    sections = sections ? sections.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    subjects = subjects ? subjects.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    sections = sections
+      ? sections
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    subjects = subjects
+      ? subjects
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
 
     const classToUpdate = await classModel.findOne({
       classId,
@@ -8467,15 +8746,16 @@ exports.deleteNotice = async (req, res) => {
 
 // Helper function to get next session
 const getNextSession = (currentSession) => {
-  const [startYear, endYear] = currentSession.split('-').map(Number);
+  const [startYear, endYear] = currentSession.split("-").map(Number);
   return `${startYear + 1}-${endYear + 1}`;
 };
 
 // Updated Promotion API
 exports.promotionOfStudent = async (req, res) => {
   try {
-    const { students, promotedClass, promotedSection, promotedSession } = req.body;
-    
+    const { students, promotedClass, promotedSection, promotedSession } =
+      req.body;
+
     if (!students || !promotedClass || !promotedSection || !promotedSession) {
       return res.status(400).json({
         success: false,
@@ -8537,9 +8817,9 @@ exports.promotionOfStudent = async (req, res) => {
 // exports.getStudentsBySession = async (req, res) => {
 //   try {
 //     const { session } = req.query;
-    
+
 //     console.log("Received session query:", session); // Debug log
-    
+
 //     if (!session) {
 //       return res.status(400).json({
 //         success: false,
@@ -8574,9 +8854,9 @@ exports.getStudentsBySession = async (req, res) => {
   try {
     // Accept session from body first, then query as fallback
     const session = req.body.session || req.query.session;
-    
+
     console.log("Received session:", session); // Debug log
-    
+
     if (!session) {
       return res.status(400).json({
         success: false,
@@ -8585,11 +8865,10 @@ exports.getStudentsBySession = async (req, res) => {
     }
 
     const students = await NewStudentModel.find({
-      $or: [
-        { session: session },
-        { sessionHistory: session }
-      ]
-    }).select('studentName class section session sessionHistory admissionNumber');
+      $or: [{ session: session }, { sessionHistory: session }],
+    }).select(
+      "studentName class section session sessionHistory admissionNumber"
+    );
 
     console.log("Found students:", students); // Debug log
 

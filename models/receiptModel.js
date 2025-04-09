@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { v4: uuidv4 } = require("uuid");
 
 const receiptSchema = new mongoose.Schema({
   receiptId: { type: String, required: true, unique: true },

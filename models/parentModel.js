@@ -34,7 +34,7 @@ const parentSchema = new mongoose.Schema({
   guardianImage: { public_id: { type: String, default: "" }, url: { type: String, default: "" } },
   admissionNumber: {
     type: String,
-    unique: true,
+    // unique: true,
     required: true,
     // match: /^[A-Z]{2}\d{4}$/,
     // message:"Admission number must follow the pattern: 2 uppercase letters followed by 4 digits (e.g., DI1000)",
@@ -52,6 +52,7 @@ const parentSchema = new mongoose.Schema({
 });
 
 parentSchema.index({ email: 1, schoolId: 1 }, { unique: true });
+parentSchema.index({ schoolId: 1, admissionNumber: 1 }, { unique: true });
 
 const ParentModel = mongoose.model("ParentModel", parentSchema);
 module.exports = ParentModel;

@@ -69,7 +69,7 @@ const studentSchema = new mongoose.Schema({
   },
   admissionNumber: {
     type: String,
-    unique: true,
+    // unique: true,
     required: true,
     // validate: {
     //   validator: function (v) {
@@ -158,6 +158,8 @@ const studentSchema = new mongoose.Schema({
 });
 
 studentSchema.index({ email: 1, schoolId: 1 }, { unique: true });
+// Add compound unique index
+studentSchema.index({ schoolId: 1, admissionNumber: 1 }, { unique: true });
 
 // Removed unique index on email since uniqueness is now per schoolId and session, handled in code
 const NewStudentModel = mongoose.model("NewStudentModel", studentSchema);

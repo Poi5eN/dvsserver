@@ -1762,7 +1762,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
             !additionalFees.some(
               (a) =>
                 a.name === due.name &&
-                (a.month === due.month || (!a.month && !due.month))
+                (a.month === due.month || (!a.month && !a.month))
             ) && due.dueAmount > 0
         );
       for (const due of existingAdditionalDues) {
@@ -1790,7 +1790,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         if (remaining > 0) {
           const maxPayment = Math.min(remaining, due.dueAmount);
           const updatedDue = {
-            month: due.month,
+            month: r.month,
             paidAmount: due.paidAmount + maxPayment,
             dueAmount: Math.max(0, due.dueAmount - maxPayment),
             status:
@@ -2105,7 +2105,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           !additionalFees.some(
             (a) =>
               a.name === due.name &&
-              (a.month === due.month || (!a.month && !due.month))
+              (a.month === a.month || (!a.month && !due.month))
           )
       );
 
@@ -2190,68 +2190,61 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
     await feeStatus.save();
 
-    // Create receipt details object
+    // Create feeReceipt object
     const latestFeeHistory = feeStatus.feeHistory[feeStatus.feeHistory.length - 1];
-    const receiptDetails = {
-      receiptNumber: feeReceiptNumber,
-      paymentDate: latestFeeHistory.date,
-      studentDetails: {
-        admissionNumber: student.admissionNumber,
-        name: student.studentName,
-        class: student.class,
-        section: student.section || "N/A",
-        rollNo: student.rollNo || "N/A",
-      },
-      parentDetails: {
-        fatherName: parent.fatherName,
-        motherName: parent.motherName || "N/A",
-        contact: parent.contact,
-      },
-      paymentDetails: {
-        totalAmountPaid: latestFeeHistory.totalAmountPaid,
-        paymentMode: latestFeeHistory.paymentMode,
-        transactionId: latestFeeHistory.transactionId,
-        regularFees: latestFeeHistory.regularFees.map(fee => ({
-          month: fee.month,
-          paidAmount: fee.paidAmount,
-          dueAmount: fee.dueAmount,
-          status: fee.status,
-          concessionApplied: fee.concessionApplied || 0
-        })),
-        additionalFees: latestFeeHistory.additionalFees.map(fee => ({
-          name: fee.name,
-          month: fee.month || "N/A",
-          paidAmount: fee.paidAmount,
-          dueAmount: fee.dueAmount,
-          status: fee.status,
-          concessionApplied: fee.concessionApplied || 0
-        })),
-        pastDuesPaid: latestFeeHistory.pastDuesPaid,
-        concessionApplied: latestFeeHistory.concessionApplied,
-        remark: latestFeeHistory.remark || "N/A",
-      },
-      feeSummary: {
-        previousDues: latestFeeHistory.previousDues,
-        totalFeeAmount: latestFeeHistory.totalFeeAmount,
-        totalDuesAfterPayment: latestFeeHistory.totalDues,
-        overallAmountPaid: feeStatus.overallAmountPaid,
-        overallConcessionApplied: feeStatus.overallConcessionApplied,
-      },
-      session: session,
+    const feeReceipt = {
+      studentId: student.studentId,
+      studentName: student.studentName,
+      studentClass: student.class,
+      parentContact: parent.contact,
+      admissionNumber: student.admissionNumber,
+      fatherName: parent.fatherName,
+      feeReceiptNumber: feeReceiptNumber,
+      paymentMode: latestFeeHistory.paymentMode,
+      dues: latestFeeHistory.totalDues,
+      date: latestFeeHistory.date,
+      status: latestFeeHistory.status,
+      regularFees: latestFeeHistory.regularFees.map(fee => ({
+        month: fee.month,
+        paidAmount: fee.paidAmount,
+        dueAmount: fee.dueAmount,
+        status: fee.status
+      })),
+      additionalFees: latestFeeHistory.additionalFees.map(fee => ({
+        name: fee.name,
+        month: fee.month || "N/A",
+        paidAmount: fee.paidAmount,
+        dueAmount: fee.dueAmount,
+        status: fee.status
+      })),
+      transactionId: latestFeeHistory.transactionId,
+      totalFeeAmount: latestFeeHistory.totalFeeAmount,
+      pastDuesPaid: latestFeeHistory.pastDuesPaid,
+      duesPaid: totalDuesBefore - latestFeeHistory.totalDues, // Calculated as dues cleared in this payment
+      previousDues: latestFeeHistory.previousDues,
+      remark: latestFeeHistory.remark || "",
+      totalAmountPaid: latestFeeHistory.totalAmountPaid,
+      totalDues: latestFeeHistory.totalDues,
+      concessionFee: 0, // Assuming no separate concession fee unless specified
+      lateFinesPaid: 0, // Assuming no late fines unless specified
+      concessionApplied: latestFeeHistory.concessionApplied,
       paymentMessage: latestFeeHistory.paymentMessage,
+      paidAfterConcession: 0, // Assuming no separate post-concession amount unless specified
+      newPaidAmount: latestFeeHistory.totalAmountPaid, // Assuming this is the total amount paid
+      lateFines: [] // Assuming no late fines unless specified
     };
 
     res.status(201).json({
       success: true,
       message: "Fee payment processed successfully",
-      data: { 
-        feeReceiptNumber, 
+      data: {
+        feeReceiptNumber,
         feeStatus,
         studentAdmissionNumber: student.admissionNumber,
         studentName: student.studentName,
         fatherContact: student.parentContact,
         parentContact: parent.contact,
-        receiptDetails // Adding the new receipt details object
+        feeReceipt // Adding the new feeReceipt object
       },
     });
   } catch (error) {

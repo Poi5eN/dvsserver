@@ -37,7 +37,7 @@ function calculateMonthlyDues(feeEntries, feeMap) {
         const feeAmount = feeMap[entry.name || entry.feeType] || 0;
         const paidAmount = entry.paidAmount || 0;
         const dueAmount = feeAmount - paidAmount;
-        const status = dueAmount <= 0 ? "Paid" : (paidAmount > 0 ? "Partial Payment" : "Unpaid");
+        const status = dueAmount <= 0 ? "Paid" : (paidAmount > 0 ? "Partial" : "Unpaid");
 
         totalPaidAmount += paidAmount;
         totalDues += dueAmount > 0 ? dueAmount : 0;
@@ -111,7 +111,7 @@ exports.manageDuesPayment = async (req, res) => {
                 fee.paidAmount += amountToPay;
                 fee.dueAmount -= amountToPay;
                 remainingPayment -= amountToPay;
-                fee.status = fee.dueAmount <= 0 ? "Paid" : "Partial Payment";
+                fee.status = fee.dueAmount <= 0 ? "Paid" : "Partial";
             }
         }
 
@@ -123,7 +123,7 @@ exports.manageDuesPayment = async (req, res) => {
                 fee.paidAmount += amountToPay;
                 fee.dueAmount -= amountToPay;
                 remainingPayment -= amountToPay;
-                fee.status = fee.dueAmount <= 0 ? "Paid" : "Partial Payment";
+                fee.status = fee.dueAmount <= 0 ? "Paid" : "Partial";
             }
         }
 
@@ -214,7 +214,7 @@ exports.createPayment = async (req, res) => {
                 }
 
                 const dueAmount = feeAmount - totalAmountPaid;
-                const status = dueAmount <= 0 ? "Paid" : "Partial Payment";
+                const status = dueAmount <= 0 ? "Paid" : "Partial";
 
                 totalPaidAmount += paidAmount;
                 totalDues += dueAmount > 0 ? dueAmount : 0;
@@ -243,7 +243,7 @@ exports.createPayment = async (req, res) => {
 
         const newFeeHistory = {
             date: formattedDate, // Use the formatted date
-            status: totalDues <= 0 ? "Paid" : "Partial Payment",
+            status: totalDues <= 0 ? "Paid" : "Partial",
             regularFees,
             additionalFees,
             feeReceiptNumber: generateUniqueFeeReceiptNumber(),

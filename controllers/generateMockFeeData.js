@@ -156,7 +156,7 @@ const generateMockFeeStatuses = async () => {
             month: "May",
             paidAmount: 2000,
             dueAmount: 3000,
-            status: "Partial Payment",
+            status: "Partial",
           },
           {
             month: "June",

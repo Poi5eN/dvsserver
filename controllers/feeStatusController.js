@@ -481,7 +481,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //         const payment = Math.min(remaining, due.dueAmount);
 //         due.paidAmount += payment;
 //         due.dueAmount -= payment;
-//         due.status = due.dueAmount === 0 ? "Paid" : "Partial Payment";
+//         due.status = due.dueAmount === 0 ? "Paid" : "Partial";
 //         remaining -= payment;
 //       }
 
@@ -495,7 +495,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //         const payment = Math.min(remaining, due.dueAmount);
 //         due.paidAmount += payment;
 //         due.dueAmount -= payment;
-//         due.status = due.dueAmount === 0 ? "Paid" : "Partial Payment";
+//         due.status = due.dueAmount === 0 ? "Paid" : "Partial";
 //         remaining -= payment;
 //       }
 
@@ -521,7 +521,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //             paidAmount: due.paidAmount + maxPayment,
 //             dueAmount: Math.max(0, due.dueAmount - maxPayment),
 //             status:
-//               due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+//               due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
 //           };
 //           updatedRegular.push(updatedDue);
 //           remaining -= maxPayment;
@@ -554,7 +554,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //               paidAmount: due.paidAmount + maxPayment,
 //               dueAmount: Math.max(0, due.dueAmount - maxPayment),
 //               status:
-//                 due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+//                 due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
 //             };
 //             updatedAdditional.push(updatedDue);
 //             remaining -= maxPayment;
@@ -588,8 +588,8 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 
 //       // Sort all dues - apply concession to partially paid dues first
 //       allDuesToApplyConcession.sort((a, b) => {
-//         if (a.item.status === "Partial Payment" && b.item.status !== "Partial Payment") return -1;
-//         if (a.item.status !== "Partial Payment" && b.item.status === "Partial Payment") return 1;
+//         if (a.item.status === "Partial" && b.item.status !== "Partial") return -1;
+//         if (a.item.status !== "Partial" && b.item.status === "Partial") return 1;
 //         return 0;
 //       });
 
@@ -761,7 +761,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //           month: due.month,
 //           paidAmount: due.paidAmount + paidAmount,
 //           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
 //         };
 //         updatedRegular.push(updatedDue);
 //       });
@@ -794,7 +794,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //           month: due.month,
 //           paidAmount: due.paidAmount + paidAmount,
 //           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
 //         };
 //         updatedAdditional.push(updatedDue);
 //       });
@@ -823,8 +823,8 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 
 //       // Sort all dues - apply concession to partially paid dues first
 //       allDuesToApplyConcession.sort((a, b) => {
-//         if (a.item.status === "Partial Payment" && b.item.status !== "Partial Payment") return -1;
-//         if (a.item.status !== "Partial Payment" && b.item.status === "Partial Payment") return 1;
+//         if (a.item.status === "Partial" && b.item.status !== "Partial") return -1;
+//         if (a.item.status !== "Partial" && b.item.status === "Partial") return 1;
 //         return 0;
 //       });
 
@@ -1141,7 +1141,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //         const payment = Math.min(remaining, due.dueAmount);
 //         due.paidAmount += payment;
 //         due.dueAmount -= payment;
-//         due.status = due.dueAmount === 0 ? "Paid" : "Partial Payment";
+//         due.status = due.dueAmount === 0 ? "Paid" : "Partial";
 //         remaining -= payment;
 //       }
 
@@ -1155,7 +1155,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //         const payment = Math.min(remaining, due.dueAmount);
 //         due.paidAmount += payment;
 //         due.dueAmount -= payment;
-//         due.status = due.dueAmount === 0 ? "Paid" : "Partial Payment";
+//         due.status = due.dueAmount === 0 ? "Paid" : "Partial";
 //         remaining -= payment;
 //       }
 
@@ -1181,7 +1181,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //             paidAmount: due.paidAmount + maxPayment,
 //             dueAmount: Math.max(0, due.dueAmount - maxPayment),
 //             status:
-//               due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+//               due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
 //           };
 //           updatedRegular.push(updatedDue);
 //           remaining -= maxPayment;
@@ -1214,7 +1214,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //               paidAmount: due.paidAmount + maxPayment,
 //               dueAmount: Math.max(0, due.dueAmount - maxPayment),
 //               status:
-//                 due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+//                 due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
 //             };
 //             updatedAdditional.push(updatedDue);
 //             remaining -= maxPayment;
@@ -1240,8 +1240,8 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 
 //       // Sort all dues - apply concession to partially paid dues first
 //       allDuesToApplyConcession.sort((a, b) => {
-//         if (a.item.status === "Partial Payment" && b.item.status !== "Partial Payment") return -1;
-//         if (a.item.status !== "Partial Payment" && b.item.status === "Partial Payment") return 1;
+//         if (a.item.status === "Partial" && b.item.status !== "Partial") return -1;
+//         if (a.item.status !== "Partial" && b.item.status === "Partial") return 1;
 //         return 0;
 //       });
 
@@ -1391,7 +1391,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //           month: due.month,
 //           paidAmount: due.paidAmount + paidAmount,
 //           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
 //         };
 //         updatedRegular.push(updatedDue);
 //       });
@@ -1424,7 +1424,7 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 //           month: due.month,
 //           paidAmount: due.paidAmount + paidAmount,
 //           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
 //         };
 //         updatedAdditional.push(updatedDue);
 //       });
@@ -1445,8 +1445,8 @@ async function getAllApplicableFees(schoolId, className, studentId) {
 
 //       // Sort all dues - apply concession to partially paid dues first
 //       allDuesToApplyConcession.sort((a, b) => {
-//         if (a.item.status === "Partial Payment" && b.item.status !== "Partial Payment") return -1;
-//         if (a.item.status !== "Partial Payment" && b.item.status === "Partial Payment") return 1;
+//         if (a.item.status === "Partial" && b.item.status !== "Partial") return -1;
+//         if (a.item.status !== "Partial" && b.item.status === "Partial") return 1;
 //         return 0;
 //       });
 
@@ -1752,7 +1752,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         const payment = Math.min(remaining, due.dueAmount);
         due.paidAmount += payment;
         due.dueAmount -= payment;
-        due.status = due.dueAmount === 0 ? "Paid" : "Partial Payment";
+        due.status = due.dueAmount === 0 ? "Paid" : "Partial";
         remaining -= payment;
       }
 
@@ -1770,7 +1770,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
         const payment = Math.min(remaining, due.dueAmount);
         due.paidAmount += payment;
         due.dueAmount -= payment;
-        due.status = due.dueAmount === 0 ? "Paid" : "Partial Payment";
+        due.status = due.dueAmount === 0 ? "Paid" : "Partial";
         remaining -= payment;
       }
 
@@ -1794,7 +1794,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
             paidAmount: due.paidAmount + maxPayment,
             dueAmount: Math.max(0, due.dueAmount - maxPayment),
             status:
-              due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+              due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
           };
           updatedRegular.push(updatedDue);
           remaining -= maxPayment;
@@ -1827,7 +1827,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
               paidAmount: due.paidAmount + maxPayment,
               dueAmount: Math.max(0, due.dueAmount - maxPayment),
               status:
-                due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+                due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
             };
             updatedAdditional.push(updatedDue);
             remaining -= maxPayment;
@@ -1856,13 +1856,13 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
       allDuesToApplyConcession.sort((a, b) => {
         if (
-          a.item.status === "Partial Payment" &&
-          b.item.status !== "Partial Payment"
+          a.item.status === "Partial" &&
+          b.item.status !== "Partial"
         )
           return -1;
         if (
-          a.item.status !== "Partial Payment" &&
-          b.item.status === "Partial Payment"
+          a.item.status !== "Partial" &&
+          b.item.status === "Partial"
         )
           return 1;
         return 0;
@@ -2010,7 +2010,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           month: due.month,
           paidAmount: due.paidAmount + paidAmount,
           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-          status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+          status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
         };
         updatedRegular.push(updatedDue);
       });
@@ -2046,7 +2046,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
           month: due.month || undefined,
           paidAmount: due.paidAmount + paidAmount,
           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-          status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+          status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
         };
         updatedAdditional.push(updatedDue);
       });
@@ -2066,13 +2066,13 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 
       allDuesToApplyConcession.sort((a, b) => {
         if (
-          a.item.status === "Partial Payment" &&
-          b.item.status !== "Partial Payment"
+          a.item.status === "Partial" &&
+          b.item.status !== "Partial"
         )
           return -1;
         if (
-          a.item.status !== "Partial Payment" &&
-          b.item.status === "Partial Payment"
+          a.item.status !== "Partial" &&
+          b.item.status === "Partial"
         )
           return 1;
         return 0;
@@ -2506,7 +2506,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 //             paidAmount: due.paidAmount + maxPayment,
 //             dueAmount: Math.max(0, due.dueAmount - maxPayment),
 //             status:
-//               due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+//               due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
 //           };
 //           updatedRegular.push(updatedDue);
 //           remaining -= maxPayment;
@@ -2539,7 +2539,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 //               paidAmount: due.paidAmount + maxPayment,
 //               dueAmount: Math.max(0, due.dueAmount - maxPayment),
 //               status:
-//                 due.dueAmount - maxPayment === 0 ? "Paid" : "Partial Payment",
+//                 due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
 //             };
 //             updatedAdditional.push(updatedDue);
 //             remaining -= maxPayment;
@@ -2671,7 +2671,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 //           month: due.month,
 //           paidAmount: due.paidAmount + paidAmount,
 //           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
 //         };
 //         updatedRegular.push(updatedDue);
 //       });
@@ -2704,7 +2704,7 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 //           month: due.month,
 //           paidAmount: due.paidAmount + paidAmount,
 //           dueAmount: Math.max(0, due.dueAmount - paidAmount),
-//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial Payment",
+//           status: due.dueAmount - paidAmount === 0 ? "Paid" : "Partial",
 //         };
 //         updatedAdditional.push(updatedDue);
 //       });
@@ -2968,7 +2968,7 @@ exports.cancelFeePayment = async (req, res) => {
         regularDue.status =
           regularDue.dueAmount > 0
             ? regularDue.paidAmount > 0
-              ? "Partial Payment"
+              ? "Partial"
               : "Unpaid"
             : "Paid";
       }
@@ -2988,7 +2988,7 @@ exports.cancelFeePayment = async (req, res) => {
         additionalDue.status =
           additionalDue.dueAmount > 0
             ? additionalDue.paidAmount > 0
-              ? "Partial Payment"
+              ? "Partial"
               : "Unpaid"
             : "Paid";
       }
@@ -3108,7 +3108,7 @@ exports.getFeeStatusByMonth = async (req, res) => {
       const totalPaid = totalRegularPaid + totalAdditionalPaid;
 
       if (totalDues > 0) {
-        status = totalPaid > 0 ? "Partial Payment" : "Unpaid";
+        status = totalPaid > 0 ? "Partial" : "Unpaid";
       }
 
       return {

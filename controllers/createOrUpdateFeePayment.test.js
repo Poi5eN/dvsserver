@@ -168,7 +168,7 @@ describe("createOrUpdateFeePayment Controller", () => {
               month: "May",
               paidAmount: 2000,
               dueAmount: 3000,
-              status: "Partial Payment",
+              status: "Partial",
             },
             {
               month: "June",
@@ -334,7 +334,7 @@ describe("createOrUpdateFeePayment Controller", () => {
     expect(feeStatus.dues).toBe(0);
   });
 
-  it("should handle auto mode partial payment for 5e42e521-6301-4cf0-8d69-379a9795c2b8 with large amount", async () => {
+  it("should handle auto mode Partial for 5e42e521-6301-4cf0-8d69-379a9795c2b8 with large amount", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2025-12-31"));
 
     const payload = {
@@ -350,7 +350,7 @@ describe("createOrUpdateFeePayment Controller", () => {
         totalAmount: 50000,
         paymentMode: "Cash",
         transactionId: "N/A",
-        remark: "Partial payment",
+        remark: "Partial",
       },
     };
 

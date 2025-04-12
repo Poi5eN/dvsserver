@@ -2217,19 +2217,31 @@ exports.createSale = async (req, res) => {
       );
     }
 
-    // Generate receipt after sale
-    const receiptResponse = await axios.get(
-      `https://dvsserver.onrender.com/api/v1/adminRoute/receipts/${sale.saleId}`,
-      {
-        withCredentials: true,
-        headers: { Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}` },
+    // Generate receipt after sale, handle failure gracefully
+    let receipt = null;
+    try {
+      const receiptResponse = await axios.get(
+        `https://dvsserver.onrender.com/api/v1/adminRoute/receipts/${sale.saleId}`,
+        {
+          withCredentials: true,
+          headers: { Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}` },
+        }
+      );
+      if (receiptResponse.data.success) {
+        receipt = receiptResponse.data.receipt;
+      } else {
+        console.warn("Receipt generation failed:", receiptResponse.data.message);
       }
-    );
+    } catch (receiptError) {
+      console.error("Error generating receipt:", receiptError.message);
+      // Continue with sale creation even if receipt fails
+    }
 
     res.status(201).json({
       success: true,
-      message: "Sale created and receipt generated",
-      data: { sale, receipt: receiptResponse.data.receipt },
+      message: "Sale created" + (receipt ? " and receipt generated" : ", receipt generation failed"),
+      data: { sale },
+      receipt, // Include receipt if successful, null otherwise
     });
   } catch (error) {
     res.status(500).json({
@@ -2456,7 +2468,6 @@ exports.getAllSales = async (req, res) => {
 
 
 // CONTROLLER FOR RECEIPT
-// controllers/inventoryItemController.js (append to existing file)
 exports.generateReceipt = async (req, res) => {
   try {
     const { saleId } = req.params;
@@ -2483,22 +2494,30 @@ exports.generateReceipt = async (req, res) => {
       });
     }
 
-    const student = await axios.get(
-      `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
-        },
+    let studentName = "Unknown";
+    try {
+      const studentResponse = await axios.get(
+        `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+          },
+        }
+      );
+      if (studentResponse.data && studentResponse.data.success) {
+        studentName = studentResponse.data.students?.data[0]?.studentName || "Unknown";
+      } else {
+        console.warn("Student API response invalid or failed:", studentResponse.data);
       }
-    );
-    if (!student.data.success) {
-      return res.status(404).json({ success: false, message: "Student not found." });
+    } catch (studentError) {
+      console.error("Error fetching student data:", studentError.message);
+      // Proceed with default student name
     }
 
     const receiptData = {
       receiptId: sale.receiptId || `REC-${Date.now()}`,
       saleId: sale.saleId,
-      studentName: student.data.students.data[0]?.studentName || "Unknown",
+      studentName,
       date: sale.date,
       items: sale.items.map((item) => ({
         itemName: item.itemName,
@@ -2512,7 +2531,6 @@ exports.generateReceipt = async (req, res) => {
       paymentStatus: sale.paymentStatus,
     };
 
-    // Save receipt to ReceiptModel if not already saved (optional, based on your flow)
     const existingReceipt = await ReceiptModel.findOne({ saleId: sale._id });
     if (!existingReceipt) {
       await ReceiptModel.create({

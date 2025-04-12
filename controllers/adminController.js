@@ -2137,19 +2137,15 @@ exports.createSale = async (req, res) => {
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID and session are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
     if (!studentId || !items)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Student ID and items are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and items are required.",
+      });
 
     const studentResponse = await axios.get(
       `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${studentId}`,
@@ -2160,9 +2156,7 @@ exports.createSale = async (req, res) => {
       }
     );
     if (!studentResponse.data.success)
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found." });
+      return res.status(404).json({ success: false, message: "Student not found." });
 
     let totalAmount = 0;
     for (let item of items) {
@@ -2172,16 +2166,12 @@ exports.createSale = async (req, res) => {
         session,
       });
       if (!inventoryItem)
-        return res
-          .status(404)
-          .json({ success: false, message: `Item ${item.itemId} not found.` });
+        return res.status(404).json({ success: false, message: `Item ${item.itemId} not found.` });
       if (inventoryItem.quantity < item.quantity)
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: `Insufficient stock for ${inventoryItem.itemName}.`,
-          });
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient stock for ${inventoryItem.itemName}.`,
+        });
       item.itemName = inventoryItem.itemName;
       item.category = inventoryItem.category;
       item.price = inventoryItem.price;
@@ -2191,15 +2181,12 @@ exports.createSale = async (req, res) => {
       totalAmount += item.total;
     }
 
-    const dueAmount =
-      paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
+    const dueAmount = paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
     if (paymentStatus === "paid" && paidAmount < totalAmount)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Paid amount insufficient for paid status.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Paid amount insufficient for paid status.",
+      });
 
     const sale = new Sale({
       schoolId,
@@ -2214,6 +2201,7 @@ exports.createSale = async (req, res) => {
     });
     await sale.save();
 
+    // Deduct quantities from stock
     for (let item of items) {
       await ItemModel.findOneAndUpdate(
         { itemId: item.itemId, schoolId, session },
@@ -2229,17 +2217,26 @@ exports.createSale = async (req, res) => {
       );
     }
 
-    res
-      .status(201)
-      .json({ success: true, message: "Sale created", data: sale });
+    // Generate receipt after sale
+    const receiptResponse = await axios.get(
+      `https://dvsserver.onrender.com/api/v1/adminRoute/receipts/${sale.saleId}`,
+      {
+        withCredentials: true,
+        headers: { Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}` },
+      }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Sale created and receipt generated",
+      data: { sale, receipt: receiptResponse.data.receipt },
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error creating sale",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error creating sale",
+      error: error.message,
+    });
   }
 };
 
@@ -2331,15 +2328,13 @@ exports.processReturn = async (req, res) => {
 exports.getInventoryStats = async (req, res) => {
   try {
     const { schoolId, session } = req.user;
-    const { period = "month", lowStockThreshold = 5 } = req.query; // Default low stock threshold to 5, adjustable via query
+    const { period = "month", lowStockThreshold = 5 } = req.query;
 
     if (!schoolId || !session)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID and session are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
 
     const match = { schoolId, session };
     const dateFilter = {};
@@ -2348,80 +2343,35 @@ exports.getInventoryStats = async (req, res) => {
     else if (period === "month") dateFilter.$gte = new Date(now.setDate(1));
     else if (period === "year") dateFilter.$gte = new Date(now.setMonth(0, 1));
 
-    // Fetch total quantity
-    const totalQuantity = await ItemModel.aggregate([
-      { $match: match },
-      { $group: { _id: null, total: { $sum: "$quantity" } } },
-    ]);
-
-    // Fetch total items sold
+    const totalQuantity = await ItemModel.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$quantity" } } }]);
     const totalItemsSold = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $unwind: "$items" },
       { $group: { _id: null, total: { $sum: "$items.quantity" } } },
     ]);
-
-    // Fetch total revenue
     const totalRevenue = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $group: { _id: null, total: { $sum: "$totalAmount" } } },
     ]);
-
-    // Fetch average order value
     const avgOrderValue = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $group: { _id: null, avg: { $avg: "$totalAmount" } } },
     ]);
-
-    // Fetch low stock items (using the threshold as a number)
     const lowStockThresholdNum = parseInt(lowStockThreshold, 10);
-    if (isNaN(lowStockThresholdNum) || lowStockThresholdNum <= 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid low stock threshold. Must be a positive number.",
-        });
-    } // Convert to number
     const lowStockItems = await ItemModel.find({
       ...match,
-      quantity: { $lt: lowStockThresholdNum },
+      quantity: { $lt: 25 }, // Low stock threshold set to 25 as requested
     }).lean();
-
-    // Fetch total categories
     const totalCategories = await ItemModel.distinct("category", match);
-
-    // Fetch top selling items
     const topSellingItems = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $unwind: "$items" },
-      {
-        $group: {
-          _id: "$items.itemId",
-          totalSold: { $sum: "$items.quantity" },
-        },
-      },
+      { $group: { _id: "$items.itemId", totalSold: { $sum: "$items.quantity" } } },
       { $sort: { totalSold: -1 } },
       { $limit: 3 },
-      {
-        $lookup: {
-          from: "itemmodels",
-          localField: "_id",
-          foreignField: "itemId",
-          as: "itemDetails",
-        },
-      },
+      { $lookup: { from: "itemmodels", localField: "_id", foreignField: "itemId", as: "itemDetails" } },
       { $unwind: "$itemDetails" },
-      {
-        $project: {
-          itemId: "$_id",
-          itemName: "$itemDetails.itemName",
-          category: "$itemDetails.category",
-          totalSold: 1,
-          icon: "$itemDetails.icon",
-          color: "$itemDetails.color",
-        },
-      },
+      { $project: { itemId: "$_id", itemName: "$itemDetails.itemName", category: "$itemDetails.category", totalSold: 1, icon: "$itemDetails.icon", color: "$itemDetails.color" } },
     ]);
 
     res.status(200).json({
@@ -2439,13 +2389,11 @@ exports.getInventoryStats = async (req, res) => {
       },
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching stats",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching stats",
+      error: error.message,
+    });
   }
 };
 
@@ -2503,6 +2451,93 @@ exports.getAllSales = async (req, res) => {
         message: "Error fetching sales",
         error: error.message,
       });
+  }
+};
+
+
+// CONTROLLER FOR RECEIPT
+// controllers/inventoryItemController.js (append to existing file)
+exports.generateReceipt = async (req, res) => {
+  try {
+    const { saleId } = req.params;
+    const { schoolId, session } = req.user;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!saleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Sale ID is required in the URL parameter.",
+      });
+    }
+
+    const sale = await Sale.findOne({ saleId, schoolId, session });
+    if (!sale) {
+      return res.status(404).json({
+        success: false,
+        message: "Sale not found or does not belong to this school and session.",
+      });
+    }
+
+    const student = await axios.get(
+      `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+        },
+      }
+    );
+    if (!student.data.success) {
+      return res.status(404).json({ success: false, message: "Student not found." });
+    }
+
+    const receiptData = {
+      receiptId: sale.receiptId || `REC-${Date.now()}`,
+      saleId: sale.saleId,
+      studentName: student.data.students.data[0]?.studentName || "Unknown",
+      date: sale.date,
+      items: sale.items.map((item) => ({
+        itemName: item.itemName,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+      })),
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount,
+      dueAmount: sale.dueAmount,
+      paymentStatus: sale.paymentStatus,
+    };
+
+    // Save receipt to ReceiptModel if not already saved (optional, based on your flow)
+    const existingReceipt = await ReceiptModel.findOne({ saleId: sale._id });
+    if (!existingReceipt) {
+      await ReceiptModel.create({
+        receiptId: receiptData.receiptId,
+        saleId: sale._id,
+        studentId: sale.studentId,
+        itemsSold: receiptData.items,
+        totalAmount: receiptData.totalAmount,
+        dueAmount: receiptData.dueAmount,
+        paymentStatus: receiptData.paymentStatus,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Receipt generated successfully",
+      receipt: receiptData,
+    });
+  } catch (error) {
+    console.error("Error in generateReceipt:", error);
+    res.status(500).json({
+      success: false,
+      message: "Receipt generation failed due to error",
+      error: error.message,
+    });
   }
 };
 

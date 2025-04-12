@@ -1,7 +1,9 @@
+// models/salesModel.js
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
 const saleSchema = new mongoose.Schema({
+  saleId: { type: String, default: uuidv4, unique: true }, // Added saleId
   schoolId: { type: String, required: true },
   session: { type: String, required: true },
   studentId: { type: String, required: true },

@@ -19,6 +19,7 @@ const authRoutes = require('./authRoutes');
 const superAdminRoutes = require('./superAdmin');
 const rootAdmin = require('./rootAdmin');
 const receptionistRoutes = require('./receptionistRoutes'); // New import
+const receipts = require('./receipts'); // New import
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use('/thirdparty', thirdParty);
 router.use('/auth', authRoutes);
 router.use('/superadmin', superAdminRoutes);
 router.use('/receptionist', receptionistRoutes); // New route
+router.use('/receipts', receipts); // New route
 
 module.exports = router;

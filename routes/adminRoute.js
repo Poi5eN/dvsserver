@@ -119,6 +119,8 @@ router.get("/sales", verifyToken, admin.getAllSales);
 router.get("/inventory/stats", verifyToken, admin.getInventoryStats);
 router.get("/items", verifyToken, admin.getAllItems); // Existing endpoint
 
+router.get("/receipts/:saleId", verifyToken, receiptController.generateReceipt);
+
 
 
 

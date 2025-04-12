@@ -2511,7 +2511,6 @@ exports.generateReceipt = async (req, res) => {
       }
     } catch (studentError) {
       console.error("Error fetching student data:", studentError.message);
-      // Proceed with default student name
     }
 
     const receiptData = {
@@ -2537,7 +2536,7 @@ exports.generateReceipt = async (req, res) => {
         receiptId: receiptData.receiptId,
         saleId: sale._id,
         studentId: sale.studentId,
-        itemsSold: receiptData.items,
+        itemsSold: receiptData.items, // Directly use the mapped items
         totalAmount: receiptData.totalAmount,
         dueAmount: receiptData.dueAmount,
         paymentStatus: receiptData.paymentStatus,

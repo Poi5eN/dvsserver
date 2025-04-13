@@ -5,7 +5,11 @@ const verifyToken = require("../middleware/auth");
 
 const router = express.Router();
 
-router.post('/createFeeStatus', verifyToken, createOrUpdateFeePayment);
+router.post("/createFeeStatus", verifyToken, createOrUpdateFeePayment);
+router.post("/createUnifiedFeePayment", verifyToken, createUnifiedFeePayment);
+router.get("/generateFeeReceipt/:feeReceiptNumber", verifyToken, generateFeeReceipt);
+
+
 router.post('/createPayment', verifyToken, createPayment);
 router.post('/addPastDues', verifyToken, addPastDues);
 router.get('/getFeeStatus', verifyToken, getFeeStatus);
@@ -21,8 +25,8 @@ router.put('/editFeeStatus/:receiptNumber', verifyToken, editFeeStatus);
 router.delete('/deleteFeeStatus/:receiptNumber', verifyToken, deleteFeeStatus);
 router.post('/cancelFeePayment', verifyToken, cancelFeePayment);
 
-router.post('/generateUnifiedReceipt', verifyToken, generateUnifiedFeeReceipt);
-router.get("/formatted-receipt/:receiptNumber", verifyToken, generateFormattedFeeReceipt);
+// router.post('/generateUnifiedReceipt', verifyToken, generateUnifiedFeeReceipt);
+// router.get("/formatted-receipt/:receiptNumber", verifyToken, generateFormattedFeeReceipt);
 
 
 // NEW API ROUTES WITH UNIFIED FUNCTIONALITY

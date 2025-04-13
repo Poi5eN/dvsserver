@@ -85,7 +85,7 @@ router.post('/registration/:registrationId/admit', verifyToken, uploads, admin.a
 router.post("/fees/student", verifyToken, admin.createStudentSpecificFee);
 router.post('/fees/regular', verifyToken, admin.createFeeStructure)
 router.post("/fees/additional", verifyToken, admin.createAdditionalFee);
-router.post("/fees/fine", verifyToken, admin.createLateFineConfig);
+router.post("/fees/fine", verifyToken, admin.createLateFineFee);
 router.get("/fees", verifyToken, admin.getFeeStructures);
 router.get("/fees/all", verifyToken, admin.getAllFees);
 router.put('/fees/:feeStructureId', verifyToken, admin.updateFees)

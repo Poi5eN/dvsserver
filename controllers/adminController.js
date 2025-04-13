@@ -589,25 +589,48 @@ exports.getAllTeachers = async (req, res) => {
 
 // --------------------------------Fee Controller--------------------------------------\\
 
+// Create a student-specific fee structure
 exports.createStudentSpecificFee = async (req, res) => {
   try {
-    const { studentId, feeType, amount, name, frequency = 'monthly' } = req.body;
+    const { studentId, feeType, amount, name } = req.body; // Removed schoolId, session from body
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
 
-    if (!schoolId || !session || !studentId || !feeType || !amount || amount <= 0) {
+    if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: 'School ID, session, student ID, fee type, and valid amount are required.',
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID (UUID) is required for student-specific fees.",
+      });
+    }
+    if (!feeType) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee type is required.",
+      });
+    }
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid fee amount is required.",
       });
     }
 
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: `Student with ID ${studentId} not found.`,
+        message: `Student with ID ${studentId} not found in this school and session.`,
       });
     }
 
@@ -623,7 +646,9 @@ exports.createStudentSpecificFee = async (req, res) => {
     if (feesExist) {
       return res.status(400).json({
         success: false,
-        message: `Fee for ${feeType}${name ? ` (${name})` : ''} already exists for this student.`,
+        message: `Student-specific fee for ${feeType}${
+          name ? ` (${name})` : ""
+        } already exists for this student.`,
       });
     }
 
@@ -633,7 +658,6 @@ exports.createStudentSpecificFee = async (req, res) => {
       className: student.class,
       name: name || undefined,
       feeType,
-      frequency,
       amount,
       additional: !!name,
       studentId,
@@ -644,223 +668,255 @@ exports.createStudentSpecificFee = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Student-specific fee structure created successfully.',
+      message: "Student-specific fee structure created successfully.",
       data: feeStructure,
     });
   } catch (error) {
+    console.error("Error in createStudentSpecificFee:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to create student-specific fee structure.',
+      message: "Failed to create student-specific fee structure.",
       error: error.message,
     });
   }
 };
 
+// Create a fee structure for a class (Regular Fee)
 exports.createFeeStructure = async (req, res) => {
   try {
-    const { className, feeType, amount, frequency = 'monthly' } = req.body;
+    const { className, feeType, amount } = req.body; // Removed schoolId, session from body
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
-
-    if (!schoolId || !session || !className || !feeType || !amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'School ID, session, class name, fee type, and valid amount are required.',
-      });
-    }
-
-    const feesExist = await FeeStructure.findOne({
-      schoolId,
-      session,
-      className,
-      feeType,
-      additional: false,
-    });
-
-    if (feesExist) {
-      return res.status(400).json({
-        success: false,
-        message: 'Regular fee already exists for this class and fee type.',
-      });
-    }
-
-    const feeStructure = new FeeStructure({
-      schoolId,
-      session,
-      className,
-      feeType,
-      frequency,
-      amount,
-      additional: false,
-      updatedBy,
-    });
-
-    await feeStructure.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Fee structure created successfully.',
-      data: feeStructure,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create fee structure.',
-      error: error.message,
-    });
-  }
-};
-
-exports.createAdditionalFee = async (req, res) => {
-  try {
-    const { className, name, feeType, amount, frequency = 'monthly' } = req.body;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id;
-
-    if (!schoolId || !session || !className || !name || !feeType || !amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Class name, fee name, fee type, and valid amount are required.',
-      });
-    }
-
-    const feesExist = await FeeStructure.findOne({
-      schoolId,
-      session,
-      className,
-      name,
-      feeType,
-      additional: true,
-    });
-
-    if (feesExist) {
-      return res.status(400).json({
-        success: false,
-        message: 'Additional fee already exists for this class, fee type, and name.',
-      });
-    }
-
-    const feeStructure = new FeeStructure({
-      schoolId,
-      session,
-      className,
-      name,
-      feeType,
-      frequency,
-      amount,
-      additional: true,
-      updatedBy,
-    });
-
-    await feeStructure.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Additional fee structure created successfully.',
-      data: feeStructure,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create additional fee structure.',
-      error: error.message,
-    });
-  }
-};
-
-exports.createLateFineConfig = async (req, res) => {
-  try {
-    const { className, amount, applyAfterDays = 1 } = req.body;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id;
-
-    if (!schoolId || !session || !className || amount === undefined || amount < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'School ID, session, class name, and valid amount are required.',
-      });
-    }
-
-    const existingFee = await FeeStructure.findOne({
-      schoolId,
-      session,
-      className,
-      additional: false, // Regular fee to attach late fine config
-    });
-
-    if (!existingFee) {
-      return res.status(400).json({
-        success: false,
-        message: 'No regular fee structure found for this class to attach late fine.',
-      });
-    }
-
-    existingFee.lateFineConfig = {
-      isActive: true,
-      amount,
-      applyAfterDays,
-    };
-
-    await existingFee.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Late fine configuration created successfully.',
-      data: existingFee,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create late fine configuration.',
-      error: error.message,
-    });
-  }
-};
-
-exports.getFeeStructures = async (req, res) => {
-  try {
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const { feeStructureId, className, feeType, studentId, additional, name } = req.query;
 
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: 'School ID and session are required.',
+        message: "School ID and session are required from authenticated admin.",
       });
     }
-
-    const query = { schoolId, session };
-    if (feeStructureId) query.feeStructureId = feeStructureId;
-    if (className) query.className = className;
-    if (feeType) query.feeType = feeType;
-    if (studentId) query.studentId = studentId;
-    if (additional !== undefined) query.additional = additional === 'true';
-    if (name) query.name = name;
-
-    const feeStructures = await FeeStructure.find(query).lean();
-
-    if (feeStructures.length === 0) {
-      return res.status(404).json({
+    if (!className) {
+      return res.status(400).json({
         success: false,
-        message: 'No fee structures found.',
+        message: "Class name is required.",
       });
     }
+    if (!feeType || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Fee type and valid amount are required.",
+      });
+    }
+
+    const feesExist = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      feeType,
+      additional: false,
+    });
+
+    if (feesExist) {
+      return res.status(400).json({
+        success: false,
+        message: "Regular fee already exists for this class and fee type",
+      });
+    }
+
+    const feeStructure = new FeeStructure({
+      schoolId,
+      session,
+      className,
+      feeType,
+      amount,
+      additional: false,
+      updatedBy,
+    });
+
+    await feeStructure.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Fee structure created successfully",
+      data: feeStructure,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Create an additional fee structure for a class
+exports.createAdditionalFee = async (req, res) => {
+  try {
+    const { className, name, feeType, amount } = req.body; // Removed schoolId, session from body
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!className || !name || !feeType || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Class name, fee name, fee type, and valid amount are required.",
+      });
+    }
+
+    const feesExist = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      name,
+      feeType,
+      additional: true,
+    });
+
+    if (feesExist) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Additional fee already exists for this class, fee type, and name",
+      });
+    }
+
+    const feeStructure = new FeeStructure({
+      schoolId,
+      session,
+      className,
+      name,
+      feeType,
+      amount,
+      additional: true,
+      updatedBy,
+    });
+
+    await feeStructure.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Additional fee structure created successfully",
+      data: feeStructure,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Create a late fine fee structure
+exports.createLateFineFee = async (req, res) => {
+  try {
+    const { className, amount, lateFineDueDay } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+    if (!className) {
+      return res.status(400).json({
+        success: false,
+        message: "Class name is required.",
+      });
+    }
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid late fine amount is required.",
+      });
+    }
+    if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
+      return res.status(400).json({
+        success: false,
+        message: "Late fine due day must be between 1 and 31.",
+      });
+    }
+
+    const existingLateFine = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      feeType: "LateFine",
+      additional: true,
+    });
+
+    if (existingLateFine) {
+      return res.status(400).json({
+        success: false,
+        message: "Late fine fee already exists for this class.",
+      });
+    }
+
+    const feeStructure = new FeeStructure({
+      schoolId,
+      session,
+      className,
+      name: "Late Fine",
+      feeType: "LateFine",
+      amount,
+      additional: true,
+      lateFineDueDay,
+      updatedBy,
+    });
+
+    await feeStructure.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Late fine fee structure created successfully",
+      data: feeStructure,
+    });
+  } catch (error) {
+    console.error("Error in createLateFineFee:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create late fine fee structure",
+      error: error.message,
+    });
+  }
+};
+
+// Get fee structures for all classes in a school (Regular Fees)
+exports.getAllFeeStructures = async (req, res) => {
+  try {
+    const { className } = req.query;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    const filter = {
+      schoolId,
+      session,
+      additional: false,
+      ...(className ? { className } : {}),
+    };
+
+    const feeStructures = await FeeStructure.find(filter).lean();
 
     res.status(200).json({
       success: true,
-      message: 'Fee structures fetched successfully.',
+      message: "Regular fee structures fetched successfully",
       data: feeStructures,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch fee structures.',
-      error: error.message,
-    });
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 

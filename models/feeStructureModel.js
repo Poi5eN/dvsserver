@@ -1,3 +1,4 @@
+// models/feeStructure.js
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 
@@ -28,9 +29,8 @@ const feeStructureSchema = new mongoose.Schema({
   },
   frequency: {
     type: String,
-    enum: ['monthly', 'one-time', 'annual'],
-    default: 'monthly',
-    // required: true, // Ensure frequency is always specified
+    enum: ["monthly", "one-time", "annual"],
+    default: "monthly"
   },
   amount: {
     type: Number,
@@ -38,15 +38,18 @@ const feeStructureSchema = new mongoose.Schema({
   },
   additional: {
     type: Boolean,
+    required: true,
     default: false,
   },
   studentId: {
     type: String,
+    required: false,
   },
-  lateFineConfig: { // New field for late fine configuration
-    isActive: { type: Boolean, default: false },
-    amount: { type: Number, min: 0 },
-    applyAfterDays: { type: Number, min: 1, default: 1 }, // Apply after 1 day by default
+  lateFineDueDay: { // New field for late fine due date (e.g., 10 for 10th of the month)
+    type: Number,
+    min: 1,
+    max: 31,
+    required: false,
   },
   createdAt: {
     type: Date,

@@ -3,7 +3,9 @@ const NewStudentModel = require("../models/newStudentModel");
 const FeeStatus = require("../models/feeStatus");
 const FeeStructure = require("../models/feeStructureModel");
 const ParentModel = require("../models/parentModel");
+const UnifiedReceipt = require("../models/unifiedReceipt");
 const { generateStructuredNumber } = require("../utils/numberGenerator");
+const AdminInfo = require("../models/adminModel");
 
 // Helper function to generate a structured fee receipt number
 const generateFeeReceiptNumber = async (schoolId) => {
@@ -2114,7 +2116,7 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
         totalPastDuesPaid += pastDuesPaid;
         totalDuesBefore += totalDuesBeforeStudent;
 
-        // Distribute payment (mimic createOrUpdateFeePayment)
+        // Distribute payment
         let remaining = parseFloat(totalAmount);
         let remainingConcession = Math.round(concession);
         let updatedRegular = [];
@@ -2165,9 +2167,7 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
 
         // Update additional fees
         updatedAdditional = additionalFees.map((a) => {
-          let due = feeStatus.monthlyDues.additionalDues.find(
-            (d) => d.name === a.name
-          );
+          let due = feeStatus.monthlyDues.additionalDues.find((d) => d.name === a.name);
           if (!due && additionalFeeMap[a.name]) {
             due = {
               name: a.name,
@@ -2205,7 +2205,10 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
         if (remainingConcession > 0) {
           for (const dueItem of allDues) {
             if (dueItem.dueAmount > 0) {
-              const concessionToApply = Math.min(remainingConcession, dueItem.dueAmount);
+              const concessionToApply = Math.min(
+                remainingConcession,
+                dueItem.dueAmount
+              );
               dueItem.item.dueAmount -= concessionToApply;
               dueItem.item.concessionApplied =
                 (dueItem.item.concessionApplied || 0) + concessionToApply;
@@ -2244,11 +2247,15 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
 
         totalDuesAfter += feeStatus.dues;
 
+        // Generate unique feeReceiptNumber for each student
+        const feeReceiptNumber = await generateFeeReceiptNumber(schoolId);
+
         // Construct feeHistory entry
         const paymentMessage =
           `Unified payment for ${student.studentName}: ₹${totalAmount} on ${currentDate.toLocaleDateString()}: ` +
           `Regular Fees: ${
-            updatedRegular.map((r) => `${r.month}: ₹${r.paidAmount}`).join(", ") || "None"
+            updatedRegular.map((r) => `${r.month}: ₹${r.paidAmount}`).join(", ") ||
+            "None"
           }, ` +
           `Additional Fees: ${
             updatedAdditional
@@ -2263,7 +2270,7 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
           regularFees: updatedRegular,
           additionalFees: updatedAdditional,
           lateFines: updatedLateFines.filter((lf) => lf.paidAmount > 0),
-          feeReceiptNumber: unifiedReceiptNumber,
+          feeReceiptNumber, // Unique per student
           paymentMode: paymentMode || "Cash",
           transactionId: transactionId || "N/A",
           totalFeeAmount: totalAmount,
@@ -2273,7 +2280,7 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
           totalAmountPaid: totalAmount,
           totalDues: feeStatus.dues,
           remark,
-          unifiedReceiptNumber,
+          unifiedReceiptNumber, // Link to unified receipt
         });
 
         feeStatus.overallAmountPaid += parseFloat(totalAmount);
@@ -2292,6 +2299,7 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
           totalAmount,
           concession,
           pastDuesPaid,
+          feeReceiptNumber, // Include for receiptDetails
         };
       })
     );
@@ -2313,6 +2321,7 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
       date: currentDate,
       session,
       schoolId,
+      remark: paymentDetails[0]?.remark,
     };
 
     await UnifiedReceipt.create(unifiedReceipt);
@@ -2326,6 +2335,214 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to generate unified fee receipt.",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
+exports.generateFormattedFeeReceipt = async (req, res) => {
+  try {
+    const { receiptNumber } = req.params;
+    const schoolId = req.user.schoolId;
+
+    if (!receiptNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Receipt number is required.",
+      });
+    }
+
+    // Fetch school details (for header)
+    const school = await AdminInfo.findOne({ schoolId }).lean();
+    if (!school) {
+      return res.status(404).json({
+        success: false,
+        message: "School details not found.",
+      });
+    }
+
+    let receiptData = {};
+
+    // Try individual receipt
+    const feeStatus = await FeeStatus.findOne({
+      schoolId,
+      "feeHistory.feeReceiptNumber": receiptNumber,
+    }).lean();
+
+    if (feeStatus) {
+      const feeHistory = feeStatus.feeHistory.find(
+        (h) => h.feeReceiptNumber === receiptNumber
+      );
+      const student = await NewStudentModel.findOne({
+        schoolId,
+        studentId: feeStatus.studentId,
+      }).lean();
+      const parent = await ParentModel.findOne({
+        schoolId,
+        parentId: student.parentId,
+      }).lean();
+
+      if (!student || !parent) {
+        return res.status(404).json({
+          success: false,
+          message: "Student or parent not found.",
+        });
+      }
+
+      receiptData = {
+        type: "individual",
+        receiptNumber: feeHistory.feeReceiptNumber,
+        unifiedReceiptNumber: feeHistory.unifiedReceiptNumber || null,
+        school: {
+          name: school.name || "N/A",
+          address: school.address || "N/A",
+          contact: school.contact || "N/A",
+          logo: school.logo || null,
+        },
+        student: {
+          studentId: feeStatus.studentId,
+          name: student.studentName,
+          class: student.class,
+          admissionNumber: student.admissionNumber,
+        },
+        parent: {
+          name: parent.fatherName,
+          contact: parent.contact,
+        },
+        fees: {
+          regularFees: feeHistory.regularFees.map((f) => ({
+            description: `Class Fee (${f.month})`,
+            amount: f.paidAmount,
+            due: f.dueAmount,
+            status: f.status,
+          })),
+          additionalFees: feeHistory.additionalFees.map((f) => ({
+            description: `${f.name}${f.month ? ` (${f.month})` : ""}`,
+            amount: f.paidAmount,
+            due: f.dueAmount,
+            status: f.status,
+          })),
+          lateFines: feeHistory.lateFines.map((lf) => ({
+            description: "Late Fine",
+            amount: lf.paidAmount,
+            due: lf.dueAmount,
+          })),
+        },
+        totals: {
+          totalFeeAmount: feeHistory.totalFeeAmount,
+          totalAmountPaid: feeHistory.totalAmountPaid,
+          totalDues: feeHistory.totalDues,
+          concessionApplied: feeHistory.concessionApplied || 0,
+          pastDuesPaid: feeHistory.pastDuesPaid || 0,
+        },
+        payment: {
+          mode: feeHistory.paymentMode,
+          transactionId: feeHistory.transactionId || "N/A",
+          date: feeHistory.date,
+        },
+        session: feeStatus.session,
+        status: feeHistory.status,
+        remark: feeHistory.remark || "",
+        terms: [
+          "Payment is non-refundable unless specified.",
+          "Contact the school office for discrepancies.",
+          "Receipt is valid only if payment is cleared.",
+        ],
+      };
+    } else {
+      // Try unified receipt
+      const unifiedReceipt = await UnifiedReceipt.findOne({
+        schoolId,
+        unifiedReceiptNumber: receiptNumber,
+      }).lean();
+
+      if (!unifiedReceipt) {
+        return res.status(404).json({
+          success: false,
+          message: "Receipt not found.",
+        });
+      }
+
+      receiptData = {
+        type: "unified",
+        receiptNumber: unifiedReceipt.unifiedReceiptNumber,
+        school: {
+          name: school.name || "N/A",
+          address: school.address || "N/A",
+          contact: school.contact || "N/A",
+          logo: school.logo || null,
+        },
+        parent: {
+          name: unifiedReceipt.parentName,
+          contact: unifiedReceipt.parentContact,
+        },
+        students: unifiedReceipt.students.map((s) => ({
+          studentId: s.studentId,
+          name: s.studentName,
+          class: s.class,
+          admissionNumber: s.admissionNumber,
+          fees: {
+            regularFees: s.regularFees.map((f) => ({
+              description: `Class Fee (${f.month})`,
+              amount: f.paidAmount,
+              due: f.dueAmount,
+              status: f.status,
+            })),
+            additionalFees: s.additionalFees.map((f) => ({
+              description: `${f.name}${f.month ? ` (${f.month})` : ""}`,
+              amount: f.paidAmount,
+              due: f.dueAmount,
+              status: f.status,
+            })),
+            lateFines: s.lateFines.map((lf) => ({
+              description: "Late Fine",
+              amount: lf.paidAmount,
+              due: lf.dueAmount,
+            })),
+          },
+          totals: {
+            totalAmount: s.totalAmount,
+            concession: s.concession || 0,
+            pastDuesPaid: s.pastDuesPaid || 0,
+          },
+        })),
+        totals: {
+          totalAmountPaid: unifiedReceipt.totalAmountPaid,
+          totalConcession: unifiedReceipt.totalConcession,
+          totalPastDuesPaid: unifiedReceipt.totalPastDuesPaid,
+          totalLateFinesPaid: unifiedReceipt.totalLateFinesPaid,
+          totalDuesBefore: unifiedReceipt.totalDuesBefore,
+          totalDuesAfter: unifiedReceipt.totalDuesAfter,
+        },
+        payment: {
+          mode: unifiedReceipt.paymentMode,
+          transactionId: unifiedReceipt.transactionId || "N/A",
+          date: unifiedReceipt.date,
+        },
+        session: unifiedReceipt.session,
+        status: unifiedReceipt.status,
+        remark: unifiedReceipt.remark || "",
+        terms: [
+          "Payment covers multiple students as listed.",
+          "Contact the school office for discrepancies.",
+          "Receipt is valid only if payment is cleared.",
+        ],
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Formatted fee receipt generated successfully.",
+      data: receiptData,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate formatted receipt.",
       error: error.message,
     });
   }

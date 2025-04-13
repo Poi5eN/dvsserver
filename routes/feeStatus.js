@@ -1,5 +1,5 @@
 const express = require("express");
-const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt} = require("../controllers/feeStatusController");
+const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt} = require("../controllers/feeStatusController");
 const { manageDuesPayment, createPayment } = require("../controllers/manageDuesPayment");
 const verifyToken = require("../middleware/auth");
 
@@ -22,6 +22,7 @@ router.delete('/deleteFeeStatus/:receiptNumber', verifyToken, deleteFeeStatus);
 router.post('/cancelFeePayment', verifyToken, cancelFeePayment);
 
 router.post('/generateUnifiedReceipt', verifyToken, generateUnifiedFeeReceipt);
+router.get("/formatted-receipt/:receiptNumber", verifyToken, generateFormattedFeeReceipt);
 
 
 // NEW API ROUTES WITH UNIFIED FUNCTIONALITY

@@ -16,41 +16,61 @@ const unifiedReceiptSchema = new mongoose.Schema({
   },
   parentContact: {
     type: String,
+    required: true,
   },
   students: [
     {
-      studentId: { type: String, required: true },
-      studentName: { type: String, required: true },
-      class: { type: String, required: true },
-      admissionNumber: { type: String, required: true },
+      studentId: {
+        type: String,
+        required: true,
+      },
+      studentName: {
+        type: String,
+        required: true,
+      },
+      class: {
+        type: String,
+        required: true,
+      },
+      admissionNumber: {
+        type: String,
+        required: true,
+      },
       regularFees: [
         {
-          month: { type: String, required: true },
-          paidAmount: { type: Number, required: true },
-          dueAmount: { type: Number, required: true },
-          status: { type: String, required: true },
-          frequency: { type: String, required: true },
+          month: String,
+          paidAmount: Number,
+          dueAmount: Number,
+          status: String,
+          concessionApplied: Number,
         },
       ],
       additionalFees: [
         {
-          name: { type: String, required: true },
-          month: { type: String },
-          paidAmount: { type: Number, required: true },
-          dueAmount: { type: Number, required: true },
-          status: { type: String, required: true },
-          frequency: { type: String, required: true },
+          name: String,
+          month: String,
+          paidAmount: Number,
+          dueAmount: Number,
+          status: String,
+          concessionApplied: Number,
         },
       ],
-      lateFines: [
-        {
-          paidAmount: { type: Number, required: true },
-          dueAmount: { type: Number, required: true },
-        },
-      ],
-      totalAmount: { type: Number, required: true },
-      concession: { type: Number, default: 0 },
-      pastDuesPaid: { type: Number, default: 0 },
+      pastDuesPaid: {
+        type: Number,
+        default: 0,
+      },
+      concession: {
+        type: Number,
+        default: 0,
+      },
+      totalAmount: {
+        type: Number,
+        required: true,
+      },
+      feeReceiptNumber: {
+        type: String,
+        required: true,
+      },
     },
   ],
   totalAmountPaid: {
@@ -65,17 +85,13 @@ const unifiedReceiptSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  totalLateFinesPaid: {
-    type: Number,
-    default: 0,
-  },
   totalDuesBefore: {
     type: Number,
-    default: 0,
+    required: true,
   },
   totalDuesAfter: {
     type: Number,
-    default: 0,
+    required: true,
   },
   paymentMode: {
     type: String,
@@ -86,7 +102,7 @@ const unifiedReceiptSchema = new mongoose.Schema({
   },
   date: {
     type: Date,
-    required: true,
+    default: Date.now,
   },
   session: {
     type: String,
@@ -98,11 +114,6 @@ const unifiedReceiptSchema = new mongoose.Schema({
   },
   remark: {
     type: String,
-  },
-  status: {
-    type: String,
-    enum: ["active", "canceled"],
-    default: "active",
   },
 });
 

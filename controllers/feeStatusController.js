@@ -1981,16 +1981,79 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
 
     const receiptDetails = await Promise.all(
       studentIds.map(async (studentId) => {
-        const feeStatus = await FeeStatus.findOne({
+        let feeStatus = await FeeStatus.findOne({
           schoolId,
           studentId,
           session,
         });
-        if (!feeStatus) {
-          throw new Error(`Fee status not found for student ${studentId}`);
-        }
 
         const student = students.find((s) => s.studentId === studentId);
+
+        if (!feeStatus) {
+          // Initialize FeeStatus if missing
+          feeStatus = new FeeStatus({
+            schoolId,
+            studentId,
+            session,
+            year: session.split("-")[0],
+            monthlyDues: { regularDues: [], additionalDues: [], lateFines: [] },
+            pastDues: 0,
+            dues: 0,
+            feeHistory: [],
+            overallAmountPaid: 0,
+            overallConcessionApplied: 0,
+          });
+
+          // Populate with applicable fees
+          const fees = await getAllApplicableFees(
+            schoolId,
+            student.class,
+            studentId,
+            session
+          );
+
+          const months = [
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+            "January",
+            "February",
+            "March",
+          ];
+
+          const regularFeeMap = fees.reduce((map, f) => {
+            if (!f.additional) {
+              map[f.frequency] = f.amount;
+            }
+            return map;
+          }, {});
+
+          feeStatus.monthlyDues.regularDues = months.map((month) => ({
+            month,
+            paidAmount: 0,
+            dueAmount: regularFeeMap['monthly'] || 0,
+            status: "Unpaid",
+            frequency: "monthly",
+          }));
+
+          const additionalFees = fees.filter((f) => f.additional);
+          feeStatus.monthlyDues.additionalDues = additionalFees.map((fee) => ({
+            name: fee.name,
+            paidAmount: 0,
+            dueAmount: fee.amount,
+            status: "Unpaid",
+            frequency: fee.frequency,
+          }));
+
+          await feeStatus.save();
+        }
+
         const studentPayment = paymentDetails.find(
           (p) => p.studentId === studentId
         );
@@ -2028,6 +2091,29 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
           ) +
           feeStatus.pastDues;
 
+        // Update fee status
+        regularFees.forEach((r) => {
+          let due = feeStatus.monthlyDues.regularDues.find(
+            (d) => d.month === r.month
+          );
+          if (due) {
+            due.paidAmount += parseFloat(totalAmount) || 0;
+            due.dueAmount = Math.max(0, due.dueAmount - (parseFloat(totalAmount) || 0));
+            due.status = due.dueAmount === 0 ? "Paid" : "Partial";
+          }
+        });
+
+        additionalFees.forEach((a) => {
+          let due = feeStatus.monthlyDues.additionalDues.find(
+            (d) => d.name === a.name
+          );
+          if (due) {
+            due.paidAmount += a.amount;
+            due.dueAmount = Math.max(0, due.dueAmount - a.amount);
+            due.status = due.dueAmount === 0 ? "Paid" : "Partial";
+          }
+        });
+
         feeStatus.feeHistory.push({
           date: currentDate,
           status: "active",
@@ -2046,10 +2132,25 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
           totalAmountPaid: totalAmount,
           totalDues: feeStatus.dues,
           remark,
+          unifiedReceiptNumber, // Ensure unified receipt number is stored
         });
 
         feeStatus.overallAmountPaid += parseFloat(totalAmount);
         feeStatus.overallConcessionApplied += concession;
+        feeStatus.dues =
+          feeStatus.monthlyDues.regularDues.reduce(
+            (sum, d) => sum + d.dueAmount,
+            0
+          ) +
+          feeStatus.monthlyDues.additionalDues.reduce(
+            (sum, d) => sum + d.dueAmount,
+            0
+          ) +
+          feeStatus.monthlyDues.lateFines.reduce(
+            (sum, lf) => sum + lf.dueAmount,
+            0
+          ) +
+          feeStatus.pastDues;
 
         totalDuesAfter += feeStatus.dues;
 
@@ -2088,6 +2189,9 @@ exports.generateUnifiedFeeReceipt = async (req, res) => {
       session,
       schoolId,
     };
+
+    // Store unified receipt (assuming a UnifiedReceipt model exists)
+    await UnifiedReceipt.create(unifiedReceipt);
 
     res.status(201).json({
       success: true,

@@ -2356,7 +2356,7 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
       });
     }
 
-    // Fetch school details (for header)
+    // Fetch school details
     const school = await AdminInfo.findOne({ schoolId }).lean();
     if (!school) {
       return res.status(404).json({
@@ -2371,16 +2371,27 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
     const feeStatus = await FeeStatus.findOne({
       schoolId,
       "feeHistory.feeReceiptNumber": receiptNumber,
-    }).lean();
+    })
+      .populate({
+        path: "studentId",
+        model: "NewStudent",
+        select: "studentName class admissionNumber parentId",
+        match: { schoolId },
+      })
+      .lean();
 
-    if (feeStatus) {
+    if (feeStatus && feeStatus.studentId) {
       const feeHistory = feeStatus.feeHistory.find(
         (h) => h.feeReceiptNumber === receiptNumber
       );
-      const student = await NewStudentModel.findOne({
-        schoolId,
-        studentId: feeStatus.studentId,
-      }).lean();
+      if (!feeHistory) {
+        return res.status(404).json({
+          success: false,
+          message: "Fee history entry not found.",
+        });
+      }
+
+      const student = feeStatus.studentId;
       const parent = await ParentModel.findOne({
         schoolId,
         parentId: student.parentId,
@@ -2398,54 +2409,100 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
         receiptNumber: feeHistory.feeReceiptNumber,
         unifiedReceiptNumber: feeHistory.unifiedReceiptNumber || null,
         school: {
-          name: school.name || "N/A",
-          address: school.address || "N/A",
+          name: school.schoolName || "N/A",
+          address: `${school.address || ""}, ${school.schoolCity || ""}, ${
+            school.schoolState || ""
+          } - ${school.pincode || ""}`,
           contact: school.contact || "N/A",
-          logo: school.logo || null,
+          logo: school.logoImage || null,
         },
         student: {
           studentId: feeStatus.studentId,
-          name: student.studentName,
-          class: student.class,
-          admissionNumber: student.admissionNumber,
+          name: student.studentName || "N/A",
+          class: student.class || "N/A",
+          admissionNumber: student.admissionNumber || "N/A",
         },
         parent: {
-          name: parent.fatherName,
-          contact: parent.contact,
+          name: parent.fatherName || "N/A",
+          contact: parent.contact || "N/A",
         },
-        fees: {
-          regularFees: feeHistory.regularFees.map((f) => ({
+        fees: [
+          ...feeHistory.regularFees.map((f) => ({
+            type: "Regular Fee",
             description: `Class Fee (${f.month})`,
-            amount: f.paidAmount,
-            due: f.dueAmount,
-            status: f.status,
+            month: f.month,
+            paidAmount: f.paidAmount || 0,
+            dueAmount: f.dueAmount || 0,
+            status: f.status || "Unpaid",
+            frequency: f.frequency || "monthly",
           })),
-          additionalFees: feeHistory.additionalFees.map((f) => ({
+          ...feeHistory.additionalFees.map((f) => ({
+            type: "Additional Fee",
             description: `${f.name}${f.month ? ` (${f.month})` : ""}`,
-            amount: f.paidAmount,
-            due: f.dueAmount,
-            status: f.status,
+            month: f.month || null,
+            paidAmount: f.paidAmount || 0,
+            dueAmount: f.dueAmount || 0,
+            status: f.status || "Unpaid",
+            frequency: f.frequency || "one-time",
           })),
-          lateFines: feeHistory.lateFines.map((lf) => ({
-            description: "Late Fine",
-            amount: lf.paidAmount,
-            due: lf.dueAmount,
+          ...feeHistory.lateFines.map((lf) => ({
+            type: "Late Fine",
+            description: `Late Fine${lf.month ? ` (${lf.month})` : ""}`,
+            month: lf.month || null,
+            paidAmount: lf.paidAmount || 0,
+            dueAmount: lf.dueAmount || 0,
+            status: lf.dueAmount > 0 ? "Pending" : "Paid",
+            frequency: "one-time",
           })),
-        },
+          ...(feeHistory.pastDuesPaid > 0
+            ? [
+                {
+                  type: "Past Dues",
+                  description: "Past Dues Paid",
+                  month: null,
+                  paidAmount: feeHistory.pastDuesPaid,
+                  dueAmount: 0,
+                  status: "Paid",
+                  frequency: "one-time",
+                },
+              ]
+            : []),
+          ...(feeHistory.concession > 0
+            ? [
+                {
+                  type: "Concession",
+                  description: "Concession Applied",
+                  month: null,
+                  paidAmount: -feeHistory.concession,
+                  dueAmount: 0,
+                  status: "Applied",
+                  frequency: "one-time",
+                },
+              ]
+            : []),
+        ],
         totals: {
-          totalFeeAmount: feeHistory.totalFeeAmount,
-          totalAmountPaid: feeHistory.totalAmountPaid,
-          totalDues: feeHistory.totalDues,
-          concessionApplied: feeHistory.concessionApplied || 0,
+          totalFeeAmount: feeHistory.totalFeeAmount || 0,
+          totalAmountPaid: feeHistory.totalAmountPaid || 0,
+          totalDues: feeHistory.totalDues || 0,
+          pastDues: feeHistory.pastDues || 0,
           pastDuesPaid: feeHistory.pastDuesPaid || 0,
+          concession: feeHistory.concession || 0,
+          lateFinesPaid: feeHistory.lateFines.reduce(
+            (sum, lf) => sum + (lf.paidAmount || 0),
+            0
+          ),
         },
         payment: {
-          mode: feeHistory.paymentMode,
-          transactionId: feeHistory.transactionId || "N/A",
-          date: feeHistory.date,
+          mode: feeHistory.paymentMode || "N/A",
+          transactionId: feeHistory.transactionId || null,
+          chequeNumber: feeHistory.chequeNumber || null,
+          date: feeHistory.date
+            ? new Date(feeHistory.date).toISOString()
+            : new Date().toISOString(),
         },
-        session: feeStatus.session,
-        status: feeHistory.status,
+        session: feeStatus.session || "N/A",
+        status: feeHistory.status || "Pending",
         remark: feeHistory.remark || "",
         terms: [
           "Payment is non-refundable unless specified.",
@@ -2467,64 +2524,126 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
         });
       }
 
+      // Fetch student details for unified receipt
+      const studentIds = unifiedReceipt.students.map((s) => s.studentId);
+      const students = await NewStudentModel.find({
+        schoolId,
+        studentId: { $in: studentIds },
+      }).lean();
+
       receiptData = {
         type: "unified",
         receiptNumber: unifiedReceipt.unifiedReceiptNumber,
         school: {
-          name: school.name || "N/A",
-          address: school.address || "N/A",
+          name: school.schoolName || "N/A",
+          address: `${school.address || ""}, ${school.schoolCity || ""}, ${
+            school.schoolState || ""
+          } - ${school.pincode || ""}`,
           contact: school.contact || "N/A",
-          logo: school.logo || null,
+          logo: school.logoImage || null,
         },
         parent: {
-          name: unifiedReceipt.parentName,
-          contact: unifiedReceipt.parentContact,
+          name: unifiedReceipt.parentName || "N/A",
+          contact: unifiedReceipt.parentContact || "N/A",
         },
-        students: unifiedReceipt.students.map((s) => ({
-          studentId: s.studentId,
-          name: s.studentName,
-          class: s.class,
-          admissionNumber: s.admissionNumber,
-          fees: {
-            regularFees: s.regularFees.map((f) => ({
-              description: `Class Fee (${f.month})`,
-              amount: f.paidAmount,
-              due: f.dueAmount,
-              status: f.status,
-            })),
-            additionalFees: s.additionalFees.map((f) => ({
-              description: `${f.name}${f.month ? ` (${f.month})` : ""}`,
-              amount: f.paidAmount,
-              due: f.dueAmount,
-              status: f.status,
-            })),
-            lateFines: s.lateFines.map((lf) => ({
-              description: "Late Fine",
-              amount: lf.paidAmount,
-              due: lf.dueAmount,
-            })),
-          },
-          totals: {
-            totalAmount: s.totalAmount,
-            concession: s.concession || 0,
-            pastDuesPaid: s.pastDuesPaid || 0,
-          },
-        })),
+        students: unifiedReceipt.students.map((s) => {
+          const student = students.find((st) => st.studentId === s.studentId) || {};
+          return {
+            studentId: s.studentId,
+            name: s.studentName || student.studentName || "N/A",
+            class: s.class || student.class || "N/A",
+            admissionNumber: s.admissionNumber || student.admissionNumber || "N/A",
+            fees: [
+              ...s.regularFees.map((f) => ({
+                type: "Regular Fee",
+                description: `Class Fee (${f.month})`,
+                month: f.month,
+                paidAmount: f.paidAmount || 0,
+                dueAmount: f.dueAmount || 0,
+                status: f.status || "Unpaid",
+                frequency: f.frequency || "monthly",
+              })),
+              ...s.additionalFees.map((f) => ({
+                type: "Additional Fee",
+                description: `${f.name}${f.month ? ` (${f.month})` : ""}`,
+                month: f.month || null,
+                paidAmount: f.paidAmount || 0,
+                dueAmount: f.dueAmount || 0,
+                status: f.status || "Unpaid",
+                frequency: f.frequency || "one-time",
+              })),
+              ...s.lateFines.map((lf) => ({
+                type: "Late Fine",
+                description: `Late Fine${lf.month ? ` (${lf.month})` : ""}`,
+                month: lf.month || null,
+                paidAmount: lf.paidAmount || 0,
+                dueAmount: lf.dueAmount || 0,
+                status: lf.dueAmount > 0 ? "Pending" : "Paid",
+                frequency: "one-time",
+              })),
+              ...(s.pastDuesPaid > 0
+                ? [
+                    {
+                      type: "Past Dues",
+                      description: "Past Dues Paid",
+                      month: null,
+                      paidAmount: s.pastDuesPaid,
+                      dueAmount: 0,
+                      status: "Paid",
+                      frequency: "one-time",
+                    },
+                  ]
+                : []),
+              ...(s.concession > 0
+                ? [
+                    {
+                      type: "Concession",
+                      description: "Concession Applied",
+                      month: null,
+                      paidAmount: -s.concession,
+                      dueAmount: 0,
+                      status: "Applied",
+                      frequency: "one-time",
+                    },
+                  ]
+                : []),
+            ],
+            totals: {
+              totalFeeAmount: s.totalAmount || 0,
+              totalAmountPaid: s.totalAmountPaid || 0,
+              totalDues: s.totalDues || 0,
+              pastDues: s.pastDues || 0,
+              pastDuesPaid: s.pastDuesPaid || 0,
+              concession: s.concession || 0,
+              lateFinesPaid: s.lateFines.reduce(
+                (sum, lf) => sum + (lf.paidAmount || 0),
+                0
+              ),
+            },
+          };
+        }),
         totals: {
-          totalAmountPaid: unifiedReceipt.totalAmountPaid,
-          totalConcession: unifiedReceipt.totalConcession,
-          totalPastDuesPaid: unifiedReceipt.totalPastDuesPaid,
-          totalLateFinesPaid: unifiedReceipt.totalLateFinesPaid,
-          totalDuesBefore: unifiedReceipt.totalDuesBefore,
-          totalDuesAfter: unifiedReceipt.totalDuesAfter,
+          totalFeeAmount: unifiedReceipt.students.reduce(
+            (sum, s) => sum + (s.totalAmount || 0),
+            0
+          ),
+          totalAmountPaid: unifiedReceipt.totalAmountPaid || 0,
+          totalConcession: unifiedReceipt.totalConcession || 0,
+          totalPastDuesPaid: unifiedReceipt.totalPastDuesPaid || 0,
+          totalLateFinesPaid: unifiedReceipt.totalLateFinesPaid || 0,
+          totalDuesBefore: unifiedReceipt.totalDuesBefore || 0,
+          totalDuesAfter: unifiedReceipt.totalDuesAfter || 0,
         },
         payment: {
-          mode: unifiedReceipt.paymentMode,
-          transactionId: unifiedReceipt.transactionId || "N/A",
-          date: unifiedReceipt.date,
+          mode: unifiedReceipt.paymentMode || "N/A",
+          transactionId: unifiedReceipt.transactionId || null,
+          chequeNumber: unifiedReceipt.chequeNumber || null,
+          date: unifiedReceipt.date
+            ? new Date(unifiedReceipt.date).toISOString()
+            : new Date().toISOString(),
         },
-        session: unifiedReceipt.session,
-        status: unifiedReceipt.status,
+        session: unifiedReceipt.session || "N/A",
+        status: unifiedReceipt.status || "Pending",
         remark: unifiedReceipt.remark || "",
         terms: [
           "Payment covers multiple students as listed.",
@@ -2534,12 +2653,20 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
       };
     }
 
+    if (!receiptData.type) {
+      return res.status(404).json({
+        success: false,
+        message: "Receipt not found.",
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: "Formatted fee receipt generated successfully.",
       data: receiptData,
     });
   } catch (error) {
+    console.error("Error generating formatted receipt:", error);
     res.status(500).json({
       success: false,
       message: "Failed to generate formatted receipt.",

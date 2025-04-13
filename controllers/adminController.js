@@ -6177,7 +6177,7 @@ exports.editStudentParent = async (req, res) => {
 exports.getStudentParent = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
-    const session = req.user.session;
+    const session = req.query.session || req.user.session;
 
     if (!schoolId || !session) {
       return res.status(400).json({
@@ -6221,8 +6221,23 @@ exports.getStudentParent = async (req, res) => {
       dateOfBirthEnd,
     } = req.query;
 
-    let studentQuery = { schoolId, session };
-    let parentQuery = { schoolId, session };
+    let studentQuery = { schoolId };
+    let parentQuery = { schoolId };
+
+    // Adjust session filtering
+    if (req.query.session) {
+      studentQuery.$or = [
+        { session: req.query.session },
+        { sessionHistory: req.query.session },
+      ];
+      parentQuery.$or = [
+        { session: req.query.session },
+        { sessionHistory: req.query.session },
+      ];
+    } else {
+      studentQuery.session = session;
+      parentQuery.session = session;
+    }
 
     // Enhanced Student Query
     if (studentId) studentQuery.studentId = studentId;
@@ -6258,8 +6273,6 @@ exports.getStudentParent = async (req, res) => {
       if (dateOfBirthEnd)
         studentQuery.dateOfBirth.$lte = new Date(dateOfBirthEnd);
     }
-
-    // Add filter for new admissions
     if (fetchNewAdmissions === "true") {
       studentQuery.isNewAdmission = true;
     }
@@ -6270,7 +6283,7 @@ exports.getStudentParent = async (req, res) => {
       parentQuery.admissionNumber = parentAdmissionNumber;
     if (email) parentQuery.email = email;
 
-    const skip = (page - 1) * (limit || 0); // Adjusted to handle undefined limit
+    const skip = (page - 1) * (limit || 0);
     const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
     let responseData = {};
@@ -6358,9 +6371,7 @@ exports.getStudentParent = async (req, res) => {
         .skip(skip)
         .limit(limit ? parseInt(limit) : undefined)
         .lean();
-      const totalNewStudents = await NewStudentModel.countDocuments(
-        studentQuery
-      );
+      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
       responseData.newAdmissions = {
         data: newStudents,
         pagination: {
@@ -6390,7 +6401,6 @@ exports.getStudentParent = async (req, res) => {
       Object.keys(studentQuery).length > 2 ||
       Object.keys(parentQuery).length > 2
     ) {
-      // Fetch all students and parents with pagination if specific filters are applied
       const students = await NewStudentModel.find(studentQuery)
         .sort(sort)
         .skip(skip)
@@ -6423,17 +6433,16 @@ exports.getStudentParent = async (req, res) => {
         },
       };
     } else {
-      // Default case: Fetch all students and parents without pagination
       const students = await NewStudentModel.find({ schoolId, session })
         .sort(sort)
         .lean();
-      const totalStudents = students.length; // No need for countDocuments since we fetch all
+      const totalStudents = students.length;
       responseData.students = { data: students, total: totalStudents };
 
       const parents = await ParentModel.find({ schoolId, session })
         .sort(sort)
         .lean();
-      const totalParents = parents.length; // No need for countDocuments since we fetch all
+      const totalParents = parents.length;
       responseData.parents = { data: parents, total: totalParents };
     }
 
@@ -7101,6 +7110,67 @@ exports.linkStudentToParent = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error linking student to parent.",
+      error: error.message,
+    });
+  }
+};
+
+exports.bulkEditStudents = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { updates } = req.body;
+
+    if (!updates || !Array.isArray(updates)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request body. Expected an array of updates.",
+      });
+    }
+
+    const bulkOps = [];
+
+    for (const update of updates) {
+      const { studentId, fields } = update;
+      if (!studentId || !fields || typeof fields !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: "Each update must include studentId and fields object.",
+        });
+      }
+
+      // Handle password hashing if provided
+      const updateFields = { ...fields };
+      if (updateFields.password) {
+        if (updateFields.password.length < 8) {
+          return res.status(400).json({
+            success: false,
+            message: "Password must be at least 8 characters long.",
+          });
+        }
+        updateFields.password = await hashPassword(updateFields.password);
+      }
+
+      bulkOps.push({
+        updateOne: {
+          filter: { studentId, schoolId, session },
+          update: { $set: updateFields },
+        },
+      });
+    }
+
+    const result = await NewStudentModel.bulkWrite(bulkOps);
+
+    res.status(200).json({
+      success: true,
+      message: "Students updated successfully.",
+      result,
+    });
+  } catch (error) {
+    console.error("Error in bulkEditStudents:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating students.",
       error: error.message,
     });
   }

@@ -43,6 +43,10 @@ router.put('/studentparent/:studentId/toggle', verifyToken, uploads, admin.toggl
 router.put('/linkStudentToParent', verifyToken,uploads, admin.linkStudentToParent);
 
 
+// BULK STUDENT EDITING CONTROLLER FLOW
+router.put('/studentparent/many', verifyToken, admin.bulkEditStudents);
+
+
 
 
 // STUDENT RELATED CONTROLLER FLOW

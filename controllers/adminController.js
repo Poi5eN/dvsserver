@@ -589,48 +589,25 @@ exports.getAllTeachers = async (req, res) => {
 
 // --------------------------------Fee Controller--------------------------------------\\
 
-// Create a student-specific fee structure
 exports.createStudentSpecificFee = async (req, res) => {
   try {
-    const { studentId, feeType, amount, name } = req.body; // Removed schoolId, session from body
+    const { studentId, feeType, amount, name, frequency = 'monthly' } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
 
-    if (!schoolId || !session) {
+    if (!schoolId || !session || !studentId || !feeType || !amount || amount <= 0) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!studentId) {
-      return res.status(400).json({
-        success: false,
-        message: "Student ID (UUID) is required for student-specific fees.",
-      });
-    }
-    if (!feeType) {
-      return res.status(400).json({
-        success: false,
-        message: "Fee type is required.",
-      });
-    }
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid fee amount is required.",
+        message: 'School ID, session, student ID, fee type, and valid amount are required.',
       });
     }
 
-    const student = await NewStudentModel.findOne({
-      studentId,
-      schoolId,
-      session,
-    });
+    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: `Student with ID ${studentId} not found in this school and session.`,
+        message: `Student with ID ${studentId} not found.`,
       });
     }
 
@@ -646,9 +623,7 @@ exports.createStudentSpecificFee = async (req, res) => {
     if (feesExist) {
       return res.status(400).json({
         success: false,
-        message: `Student-specific fee for ${feeType}${
-          name ? ` (${name})` : ""
-        } already exists for this student.`,
+        message: `Fee for ${feeType}${name ? ` (${name})` : ''} already exists for this student.`,
       });
     }
 
@@ -658,6 +633,7 @@ exports.createStudentSpecificFee = async (req, res) => {
       className: student.class,
       name: name || undefined,
       feeType,
+      frequency,
       amount,
       additional: !!name,
       studentId,
@@ -668,43 +644,29 @@ exports.createStudentSpecificFee = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Student-specific fee structure created successfully.",
+      message: 'Student-specific fee structure created successfully.',
       data: feeStructure,
     });
   } catch (error) {
-    console.error("Error in createStudentSpecificFee:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create student-specific fee structure.",
+      message: 'Failed to create student-specific fee structure.',
       error: error.message,
     });
   }
 };
 
-// Create a fee structure for a class (Regular Fee)
 exports.createFeeStructure = async (req, res) => {
   try {
-    const { className, feeType, amount } = req.body; // Removed schoolId, session from body
+    const { className, feeType, amount, frequency = 'monthly' } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
     const updatedBy = req.user._id;
 
-    if (!schoolId || !session) {
+    if (!schoolId || !session || !className || !feeType || !amount || amount <= 0) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!className) {
-      return res.status(400).json({
-        success: false,
-        message: "Class name is required.",
-      });
-    }
-    if (!feeType || !amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Fee type and valid amount are required.",
+        message: 'School ID, session, class name, fee type, and valid amount are required.',
       });
     }
 
@@ -719,7 +681,7 @@ exports.createFeeStructure = async (req, res) => {
     if (feesExist) {
       return res.status(400).json({
         success: false,
-        message: "Regular fee already exists for this class and fee type",
+        message: 'Regular fee already exists for this class and fee type.',
       });
     }
 
@@ -728,6 +690,7 @@ exports.createFeeStructure = async (req, res) => {
       session,
       className,
       feeType,
+      frequency,
       amount,
       additional: false,
       updatedBy,
@@ -737,186 +700,167 @@ exports.createFeeStructure = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Fee structure created successfully",
+      message: 'Fee structure created successfully.',
       data: feeStructure,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Create an additional fee structure for a class
-exports.createAdditionalFee = async (req, res) => {
-  try {
-    const { className, name, feeType, amount } = req.body; // Removed schoolId, session from body
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id;
-
-    if (!schoolId || !session) {
-      return res.status(400).json({
-        success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!className || !name || !feeType || !amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Class name, fee name, fee type, and valid amount are required.",
-      });
-    }
-
-    const feesExist = await FeeStructure.findOne({
-      schoolId,
-      session,
-      className,
-      name,
-      feeType,
-      additional: true,
-    });
-
-    if (feesExist) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Additional fee already exists for this class, fee type, and name",
-      });
-    }
-
-    const feeStructure = new FeeStructure({
-      schoolId,
-      session,
-      className,
-      name,
-      feeType,
-      amount,
-      additional: true,
-      updatedBy,
-    });
-
-    await feeStructure.save();
-
-    res.status(201).json({
-      success: true,
-      message: "Additional fee structure created successfully",
-      data: feeStructure,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Create a late fine fee structure
-exports.createLateFineFee = async (req, res) => {
-  try {
-    const { className, amount, lateFineDueDay } = req.body;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id;
-
-    if (!schoolId || !session) {
-      return res.status(400).json({
-        success: false,
-        message: "School ID and session are required from authenticated admin.",
-      });
-    }
-    if (!className) {
-      return res.status(400).json({
-        success: false,
-        message: "Class name is required.",
-      });
-    }
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid late fine amount is required.",
-      });
-    }
-    if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
-      return res.status(400).json({
-        success: false,
-        message: "Late fine due day must be between 1 and 31.",
-      });
-    }
-
-    const existingLateFine = await FeeStructure.findOne({
-      schoolId,
-      session,
-      className,
-      feeType: "LateFine",
-      additional: true,
-    });
-
-    if (existingLateFine) {
-      return res.status(400).json({
-        success: false,
-        message: "Late fine fee already exists for this class.",
-      });
-    }
-
-    const feeStructure = new FeeStructure({
-      schoolId,
-      session,
-      className,
-      name: "Late Fine",
-      feeType: "LateFine",
-      amount,
-      additional: true,
-      lateFineDueDay,
-      updatedBy,
-    });
-
-    await feeStructure.save();
-
-    res.status(201).json({
-      success: true,
-      message: "Late fine fee structure created successfully",
-      data: feeStructure,
-    });
-  } catch (error) {
-    console.error("Error in createLateFineFee:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create late fine fee structure",
+      message: 'Failed to create fee structure.',
       error: error.message,
     });
   }
 };
 
-// Get fee structures for all classes in a school (Regular Fees)
-exports.getAllFeeStructures = async (req, res) => {
+exports.createAdditionalFee = async (req, res) => {
   try {
-    const { className } = req.query;
+    const { className, name, feeType, amount, frequency = 'monthly' } = req.body;
     const schoolId = req.user.schoolId;
     const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session || !className || !name || !feeType || !amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Class name, fee name, fee type, and valid amount are required.',
+      });
+    }
+
+    const feesExist = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      name,
+      feeType,
+      additional: true,
+    });
+
+    if (feesExist) {
+      return res.status(400).json({
+        success: false,
+        message: 'Additional fee already exists for this class, fee type, and name.',
+      });
+    }
+
+    const feeStructure = new FeeStructure({
+      schoolId,
+      session,
+      className,
+      name,
+      feeType,
+      frequency,
+      amount,
+      additional: true,
+      updatedBy,
+    });
+
+    await feeStructure.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Additional fee structure created successfully.',
+      data: feeStructure,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create additional fee structure.',
+      error: error.message,
+    });
+  }
+};
+
+exports.createLateFineConfig = async (req, res) => {
+  try {
+    const { className, amount, applyAfterDays = 1 } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session || !className || amount === undefined || amount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'School ID, session, class name, and valid amount are required.',
+      });
+    }
+
+    const existingFee = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      additional: false, // Regular fee to attach late fine config
+    });
+
+    if (!existingFee) {
+      return res.status(400).json({
+        success: false,
+        message: 'No regular fee structure found for this class to attach late fine.',
+      });
+    }
+
+    existingFee.lateFineConfig = {
+      isActive: true,
+      amount,
+      applyAfterDays,
+    };
+
+    await existingFee.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Late fine configuration created successfully.',
+      data: existingFee,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create late fine configuration.',
+      error: error.message,
+    });
+  }
+};
+
+exports.getFeeStructures = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const { feeStructureId, className, feeType, studentId, additional, name } = req.query;
 
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
+        message: 'School ID and session are required.',
       });
     }
 
-    const filter = {
-      schoolId,
-      session,
-      additional: false,
-      ...(className ? { className } : {}),
-    };
+    const query = { schoolId, session };
+    if (feeStructureId) query.feeStructureId = feeStructureId;
+    if (className) query.className = className;
+    if (feeType) query.feeType = feeType;
+    if (studentId) query.studentId = studentId;
+    if (additional !== undefined) query.additional = additional === 'true';
+    if (name) query.name = name;
 
-    const feeStructures = await FeeStructure.find(filter).lean();
+    const feeStructures = await FeeStructure.find(query).lean();
+
+    if (feeStructures.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No fee structures found.',
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: "Regular fee structures fetched successfully",
+      message: 'Fee structures fetched successfully.',
       data: feeStructures,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch fee structures.',
+      error: error.message,
+    });
   }
 };
 
@@ -6985,90 +6929,108 @@ exports.getStudentsByClassSectionAdmin = async (req, res) => {
 
 exports.linkStudentToParent = async (req, res) => {
   try {
-    const studentId = req.params.studentId; // Using UUID from URL params
-    const { parentAdmissionNumber } = req.body;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id; // Track who made the update
+    const {
+      studentId,
+      studentAdmissionNumber,
+      parentId,
+      parentAdmissionNumber
+    } = req.body;
 
-    // Validation
+    const schoolId  = req.user.schoolId;
+    const session   = req.user.session;
+    const updatedBy = req.user._id;
+
+    // 1. Basic validation
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin.",
+        message: "School ID and session are required from authenticated admin."
       });
     }
-    if (!studentId) {
+    if (!(studentId || studentAdmissionNumber)) {
       return res.status(400).json({
         success: false,
-        message: "Student ID (UUID) is required in the URL parameter.",
+        message:
+          "Please provide either studentId or studentAdmissionNumber in the body."
       });
     }
-    if (!parentAdmissionNumber) {
+    if (!(parentId || parentAdmissionNumber)) {
       return res.status(400).json({
         success: false,
-        message: "Parent admission number is required in the request body.",
+        message:
+          "Please provide either parentId or parentAdmissionNumber in the body."
       });
     }
 
-    // Find the student using studentId (UUID)
-    const student = await NewStudentModel.findOne({
-      studentId,
+    // 2. Find the student
+    const studentFilter = {
       schoolId,
       session,
-    });
+      $or: []
+    };
+    if (studentId)              studentFilter.$or.push({ studentId });
+    if (studentAdmissionNumber) studentFilter.$or.push({ admissionNumber: studentAdmissionNumber });
+
+    const student = await NewStudentModel.findOne(studentFilter);
     if (!student) {
       return res.status(404).json({
         success: false,
         message:
-          "Student not found or does not belong to this school and session.",
+          "Student not found with given identifier(s) in this school and session."
       });
     }
 
-    // Find the new parent using parentAdmissionNumber
-    const newParent = await ParentModel.findOne({
-      admissionNumber: parentAdmissionNumber,
+    // 3. Find the parent
+    const parentFilter = {
       schoolId,
       session,
-    });
+      $or: []
+    };
+    if (parentId)              parentFilter.$or.push({ parentId });
+    if (parentAdmissionNumber) parentFilter.$or.push({ admissionNumber: parentAdmissionNumber });
+
+    const newParent = await ParentModel.findOne(parentFilter);
     if (!newParent) {
       return res.status(404).json({
         success: false,
-        message: `Parent with admission number ${parentAdmissionNumber} not found in this school and session.`,
+        message:
+          "Parent not found with given identifier(s) in this school and session."
       });
     }
 
-    // Check if the student is already linked to this parent
+    // 4. Already linked?
     if (
       student.parentId &&
-      student.parentId.toString() === newParent.parentId.toString()
+      student.parentId === newParent.parentId
     ) {
       return res.status(400).json({
         success: false,
-        message: "Student is already linked to this parent.",
+        message: "Student is already linked to this parent."
       });
     }
 
-    // If the student was previously linked to another parent, update the old parent's student list
+    // 5. Unlink from old parent (if any)
     if (student.parentId) {
       const oldParent = await ParentModel.findOne({
         parentId: student.parentId,
         schoolId,
-        session,
+        session
       });
       if (oldParent) {
         oldParent.studentIds = oldParent.studentIds.filter(
-          (id) => id.toString() !== student._id.toString()
+          id => id !== student.studentId
         );
         oldParent.studentNames = oldParent.studentNames.filter(
-          (name) => name !== student.studentName
+          name => name !== student.studentName
         );
         await oldParent.save();
       }
     }
 
-    // Update the new parent's student list
-    newParent.studentIds.push(student._id);
+    // 6. Link to new parent by student.studentId (UUID)
+    if (!newParent.studentIds.includes(student.studentId)) {
+      newParent.studentIds.push(student.studentId);
+    }
     if (!newParent.studentNames.includes(student.studentName)) {
       newParent.studentNames.push(student.studentName);
     }
@@ -7076,44 +7038,46 @@ exports.linkStudentToParent = async (req, res) => {
     newParent.updatedAt = new Date();
     await newParent.save();
 
-    // Update the student's parent details
-    student.parentId = newParent.parentId;
-    student.parentAdmissionNumber = parentAdmissionNumber;
-    student.updatedBy = updatedBy;
-    student.updatedAt = new Date();
+    // 7. Update student record
+    student.parentId              = newParent.parentId;
+    student.parentAdmissionNumber = newParent.admissionNumber;
+    student.updatedBy             = updatedBy;
+    student.updatedAt             = new Date();
     await student.save();
 
+    // 8. Return the linked records
     res.status(200).json({
       success: true,
-      message: "Student successfully linked to the new parent.",
+      message: "Student successfully linked to parent.",
       student: {
-        studentId: student.studentId,
-        studentName: student.studentName,
-        admissionNumber: student.admissionNumber,
-        parentId: student.parentId,
-        parentAdmissionNumber: student.parentAdmissionNumber,
-        updatedBy: student.updatedBy,
-        updatedAt: student.updatedAt,
+        studentId:               student.studentId,
+        studentName:             student.studentName,
+        admissionNumber:         student.admissionNumber,
+        parentId:                student.parentId,
+        parentAdmissionNumber:   student.parentAdmissionNumber,
+        updatedBy:               student.updatedBy,
+        updatedAt:               student.updatedAt
       },
       parent: {
-        parentId: newParent.parentId,
-        fatherName: newParent.fatherName,
-        admissionNumber: newParent.admissionNumber,
-        studentIds: newParent.studentIds,
-        studentNames: newParent.studentNames,
-        updatedBy: newParent.updatedBy,
-        updatedAt: newParent.updatedAt,
-      },
+        parentId:           newParent.parentId,
+        fatherName:         newParent.fatherName,
+        admissionNumber:    newParent.admissionNumber,
+        studentIds:         newParent.studentIds,
+        studentNames:       newParent.studentNames,
+        updatedBy:          newParent.updatedBy,
+        updatedAt:          newParent.updatedAt
+      }
     });
   } catch (error) {
     console.error("Error in linkStudentToParent:", error);
     res.status(500).json({
       success: false,
       message: "Error linking student to parent.",
-      error: error.message,
+      error:   error.message
     });
   }
 };
+
 
 exports.bulkEditStudents = async (req, res) => {
   try {

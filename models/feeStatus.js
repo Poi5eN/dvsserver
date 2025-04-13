@@ -1,50 +1,39 @@
 const mongoose = require("mongoose");
 
-// Schema for regular fee history within fee history
 const regularFeeHistorySchema = new mongoose.Schema({
-  month: {
+  month: { type: String },
+  paidAmount: { type: Number, required: true },
+  dueAmount: { type: Number, required: true },
+  status: { type: String, required: true },
+  frequency: {
     type: String,
-    required: true,
-  },
-  paidAmount: {
-    type: Number,
-    required: true,
-  },
-  dueAmount: {
-    type: Number,
-    required: true,
-  },
-  status: {
-    type: String,
+    enum: ["monthly", "one-time", "annual"],
     required: true,
   },
 });
 
-// Schema for additional fee history within fee history
 const additionalFeeHistorySchema = new mongoose.Schema({
-  name: {
+  name: { type: String, required: true },
+  month: { type: String },
+  paidAmount: { type: Number, required: true },
+  dueAmount: { type: Number, required: true },
+  status: { type: String, required: true },
+  frequency: {
     type: String,
-    required: true,
-  },
-  month: {
-    type: String,
-    // required: true
-  },
-  paidAmount: {
-    type: Number,
-    required: true,
-  },
-  dueAmount: {
-    type: Number,
-    required: true,
-  },
-  status: {
-    type: String,
+    enum: ["monthly", "one-time", "annual"],
     required: true,
   },
 });
 
-// Schema for fee history
+const lateFineSchema = new mongoose.Schema({
+  month: { type: String },
+  year: { type: String, required: true },
+  amount: { type: Number, required: true },
+  paidAmount: { type: Number, default: 0 },
+  dueAmount: { type: Number, required: true },
+  appliedOn: { type: Date, default: Date.now },
+});
+
 const feeHistorySchema = new mongoose.Schema(
   {
     date: {
@@ -54,7 +43,7 @@ const feeHistorySchema = new mongoose.Schema(
       get: (date) =>
         new Date(date).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
     },
-    status: { // New field to track active/canceled status
+    status: {
       type: String,
       enum: ["active", "canceled"],
       default: "active",
@@ -62,155 +51,64 @@ const feeHistorySchema = new mongoose.Schema(
     },
     regularFees: [regularFeeHistorySchema],
     additionalFees: [additionalFeeHistorySchema],
-    feeReceiptNumber: {
-      type: String,
-      required: true,
-    },
-    paymentMode: {
-      type: String,
-      required: true,
-    },
-    transactionId: {
-      type: String,
-    },
-    totalFeeAmount: {
-      type: Number,
-      required: true,
-    },
+    lateFines: [lateFineSchema],
+    feeReceiptNumber: { type: String, required: true },
+    paymentMode: { type: String, required: true },
+    transactionId: { type: String },
+    totalFeeAmount: { type: Number, required: true },
     pastDuesPaid: { type: Number, default: 0 },
-    duesPaid: { type: Number, default: 0 },
-    previousDues: {
-      type: Number,
-      default: 0,
-    },
-    remark: {
-      type: String,
-    },
-    totalAmountPaid: {
-      type: Number,
-      default: 0,
-    },
-    totalDues: {
-      type: Number,
-      default: 0,
-    },
-    concessionFee: {
-      type: Number,
-      default: 0,
-    },
-    lateFines: [
-      {
-        month: { type: String, required: false }, // e.g., "April"
-        year: { type: String, required: true }, // e.g., "2025"
-        amount: { type: Number, required: true },
-        paidAmount: { type: Number, default: 0 },
-        dueAmount: { type: Number, required: true },
-        appliedOn: { type: Date, default: Date.now },
-      },
-    ],
-    lateFinesPaid: { type: Number, default: 0 },
     concessionApplied: { type: Number, default: 0 },
     paymentMessage: { type: String },
-    paidAfterConcession: {
-      type: Number,
-      default: 0,
-    },
-    newPaidAmount: {
-      type: Number,
-      default: 0,
-    },
+    totalAmountPaid: { type: Number, default: 0 },
+    totalDues: { type: Number, default: 0 },
+    remark: { type: String },
   },
   { toJSON: { getters: true } }
 );
 
-// Schema for monthly regular dues
 const monthlyRegularDuesSchema = new mongoose.Schema({
-  month: {
+  month: { type: String },
+  paidAmount: { type: Number, default: 0 },
+  dueAmount: { type: Number, required: true },
+  status: { type: String, required: true },
+  frequency: {
     type: String,
-    required: true,
-  },
-  paidAmount: {
-    type: Number,
-    default: 0,
-  },
-  dueAmount: {
-    type: Number,
-    required: true,
-  },
-  status: {
-    type: String,
+    enum: ["monthly", "one-time", "annual"],
     required: true,
   },
 });
 
-// Schema for monthly additional dues
 const monthlyAdditionalDuesSchema = new mongoose.Schema({
-  name: {
+  name: { type: String, required: true },
+  month: { type: String },
+  paidAmount: { type: Number, default: 0 },
+  dueAmount: { type: Number, required: true },
+  status: { type: String, required: true },
+  frequency: {
     type: String,
-    required: true,
-  },
-  month: {
-    type: String,
-    required: false,
-  },
-  paidAmount: {
-    type: Number,
-    default: 0,
-  },
-  dueAmount: {
-    type: Number,
-    required: true,
-  },
-  status: {
-    type: String,
+    enum: ["monthly", "one-time", "annual"],
     required: true,
   },
 });
 
-// Schema for monthly dues
 const monthlyDuesSchema = new mongoose.Schema({
   regularDues: [monthlyRegularDuesSchema],
   additionalDues: [monthlyAdditionalDuesSchema],
+  lateFines: [lateFineSchema],
 });
 
-// Main fee status schema
-const feeStatus = new mongoose.Schema({
-  schoolId: {
-    type: String,
-    required: true,
-  },
-  studentId: {
-    type: String,
-    required: true,
-  },
-  year: {
-    type: String,
-    required: true,
-  },
-  dues: {
-    type: Number,
-    default: 0,
-  },
-  overallAmountPaid: {
-    type: Number,
-    default: 0,
-  },
-  overallConcessionApplied:{
-    type: Number,
-    default: 0,
-  },
-  pastDues: {
-    type: Number,
-    default: 0,
-  }, // New field for past dues
-  totalLateFines: { type: Number, default: 0 },
+const feeStatusSchema = new mongoose.Schema({
+  schoolId: { type: String, required: true },
+  studentId: { type: String, required: true },
+  year: { type: String, required: true },
   session: { type: String, required: true },
-  createdAt: {
-    type: Date,
-    default: Date.now(),
-  },
+  dues: { type: Number, default: 0 },
+  pastDues: { type: Number, default: 0 },
+  overallAmountPaid: { type: Number, default: 0 },
+  overallConcessionApplied: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
   feeHistory: [feeHistorySchema],
   monthlyDues: monthlyDuesSchema,
 });
 
-module.exports = mongoose.model("feeStatus", feeStatus);
+module.exports = mongoose.model("FeeStatus", feeStatusSchema);

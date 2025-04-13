@@ -1,5 +1,5 @@
 const express = require("express");
-const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo} = require("../controllers/feeStatusController");
+const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt} = require("../controllers/feeStatusController");
 const { manageDuesPayment, createPayment } = require("../controllers/manageDuesPayment");
 const verifyToken = require("../middleware/auth");
 
@@ -20,8 +20,25 @@ router.get('/getMonthlyDues', verifyToken, getMonthlyDues);
 router.put('/editFeeStatus/:receiptNumber', verifyToken, editFeeStatus);
 router.delete('/deleteFeeStatus/:receiptNumber', verifyToken, deleteFeeStatus);
 router.post('/cancelFeePayment', verifyToken, cancelFeePayment);
-// router.delete('/deleteExam/:examId', verifyToken, deleteExam);
-// router.put('/updateExam', verifyToken, updateExam);
+
+router.post('/generateUnifiedReceipt', verifyToken, generateUnifiedFeeReceipt);
+
+
+// NEW API ROUTES WITH UNIFIED FUNCTIONALITY
+// Unified GET endpoint
+// router.get('/fees', feeController.getFees);
+
+// // Kept separate as per requirement
+// router.get('/fee-status', feeController.getFeeStatus);
+// router.get('/fee-history', feeController.getFeeHistory);
+
+// // Other endpoints (unchanged)
+// router.post('/fees/payment', feeController.createOrUpdateFeePayment);
+// router.post('/fees/past-dues', feeController.addPastDues);
+// router.put('/fees/cancel', feeController.cancelFeePayment);
+// router.put('/fees/status/:receiptNumber', feeController.editFeeStatus);
+// router.delete('/fees/status/:receiptNumber', feeController.deleteFeeStatus);
+
 
 
 // DUES MANAGEMENT

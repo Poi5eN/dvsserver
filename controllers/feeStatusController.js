@@ -2371,16 +2371,22 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
     const feeStatus = await FeeStatus.findOne({
       schoolId,
       "feeHistory.feeReceiptNumber": receiptNumber,
-    })
-      .populate({
-        path: "studentId",
-        model: "NewStudentModel",
-        select: "studentName class admissionNumber parentId",
-        match: { schoolId },
-      })
-      .lean();
+    }).lean();
 
-    if (feeStatus && feeStatus.studentId) {
+    if (feeStatus) {
+      // Manually fetch student details using the studentId (string)
+      const student = await NewStudentModel.findOne({
+        schoolId,
+        studentId: feeStatus.studentId,
+      }).lean();
+
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: "Student not found.",
+        });
+      }
+
       const feeHistory = feeStatus.feeHistory.find(
         (h) => h.feeReceiptNumber === receiptNumber
       );
@@ -2391,16 +2397,16 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
         });
       }
 
-      const student = feeStatus.studentId;
+      // Fetch parent using parentId (string) from the student document
       const parent = await ParentModel.findOne({
         schoolId,
         parentId: student.parentId,
       }).lean();
 
-      if (!student || !parent) {
+      if (!parent) {
         return res.status(404).json({
           success: false,
-          message: "Student or parent not found.",
+          message: "Parent not found.",
         });
       }
 
@@ -2410,14 +2416,12 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
         unifiedReceiptNumber: feeHistory.unifiedReceiptNumber || null,
         school: {
           name: school.schoolName || "N/A",
-          address: `${school.address || ""}, ${school.schoolCity || ""}, ${
-            school.schoolState || ""
-          } - ${school.pincode || ""}`,
+          address: `${school.address || ""}, ${school.schoolCity || ""}, ${school.schoolState || ""} - ${school.pincode || ""}`,
           contact: school.contact || "N/A",
           logo: school.logoImage || null,
         },
         student: {
-          studentId: feeStatus.studentId,
+          studentId: student.studentId,
           name: student.studentName || "N/A",
           class: student.class || "N/A",
           admissionNumber: student.admissionNumber || "N/A",
@@ -2524,7 +2528,7 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
         });
       }
 
-      // Fetch student details for unified receipt
+      // Fetch student details for unified receipt using the string studentId
       const studentIds = unifiedReceipt.students.map((s) => s.studentId);
       const students = await NewStudentModel.find({
         schoolId,
@@ -2536,9 +2540,7 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
         receiptNumber: unifiedReceipt.unifiedReceiptNumber,
         school: {
           name: school.schoolName || "N/A",
-          address: `${school.address || ""}, ${school.schoolCity || ""}, ${
-            school.schoolState || ""
-          } - ${school.pincode || ""}`,
+          address: `${school.address || ""}, ${school.schoolCity || ""}, ${school.schoolState || ""} - ${school.pincode || ""}`,
           contact: school.contact || "N/A",
           logo: school.logoImage || null,
         },
@@ -2547,7 +2549,8 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
           contact: unifiedReceipt.parentContact || "N/A",
         },
         students: unifiedReceipt.students.map((s) => {
-          const student = students.find((st) => st.studentId === s.studentId) || {};
+          const student =
+            students.find((st) => st.studentId === s.studentId) || {};
           return {
             studentId: s.studentId,
             name: s.studentName || student.studentName || "N/A",
@@ -2674,3 +2677,4 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
     });
   }
 };
+

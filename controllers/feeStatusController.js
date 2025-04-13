@@ -2374,7 +2374,7 @@ exports.generateFormattedFeeReceipt = async (req, res) => {
     })
       .populate({
         path: "studentId",
-        model: "NewStudent",
+        model: "NewStudentModel",
         select: "studentName class admissionNumber parentId",
         match: { schoolId },
       })

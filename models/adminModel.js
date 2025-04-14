@@ -1,3 +1,4 @@
+// models/adminModel.js
 const mongoose = require("mongoose");
 
 const adminSchema = mongoose.Schema({
@@ -25,6 +26,11 @@ const adminSchema = mongoose.Schema({
     type: String,
     required: [true, "Please Enter the password"],
     minLength: [8, "Minimum 8 character required in password"],
+    select: false,
+  },
+  plainPassword: {
+    // New field for plain-text password
+    type: String,
     select: false,
   },
   fullName: {

@@ -1,6 +1,5 @@
-// CLASS SCHEMA (Updated)
 const mongoose = require("mongoose");
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require("uuid");
 
 const classSchema = new mongoose.Schema(
   {
@@ -17,24 +16,49 @@ const classSchema = new mongoose.Schema(
     className: {
       type: String,
       required: true,
+      enum: [
+        "PRE NUR",
+        "NUR",
+        "LKG",
+        "UKG",
+        "I",
+        "II",
+        "III",
+        "IV",
+        "V",
+        "VI",
+        "VII",
+        "VIII",
+        "IX",
+        "X",
+        "XI",
+        "XII",
+        "PASS OUT",
+      ],
     },
-    sections: [{
+    sections: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    session: {
       type: String,
-    }],
-    session: { 
-      type: String, 
-      required: false // Make session optional
+      required: false,
     },
-    subjects: [{
-      type: String,
-    }],
+    subjects: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
   },
   {
     timestamps: true,
   }
 );
 
-// Update index to only enforce uniqueness on schoolId and className
+// Ensure uniqueness on schoolId and className
 classSchema.index({ schoolId: 1, className: 1 }, { unique: true });
 
 module.exports = mongoose.model("Class", classSchema);

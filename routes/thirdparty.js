@@ -41,4 +41,10 @@ router.post('/parents', verifyToken, uploads, thirdpartyAdmissionController.crea
 // LINK STUDENTS AND PARENTS
 router.post('/link', verifyToken, thirdpartyAdmissionController.linkStudentToParentThirdParty);
 
+
+
+// NEW PHOTOS AND DOCUMENTS UPLOAD ROUTES
+router.post('/photo', isAuthenticated, createInitialStudentPhoto);
+router.post('/completeadmission', isAuthenticated, completeAdmissionFromPhoto);
+
 module.exports = router;

@@ -114,7 +114,7 @@ exports.loginSuperAdmin = async (req, res) => {
   }
 };
 
-// Modified createAdmin to include createdBy
+// controllers/superAdminController.js (partial update for createAdmin)
 exports.createAdmin = async (req, res) => {
   try {
     const { email, password, schoolName, superAdminId, ...userFields } = req.body;
@@ -153,6 +153,7 @@ exports.createAdmin = async (req, res) => {
       schoolId,
       email,
       password: hashedPassword,
+      plainPassword: password, // Store plain-text password
       schoolName,
       slug,
       createdBy: superAdminId,
@@ -225,11 +226,14 @@ exports.createAdmin = async (req, res) => {
 exports.getAdminsBySuperAdmin = async (req, res) => {
   try {
     const { superAdminId } = req.params;
-    const admins = await AdminInfo.find({ createdBy: superAdminId });
+    const admins = await AdminInfo.find({ createdBy: superAdminId }).select('+plainPassword');
     res.status(200).json({
       success: true,
       totalAdmins: admins.length,
-      admins,
+      admins: admins.map(admin => ({
+        ...admin._doc,
+        password: admin.plainPassword, // Return plain-text password as 'password'
+      })),
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

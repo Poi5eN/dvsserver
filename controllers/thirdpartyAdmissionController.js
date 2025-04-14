@@ -1,4 +1,5 @@
 const AdminInfo = require('../models/adminModel');
+const PhotoModel = require('../models/photoModel');
 const NewStudentModel = require('../models/newStudentModel');
 const classModel = require('../models/classModel');
 const ParentModel = require('../models/parentModel');
@@ -1450,5 +1451,412 @@ exports.linkStudentToParentThirdParty = async (req, res) => {
   } catch (error) {
     console.error("Error in linkStudentToParentThirdParty:", error);
     return res.status(500).json({ success: false, message: "Failed to link student to parent.", error: error.message });
+  }
+};
+
+
+
+
+
+exports.createInitialStudentPhoto = async (req, res) => {
+  try {
+    const { schoolId, studentName, class: studentClass, section } = req.body;
+    const session = req.user.session;
+    const assignedThirdParty = req.user.userId;
+
+    // Check access
+    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have access to create records for this school.",
+      });
+    }
+
+    // Validation
+    if (!studentName) return res.status(400).json({ success: false, message: "Student name is required." });
+    if (!studentClass) return res.status(400).json({ success: false, message: "Class is required." });
+    if (!section) return res.status(400).json({ success: false, message: "Section is required." });
+
+    // Handle image upload
+    const files = req.files || [];
+    const studentFile = files.find(f => f.fieldname === "studentImage");
+    let studentImageResult = { public_id: "", url: "" };
+
+    if (studentFile) {
+      const fileKey = `students/photos/${Date.now()}-${studentFile.originalname}`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentFile.buffer,
+        ContentType: studentFile.mimetype,
+        ACL: "public-read",
+      };
+      const minioData = await s3.upload(params).promise();
+      studentImageResult = { public_id: fileKey, url: minioData.Location };
+    } else {
+      return res.status(400).json({ success: false, message: "Student image is required." });
+    }
+
+    // Create record in PhotoModel
+    const photoData = await PhotoModel.create({
+      photoId: uuidv4(),
+      schoolId,
+      session,
+      studentName,
+      class: studentClass,
+      section,
+      studentImage: studentImageResult,
+      assignedThirdParty,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Initial student photo record created successfully.",
+      data: photoData,
+    });
+  } catch (error) {
+    console.error("Error in createInitialStudentPhoto:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create initial student photo record.",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Complete Admission from Photo (Third-Party)
+ */
+exports.completeAdmissionFromPhoto = async (req, res) => {
+  try {
+    const { photoId, schoolId } = req.body;
+    const session = req.user.session;
+
+    // Check access
+    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: "You don't have access to create admissions for this school.",
+      });
+    }
+
+    // Find photo record
+    const photo = await PhotoModel.findOne({ photoId, schoolId });
+    if (!photo) {
+      return res.status(404).json({
+        success: false,
+        message: "Photo record not found.",
+      });
+    }
+
+    const {
+      studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
+      studentAddress, studentContact, studentCountry, studentSubject,
+      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
+      parentIncome, parentQualification, religion, caste, nationality, pincode, state, city,
+      studentAdmissionNumber, parentAdmissionNumber, rollNo,
+      // UDISE+ fields
+      stu_id, studentUdiseClass, studentUdiseSection, roll_no, student_name, studentUdiseGender, DOB,
+      aadhar_no, aadhar_name, paddress, udisePlusPincode, mobile_no, alt_mobile_no, email_id,
+      mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type,
+      ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class,
+      stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform,
+      fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship,
+      received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder,
+      ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject,
+      bpl_card_no, ann_card_no,
+    } = req.body;
+
+    // Validation
+    if (!studentEmail) return res.status(400).json({ success: false, message: "Student email is required." });
+    if (!studentPassword) return res.status(400).json({ success: false, message: "Student password is required." });
+    if (!studentJoiningDate) return res.status(400).json({ success: false, message: "Student joining date is required." });
+    if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
+    if (!parentEmail) return res.status(400).json({ success: false, message: "Parent email is required." });
+    if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
+
+    // Check for existing student
+    const existingStudent = await NewStudentModel.findOne({ email: studentEmail, schoolId });
+    if (existingStudent) {
+      return res.status(400).json({
+        success: false,
+        message: "Student already exists with this email in this school.",
+      });
+    }
+
+    // Hash passwords
+    const studentHashedPassword = await hashPassword(studentPassword);
+    const parentHashedPassword = await hashPassword(parentPassword);
+
+    // Handle additional images
+    const files = req.files || [];
+    let fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+    const fatherFile = files.find(f => f.fieldname === "fatherImage");
+    const motherFile = files.find(f => f.fieldname === "motherImage");
+    const guardianFile = files.find(f => f.fieldname === "guardianImage");
+
+    if (fatherFile) {
+      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      fatherImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (motherFile) {
+      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      motherImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+    if (guardianFile) {
+      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
+      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const minioData = await s3.upload(params).promise();
+      guardianImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+
+    // Generate admission numbers
+    const studentAdmissionNumberToUse = studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
+      ? studentAdmissionNumber
+      : await generateAdmissionNumber(schoolId, NewStudentModel);
+
+    // Create student record
+    const studentData = await NewStudentModel.create({
+      studentId: uuidv4(),
+      schoolId,
+      session,
+      studentName: photo.studentName,
+      email: studentEmail,
+      password: studentHashedPassword,
+      dateOfBirth: studentDateOfBirth,
+      motherName,
+      fatherName,
+      parentContact: parentContact,
+      role: "student",
+      rollNo,
+      status: "active",
+      gender: studentGender,
+      joiningDate: studentJoiningDate,
+      address: studentAddress,
+      contact: studentContact,
+      class: photo.class,
+      section: photo.section,
+      country: studentCountry,
+      subject: studentSubject ? studentSubject.split(",") : [],
+      guardianName,
+      remarks,
+      transport,
+      base64: undefined,
+      studentImage: photo.studentImage,
+      fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
+      motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
+      guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+      admissionNumber: studentAdmissionNumberToUse,
+      isGenerated: !studentAdmissionNumber,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      approvalStatus: "pending",
+      isNewAdmission: true,
+      assignedThirdParty: req.user.userId,
+      photoId: photoId, // Link to photoId
+      udisePlusDetails: {
+        stu_id,
+        class: studentUdiseClass,
+        section: studentUdiseSection,
+        roll_no,
+        student_name,
+        gender: studentUdiseGender,
+        DOB,
+        mother_name: motherName,
+        father_name: fatherName,
+        guardian_name: guardianName,
+        aadhar_no,
+        aadhar_name,
+        paddress,
+        pincode: udisePlusPincode,
+        mobile_no,
+        alt_mobile_no,
+        email_id,
+        mothere_tougue,
+        category,
+        minority,
+        is_bpl,
+        is_aay,
+        ews_aged_group,
+        is_cwsn,
+        cwsn_imp_type,
+        ind_national,
+        mainstramed_child,
+        adm_no,
+        adm_date,
+        stu_stream,
+        pre_year_schl_status,
+        pre_year_class,
+        stu_ward,
+        pre_class_exam_app,
+        result_pre_exam,
+        perc_pre_class,
+        att_pre_class,
+        fac_free_uniform,
+        fac_free_textbook,
+        received_central_scholarship,
+        name_central_scholarship,
+        received_state_scholarship,
+        received_other_scholarship,
+        scholarship_amount,
+        fac_provided_cwsn,
+        SLD_type,
+        aut_spec_disorder,
+        ADHD,
+        inv_ext_curr_activity,
+        vocational_course,
+        trade_sector_id,
+        job_role_id,
+        pre_app_exam_vocationalsubject,
+        bpl_card_no,
+        ann_card_no,
+      },
+    });
+
+    // Create or update parent record
+    let parentData = null;
+    if (parentAdmissionNumber) {
+      parentData = await ParentModel.findOneAndUpdate(
+        { admissionNumber: parentAdmissionNumber, schoolId },
+        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: photo.studentName } },
+        { new: true }
+      );
+      if (!parentData) {
+        return res.status(400).json({
+          success: false,
+          message: "Parent with provided admission number does not exist.",
+        });
+      }
+    } else {
+      const parentFile = files.find(f => f.fieldname === "parentImage");
+      let parentImageResult = {};
+      if (parentFile) {
+        const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
+        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+        const minioData = await s3.upload(params).promise();
+        parentImageResult = { public_id: fileKey, url: minioData.Location };
+      }
+
+      const parentAdmissionNumberGenerated = await generateAdmissionNumber(schoolId, ParentModel);
+      parentData = await ParentModel.create({
+        parentId: uuidv4(),
+        schoolId,
+        session,
+        studentIds: [studentData._id],
+        studentNames: [photo.studentName],
+        fatherName,
+        motherName,
+        email: parentEmail,
+        password: parentHashedPassword,
+        status: "active",
+        contact: parentContact,
+        role: "parent",
+        parentImage: parentImageResult.url ? parentImageResult : { public_id: "", url: "" },
+        fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
+        motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
+        guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+        admissionNumber: parentAdmissionNumberGenerated,
+        base64: undefined,
+        income: parentIncome ? Number(parentIncome) : undefined,
+        qualification: parentQualification,
+        guardianName,
+        createdBy: req.user._id || mongoose.Types.ObjectId(req.user.userId),
+      });
+    }
+
+    // Link parent to student
+    if (parentData) {
+      studentData.parentId = parentData._id.toString();
+      studentData.parentAdmissionNumber = parentData.admissionNumber;
+      await studentData.save();
+
+      const parentEmailContent = `<p>Your login credentials are as follows:</p><p>Email: ${parentEmail}</p><p>Password: ${parentPassword}</p>`;
+      await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
+    }
+
+    // Send student email (same as createAdmission)
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
+    const schoolName = schoolDetails?.schoolName || 'Your School';
+    const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
+    const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+
+    const studentEmailContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admission Confirmation</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
+              <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
+              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
+              <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your Learning Journey!</p>
+            </td>
+          </tr>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 30px; background-color: #ffffff;">
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${photo.studentName}!</h2>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been submitted and is awaiting approval.</p>
+              <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
+                <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${photo.studentName}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${photo.class}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
+              </div>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Hang tight! We’re reviewing your details and will notify you once approved. Your journey starts on ${studentJoiningDate}.</p>
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
+              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
+              <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
+              <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #000000;">
+                Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
+                <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
+              </p>
+              <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+    await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
+
+    // Optionally delete photo record after successful admission
+    await PhotoModel.deleteOne({ photoId });
+
+    return res.status(201).json({
+      success: true,
+      message: "Admission created successfully from photo record and is pending admin approval.",
+      student: studentData,
+      parent: parentData,
+    });
+  } catch (error) {
+    console.error("Error in completeAdmissionFromPhoto:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to complete admission.",
+      error: error.message,
+    });
   }
 };

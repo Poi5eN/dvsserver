@@ -371,7 +371,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: additionalFeeMap[a.name].amount,
         status: "Unpaid",
-        frequency: additionalFeeMap[a.name].type.toLowerCase() || "one-time", // Match feeType
+        frequency: additionalFeeMap[a.name].toLowerCase().replace(/\s+/g, '-') || "one-time", // Match feeType
       };
       feeStatus.monthlyDues.additionalDues.push(due);
     }
@@ -506,7 +506,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: additionalFeeMap[a.name].amount,
         status: "Unpaid",
-        frequency: additionalFeeMap[a.name].type.toLowerCase() || "one-time",
+        frequency: additionalFeeMap[a.name].type.toLowerCase().replace(/\s+/g, '-') || "one-time",
       };
       feeStatus.monthlyDues.additionalDues.push(due);
     }
@@ -518,7 +518,7 @@ async function processFeePayment(
         paidAmount: due.paidAmount + maxPayment,
         dueAmount: Math.max(0, due.dueAmount - maxPayment),
         status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
-        frequency: due.frequency || additionalFeeMap[a.name].type.toLowerCase() || "one-time",
+        frequency: due.frequency || additionalFeeMap[a.name].type.toLowerCase().replace(/\s+/g, '-') || "one-time",
       };
       updatedAdditional.push(updatedDue);
       remaining -= maxPayment;

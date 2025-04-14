@@ -2418,18 +2418,7 @@ exports.getUnifiedReceipts = async (req, res) => {
       query.session = session;
     }
 
-    const unifiedReceipts = await UnifiedReceipt.find(query)
-      .populate({
-        path: "studentIds",
-        select: "studentName admissionNumber class parentId",
-        match: { schoolId },
-      })
-      .populate({
-        path: "parentId",
-        select: "fatherName contact",
-        match: { schoolId },
-      })
-      .lean();
+    const unifiedReceipts = await UnifiedReceipt.find(query).lean();
 
     if (!unifiedReceipts || unifiedReceipts.length === 0) {
       return res.status(404).json({
@@ -2438,10 +2427,27 @@ exports.getUnifiedReceipts = async (req, res) => {
       });
     }
 
+    const allStudentIds = unifiedReceipts.flatMap((receipt) =>
+      Array.isArray(receipt.studentIds) ? receipt.studentIds : []
+    );
+
+    const students = await NewStudentModel.find({
+      schoolId,
+      studentId: { $in: allStudentIds },
+    }).lean();
+
+    const parentIds = [...new Set(students.map((s) => s.parentId))];
+    const parents = await ParentModel.find({
+      schoolId,
+      parentId: { $in: parentIds },
+    }).lean();
+
     const formattedReceipts = unifiedReceipts.map((receipt) => {
       const studentIds = Array.isArray(receipt.studentIds) ? receipt.studentIds : [];
-      const regularFees = receipt.regularFees || [];
-      const additionalFees = receipt.additionalFees || [];
+      const receiptStudents = students.filter((s) => studentIds.includes(s.studentId));
+      const parent = parents.find((p) =>
+        receiptStudents.some((s) => s.parentId === p.parentId)
+      );
 
       return {
         _id: receipt._id,
@@ -2449,29 +2455,18 @@ exports.getUnifiedReceipts = async (req, res) => {
         date: receipt.date,
         paymentMode: receipt.paymentMode,
         transactionId: receipt.transactionId || "",
-        totalAmountPaid: receipt.totalAmountPaid,
+        totalAmountPaid: receipt.totalAmountPaid || 0,
         totalDues: receipt.totalDues || 0,
-        regularFees: regularFees.map((fee) => ({
-          month: fee.month,
-          paidAmount: fee.paidAmount || 0,
-          dueAmount: fee.dueAmount || 0,
-          status: fee.status || "Paid",
-        })),
-        additionalFees: additionalFees.map((fee) => ({
-          name: fee.name,
-          month: fee.month || "",
-          paidAmount: fee.amount || 0,
-          dueAmount: fee.dueAmount || 0,
-          status: fee.status || "Paid",
-        })),
-        students: studentIds.map((s) => ({
+        regularFees: receipt.regularFees || [],
+        additionalFees: receipt.additionalFees || [],
+        students: receiptStudents.map((s) => ({
           studentId: s.studentId,
           studentName: s.studentName,
           admissionNumber: s.admissionNumber,
           class: s.class,
         })),
-        parentName: receipt.parentId ? receipt.parentId.fatherName : "N/A",
-        fatherPhone: receipt.parentId ? receipt.parentId.contact : "N/A",
+        parentName: parent ? parent.fatherName : "N/A",
+        fatherPhone: parent ? parent.contact : "N/A",
         isUnified: true,
         status: receipt.status || "active",
       };

@@ -809,26 +809,21 @@ exports.createUnifiedFeePayment = async (req, res) => {
 // Generate fee receipt (supports both single and unified receipts)
 exports.generateFeeReceipt = async (req, res) => {
   try {
-    const { receiptNumber, type = "fee" } = req.query; // Type: "fee" or "unified"
+    const { receiptNumber } = req.query; // Single or unified receipt number
     const schoolId = req.user.schoolId;
 
     let feeHistoryEntries = [];
     let isUnified = false;
     let unifiedReceipt = null;
 
-    if (type === "unified") {
-      unifiedReceipt = await UnifiedReceipt.findOne({
-        schoolId,
-        unifiedReceiptNumber: receiptNumber,
-      });
-      if (!unifiedReceipt) {
-        return res.status(404).json({
-          success: false,
-          message: "Unified receipt not found",
-        });
-      }
-      isUnified = true;
+    // Check if it's a unified receipt
+    unifiedReceipt = await UnifiedReceipt.findOne({
+      schoolId,
+      unifiedReceiptNumber: receiptNumber,
+    });
 
+    if (unifiedReceipt) {
+      isUnified = true;
       const feeStatuses = await FeeStatus.find({
         schoolId,
         "feeHistory.unifiedReceiptNumber": receiptNumber,
@@ -839,7 +834,6 @@ exports.generateFeeReceipt = async (req, res) => {
           message: "No fee records found for this unified receipt",
         });
       }
-
       feeHistoryEntries = feeStatuses.map((fs) => ({
         studentId: fs.studentId,
         feeHistory: fs.feeHistory.find(
@@ -847,6 +841,7 @@ exports.generateFeeReceipt = async (req, res) => {
         ),
       }));
     } else {
+      // Assume single receipt
       const feeStatuses = await FeeStatus.find({
         schoolId,
         "feeHistory.feeReceiptNumber": receiptNumber,
@@ -857,19 +852,12 @@ exports.generateFeeReceipt = async (req, res) => {
           message: "Receipt not found",
         });
       }
-
       feeHistoryEntries = feeStatuses.map((fs) => ({
         studentId: fs.studentId,
         feeHistory: fs.feeHistory.find(
           (fh) => fh.feeReceiptNumber === receiptNumber
         ),
       }));
-
-      unifiedReceipt = await UnifiedReceipt.findOne({
-        schoolId,
-        unifiedReceiptNumber: feeHistoryEntries[0].feeHistory.unifiedReceiptNumber,
-      });
-      isUnified = !!unifiedReceipt;
     }
 
     const studentIds = feeHistoryEntries.map((e) => e.studentId);
@@ -884,8 +872,10 @@ exports.generateFeeReceipt = async (req, res) => {
     }).lean();
     const parent = parents[0]; // Assuming siblings share the same parent
 
-    const receiptData = {
-      receiptNumber: isUnified ? unifiedReceipt.unifiedReceiptNumber : receiptNumber,
+    let receiptData = {
+      receiptNumber: isUnified
+        ? unifiedReceipt.unifiedReceiptNumber
+        : feeHistoryEntries[0].feeHistory.feeReceiptNumber,
       date: feeHistoryEntries[0].feeHistory.date,
       schoolDetails: {
         name: req.user.schoolName,
@@ -899,51 +889,112 @@ exports.generateFeeReceipt = async (req, res) => {
         motherName: parent.motherName,
         contact: parent.contact,
       },
-      students: feeHistoryEntries.map((entry) => {
-        const student = students.find((s) => s.studentId === entry.studentId);
-        return {
-          studentId: student.studentId,
-          studentName: student.studentName,
-          class: student.class,
-          admissionNumber: student.admissionNumber,
-          feeDetails: {
-            regularFees: entry.feeHistory.regularFees.map((fee) => ({
-              month: fee.month,
-              paidAmount: fee.paidAmount,
-              dueAmount: fee.dueAmount,
-              status: fee.status,
-            })),
-            additionalFees: entry.feeHistory.additionalFees.map((fee) => ({
-              name: fee.name,
-              month: fee.month || "N/A",
-              paidAmount: fee.paidAmount,
-              dueAmount: fee.dueAmount,
-              status: fee.status,
-            })),
-            pastDuesPaid: entry.feeHistory.pastDuesPaid,
-            totalFeeAmount: entry.feeHistory.totalFeeAmount,
-            totalAmountPaid: entry.feeHistory.totalAmountPaid,
-            totalDues: entry.feeHistory.totalDues,
-            concessionApplied: entry.feeHistory.concessionApplied,
-            paymentMode: entry.feeHistory.paymentMode,
-            transactionId: entry.feeHistory.transactionId,
-            remark: entry.feeHistory.remark,
-          },
-        };
-      }),
-      totalAmountPaid: feeHistoryEntries.reduce(
-        (sum, e) => sum + e.feeHistory.totalAmountPaid,
-        0
-      ),
-      totalDues: feeHistoryEntries.reduce(
-        (sum, e) => sum + e.feeHistory.totalDues,
-        0
-      ),
+      students: [],
+      totalAmountPaid: 0,
+      totalDues: 0,
       paymentMode: feeHistoryEntries[0].feeHistory.paymentMode,
       transactionId: feeHistoryEntries[0].feeHistory.transactionId,
       remark: unifiedReceipt?.remark || feeHistoryEntries[0].feeHistory.remark,
       isUnified,
     };
+
+    if (isUnified) {
+      // Unified receipt: Aggregate data
+      const studentNames = students.map((s) => s.studentName).join(", ");
+      const classes = students.map((s) => s.class).join(", ");
+      const admissionNumbers = students
+        .map((s) => s.admissionNumber)
+        .join(", ");
+      const totalAmountPaid = feeHistoryEntries.reduce(
+        (sum, e) => sum + (e.feeHistory.totalAmountPaid || 0),
+        0
+      );
+      const totalDues = feeHistoryEntries.reduce(
+        (sum, e) => sum + (e.feeHistory.totalDues || 0),
+        0
+      );
+      const concessionApplied = feeHistoryEntries.reduce(
+        (sum, e) => sum + (e.feeHistory.concessionApplied || 0),
+        0
+      );
+      const totalFeeAmount = feeHistoryEntries.reduce(
+        (sum, e) => sum + (e.feeHistory.totalFeeAmount || 0),
+        0
+      );
+
+      receiptData.students.push({
+        studentNames,
+        classes,
+        admissionNumbers,
+        feeDetails: {
+          regularFees: feeHistoryEntries.flatMap((entry) =>
+            entry.feeHistory.regularFees.map((fee) => ({
+              month: fee.month,
+              paidAmount: fee.paidAmount,
+              dueAmount: fee.dueAmount,
+              status: fee.status,
+            }))
+          ),
+          additionalFees: feeHistoryEntries.flatMap((entry) =>
+            entry.feeHistory.additionalFees.map((fee) => ({
+              name: fee.name,
+              month: fee.month || "N/A",
+              paidAmount: fee.paidAmount,
+              dueAmount: fee.dueAmount,
+              status: fee.status,
+            }))
+          ),
+          pastDuesPaid: feeHistoryEntries.reduce(
+            (sum, e) => sum + (e.feeHistory.pastDuesPaid || 0),
+            0
+          ),
+          totalFeeAmount,
+          totalAmountPaid,
+          totalDues,
+          concessionApplied,
+          paymentMode: receiptData.paymentMode,
+          transactionId: receiptData.transactionId,
+          remark: receiptData.remark,
+        },
+      });
+      receiptData.totalAmountPaid = totalAmountPaid;
+      receiptData.totalDues = totalDues;
+    } else {
+      // Single receipt
+      const student = students[0];
+      const entry = feeHistoryEntries[0];
+
+      receiptData.students.push({
+        studentName: student.studentName,
+        class: student.class,
+        admissionNumber: student.admissionNumber,
+        feeDetails: {
+          regularFees: entry.feeHistory.regularFees.map((fee) => ({
+            month: fee.month,
+            paidAmount: fee.paidAmount,
+            dueAmount: fee.dueAmount,
+            status: fee.status,
+          })),
+          additionalFees: entry.feeHistory.additionalFees.map((fee) => ({
+            name: fee.name,
+            month: fee.month || "N/A",
+            paidAmount: fee.paidAmount,
+            dueAmount: fee.dueAmount,
+            status: fee.status,
+          })),
+          pastDuesPaid: entry.feeHistory.pastDuesPaid || 0,
+          totalFeeAmount: entry.feeHistory.totalFeeAmount || 0,
+          totalAmountPaid: entry.feeHistory.totalAmountPaid || 0,
+          totalDues: entry.feeHistory.totalDues || 0,
+          concessionApplied: entry.feeHistory.concessionApplied || 0,
+          paymentMode: entry.feeHistory.paymentMode,
+          transactionId: entry.feeHistory.transactionId,
+          remark: entry.feeHistory.remark,
+        },
+      });
+      receiptData.totalAmountPaid = entry.feeHistory.totalAmountPaid || 0;
+      receiptData.totalDues = entry.feeHistory.totalDues || 0;
+    }
 
     res.status(200).json({ success: true, data: receiptData });
   } catch (error) {

@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.post("/createFeeStatus", verifyToken, createOrUpdateFeePayment);
 router.post("/createUnifiedFeePayment", verifyToken, createUnifiedFeePayment);
-router.get("/generateFeeReceipt/:feeReceiptNumber", verifyToken, generateFeeReceipt);
+router.get("/generateFeeReceipt", verifyToken, generateFeeReceipt);
 
 
 router.post('/createPayment', verifyToken, createPayment);

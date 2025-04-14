@@ -44,7 +44,7 @@ router.post('/link', verifyToken, thirdpartyAdmissionController.linkStudentToPar
 
 
 // NEW PHOTOS AND DOCUMENTS UPLOAD ROUTES
-router.post('/photo', isAuthenticated, createInitialStudentPhoto);
-router.post('/completeadmission', isAuthenticated, completeAdmissionFromPhoto);
+router.post('/photo', verifyToken, thirdpartyAdmissionController.createInitialStudentPhoto);
+router.post('/completeadmission', verifyToken, thirdpartyAdmissionController.completeAdmissionFromPhoto);
 
 module.exports = router;

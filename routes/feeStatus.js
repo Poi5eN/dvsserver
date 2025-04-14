@@ -1,5 +1,5 @@
 const express = require("express");
-const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt, createUnifiedFeePayment, generateFeeReceipt} = require("../controllers/feeStatusController");
+const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt, createUnifiedFeePayment, generateFeeReceipt, getUnifiedReceipts} = require("../controllers/feeStatusController");
 const { manageDuesPayment, createPayment } = require("../controllers/manageDuesPayment");
 const verifyToken = require("../middleware/auth");
 
@@ -8,6 +8,7 @@ const router = express.Router();
 router.post("/createFeeStatus", verifyToken, createOrUpdateFeePayment);
 router.post("/createUnifiedFeePayment", verifyToken, createUnifiedFeePayment);
 router.get("/generateFeeReceipt", verifyToken, generateFeeReceipt);
+router.get("/unified-receipts", verifyToken, getUnifiedReceipts);
 
 
 router.post('/createPayment', verifyToken, createPayment);

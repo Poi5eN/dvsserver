@@ -2404,3 +2404,130 @@ exports.getFees = async (req, res) => {
     });
   }
 };
+
+
+
+
+exports.getUnifiedReceipts = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const { session } = req.query;
+
+    const query = { schoolId };
+    if (session) {
+      query.session = session;
+    }
+
+    const unifiedReceipts = await UnifiedReceipt.find(query).lean();
+
+    if (!unifiedReceipts || unifiedReceipts.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No unified receipts found",
+      });
+    }
+
+    const allStudentIds = unifiedReceipts.flatMap((receipt) => Array.isArray(receipt.studentIds) ? receipt.studentIds : []);
+    
+    const students = await NewStudentModel.find({
+      schoolId,
+      studentId: { $in: allStudentIds },
+    }).lean();
+
+    const parentIds = [...new Set(students.map((s) => s.parentId))];
+    const parents = await ParentModel.find({
+      schoolId,
+      parentId: { $in: parentIds },
+    }).lean();
+
+    const formattedReceipts = unifiedReceipts.map((receipt) => {
+      const studentIds = Array.isArray(receipt.studentIds) ? receipt.studentIds : [];
+
+      const receiptStudents = students.filter((s) =>
+        studentIds.includes(s.studentId)
+      );
+
+      const parent = parents.find((p) =>
+        receiptStudents.some((s) => s.parentId === p.parentId)
+      );
+
+      return {
+        _id: receipt._id,
+        unifiedReceiptNumber: receipt.unifiedReceiptNumber,
+        date: receipt.date,
+        paymentMode: receipt.paymentMode,
+        transactionId: receipt.transactionId || "",
+        totalAmountPaid: receipt.totalAmountPaid,
+        totalDues: receipt.totalDues,
+        regularFees: [],
+        additionalFees: [],
+        students: receiptStudents.map((s) => ({
+          studentId: s.studentId,
+          studentName: s.studentName,
+          admissionNumber: s.admissionNumber,
+          class: s.class,
+        })),
+        parentName: parent ? parent.fatherName : "N/A",
+        fatherPhone: parent ? parent.contact : "N/A",
+        isUnified: true,
+        status: receipt.status || "active",
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: formattedReceipts,
+      message: "Unified receipts fetched successfully",
+    });
+  } catch (error) {
+    console.error("Error in getUnifiedReceipts:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch unified receipts",
+      error: error.message,
+    });
+  }
+};
+
+
+
+// Helper function to format a receipt
+const formatReceipt = (receipt) => ({
+  id: receipt._id,
+  unifiedReceiptNumber: receipt.receiptNumber,
+  date: receipt.paymentDetails.date,
+  paymentMode: receipt.paymentDetails.paymentMode,
+  transactionId: receipt.paymentDetails.transactionId || "",
+  totalAmountPaid: receipt.paymentDetails.totalAmount,
+  totalDues: receipt.students.reduce(
+    (sum, s) => sum + (s.paymentDetails.dues || 0),
+    0
+  ),
+  regularFees: receipt.students.flatMap((s) =>
+    s.paymentDetails.regularFees.map((fee) => ({
+      month: fee.month,
+      paidAmount: fee.paidAmount || s.paymentDetails.totalAmount,
+      dueAmount: fee.dueAmount || 0,
+      status: fee.status || "Paid",
+    }))
+  ),
+  additionalFees: receipt.students.flatMap((s) =>
+    s.paymentDetails.additionalFees.map((fee) => ({
+      name: fee.name,
+      month: fee.month || "",
+      paidAmount: fee.amount,
+      dueAmount: fee.dueAmount || 0,
+      status: fee.status || "Paid",
+    }))
+  ),
+  students: receipt.students.map((s) => ({
+    studentId: s.studentId._id,
+    studentName: s.studentId.studentName,
+    admissionNumber: s.studentId.admissionNumber,
+    class: s.studentId.class,
+  })),
+  parentName: receipt.parentId?.fatherName || "N/A",
+  fatherPhone: receipt.parentId?.fatherPhone || "N/A",
+  isUnified: true,
+  status: receipt.status || "active",
+});

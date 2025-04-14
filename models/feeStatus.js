@@ -8,7 +8,7 @@ const regularFeeHistorySchema = new mongoose.Schema({
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
-    required: true,
+    // required: true,
   },
 });
 
@@ -21,7 +21,7 @@ const additionalFeeHistorySchema = new mongoose.Schema({
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
-    required: true,
+    // required: true,
   },
 });
 
@@ -75,7 +75,7 @@ const monthlyRegularDuesSchema = new mongoose.Schema({
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
-    required: true,
+    // required: true,
   },
 });
 

@@ -18,7 +18,7 @@ const photoSchema = new mongoose.Schema({
   },
   studentName: {
     type: String,
-    required: [true, "Please enter the name of the student"],
+    required: false, // Changed to optional
   },
   class: {
     type: String,
@@ -62,6 +62,8 @@ const photoSchema = new mongoose.Schema({
 });
 
 photoSchema.index({ photoId: 1 }, { unique: true });
+photoSchema.index({ schoolId: 1, session: 1, studentName: 1 }); // For efficient searching
+photoSchema.index({ schoolId: 1, session: 1, class: 1, section: 1 }); // For class/section queries
 
 const PhotoModel = mongoose.model("PhotoModel", photoSchema);
 module.exports = PhotoModel;

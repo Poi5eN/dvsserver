@@ -1860,3 +1860,78 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     });
   }
 };
+
+
+/**
+ * Get Photo Records (Third-Party)
+ */
+exports.getPhotoRecords = async (req, res) => {
+  try {
+    // Extract query parameters
+    const { schoolId, studentName, class: studentClass, section, page = 1, limit = 10 } = req.query;
+
+    // Validate user access
+    const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
+    let filterSchoolIds = assignedSchoolIds;
+
+    if (schoolId) {
+      if (!assignedSchoolIds.includes(schoolId)) {
+        return res.status(403).json({
+          success: false,
+          message: "You do not have access to this school.",
+        });
+      }
+      filterSchoolIds = [schoolId];
+    }
+
+    // Build query
+    const query = {
+      schoolId: { $in: filterSchoolIds },
+      session: req.user.session,
+    };
+
+    // Add optional filters
+    if (studentName) {
+      query.studentName = { $regex: studentName, $options: "i" }; // Case-insensitive search
+    }
+    if (studentClass) {
+      query.class = studentClass;
+    }
+    if (section) {
+      query.section = section;
+    }
+
+    // Pagination
+    const parsedPage = parseInt(page);
+    const parsedLimit = parseInt(limit);
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    // Execute query
+    const photos = await PhotoModel.find(query)
+      .select("photoId schoolId session studentName class section studentImage createdAt assignedThirdParty")
+      .sort({ createdAt: -1 }) // Newest first
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean();
+
+    const totalPhotos = await PhotoModel.countDocuments(query);
+
+    return res.status(200).json({
+      success: true,
+      message: "Photo records fetched successfully.",
+      data: photos,
+      pagination: {
+        currentPage: parsedPage,
+        totalPages: Math.ceil(totalPhotos / parsedLimit),
+        totalRecords: totalPhotos,
+      },
+    });
+  } catch (error) {
+    console.error("Error in getPhotoRecords:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch photo records.",
+      error: error.message,
+    });
+  }
+};

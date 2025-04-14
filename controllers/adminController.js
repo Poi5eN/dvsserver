@@ -3109,7 +3109,8 @@ exports.getRegistrations = async (req, res) => {
     if (gender) query.gender = gender;
     if (status) query.approvalStatus = status;
 
-    const skip = (page - 1) * limit;
+    const skip = (page - 1) * parseInt(limit);
+    const limitValue = parseInt(limit);
 
     if (registrationId) {
       const registration = await NewRegistrationModel.findOne(query).lean();
@@ -3129,15 +3130,35 @@ exports.getRegistrations = async (req, res) => {
       });
     }
 
-    const registrations = await NewRegistrationModel.find(query)
-      .sort({
-        registerClass: { $indexOfArray: [classOrder, "$registerClass"] },
-        section: 1,
-      })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
+    const pipeline = [
+      {
+        $match: query,
+      },
+      {
+        $addFields: {
+          classOrderIndex: { $indexOfArray: [classOrder, "$registerClass"] },
+        },
+      },
+      {
+        $sort: {
+          classOrderIndex: 1,
+          section: 1,
+        },
+      },
+      {
+        $skip: skip,
+      },
+      {
+        $limit: limitValue,
+      },
+      {
+        $project: {
+          classOrderIndex: 0, // Remove temporary field
+        },
+      },
+    ];
 
+    const registrations = await NewRegistrationModel.aggregate(pipeline);
     const total = await NewRegistrationModel.countDocuments(query);
 
     res.status(200).json({
@@ -3149,11 +3170,12 @@ exports.getRegistrations = async (req, res) => {
       pagination: {
         total,
         page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit),
+        limit: limitValue,
+        totalPages: Math.ceil(total / limitValue),
       },
     });
   } catch (error) {
+    console.error("Error in getRegistrations:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch registrations",
@@ -6396,7 +6418,7 @@ exports.getStudentParent = async (req, res) => {
       "VIII",
       "IX",
       "X",
-      "XI", 
+      "XI",
       "XII",
       "PASS OUT",
     ];
@@ -6464,6 +6486,7 @@ exports.getStudentParent = async (req, res) => {
     if (email) parentQuery.email = email;
 
     const skip = (page - 1) * (limit || 0);
+    const limitValue = limit ? parseInt(limit) : undefined;
 
     let responseData = {};
 
@@ -6481,7 +6504,11 @@ exports.getStudentParent = async (req, res) => {
             session,
           }).lean()
         : null;
-      responseData.student = { ...student, parentDetails: parentData };
+      responseData.student = {
+        ...student,
+        displayClass: student.section ? `${student.class}-${student.section}` : student.class,
+        parentDetails: parentData,
+      };
     } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
       if (!parent)
@@ -6489,19 +6516,37 @@ exports.getStudentParent = async (req, res) => {
           success: false,
           message: `Parent with ID ${parentId} not found`,
         });
-      const students = await NewStudentModel.find({
-        parentId: parent.parentId,
-        schoolId,
-        session,
-      })
-        .lean()
-        .sort({
-          class: { $indexOfArray: [classOrder, "$class"] },
-          section: 1,
-        });
+      const students = await NewStudentModel.aggregate([
+        {
+          $match: {
+            parentId: parent.parentId,
+            schoolId,
+            session,
+          },
+        },
+        {
+          $addFields: {
+            classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
+          },
+        },
+        {
+          $sort: {
+            classOrderIndex: 1,
+            section: 1,
+          },
+        },
+        {
+          $project: {
+            classOrderIndex: 0, // Remove temporary field
+          },
+        },
+      ]);
       responseData.parent = {
         ...parent,
-        studentDetails: students,
+        studentDetails: students.map((student) => ({
+          ...student,
+          displayClass: student.section ? `${student.class}-${student.section}` : student.class,
+        })),
         hasMultipleChildren: students.length > 1,
         totalChildren: students.length,
       };
@@ -6509,84 +6554,101 @@ exports.getStudentParent = async (req, res) => {
       const parents = await ParentModel.find(parentQuery).lean();
       const parentsWithMultipleChildren = [];
       for (const parent of parents) {
-        const students = await NewStudentModel.find({
-          parentId: parent.parentId,
-          schoolId,
-          session,
-        })
-          .lean()
-          .sort({
-            class: { $indexOfArray: [classOrder, "$class"] },
-            section: 1,
-          });
+        const students = await NewStudentModel.aggregate([
+          {
+            $match: {
+              parentId: parent.parentId,
+              schoolId,
+              session,
+            },
+          },
+          {
+            $addFields: {
+              classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
+            },
+          },
+          {
+            $sort: {
+              classOrderIndex: 1,
+              section: 1,
+            },
+          },
+          {
+            $project: {
+              classOrderIndex: 0,
+            },
+          },
+        ]);
         if (students.length > 1)
           parentsWithMultipleChildren.push({
             ...parent,
-            studentDetails: students,
+            studentDetails: students.map((student) => ({
+              ...student,
+              displayClass: student.section ? `${student.class}-${student.section}` : student.class,
+            })),
             totalChildren: students.length,
           });
       }
       const totalParentsWithMultiple = parentsWithMultipleChildren.length;
       responseData.parentsWithMultipleChildren = {
-        data: limit
-          ? parentsWithMultipleChildren.slice(skip, skip + parseInt(limit))
+        data: limitValue
+          ? parentsWithMultipleChildren.slice(skip, skip + limitValue)
           : parentsWithMultipleChildren,
         pagination: {
           total: totalParentsWithMultiple,
           page: parseInt(page),
-          limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalParentsWithMultiple / limit) : 1,
+          limit: limitValue || null,
+          totalPages: limitValue ? Math.ceil(totalParentsWithMultiple / limitValue) : 1,
         },
       };
-    } else if (fetchAllStudents === "true") {
-      const students = await NewStudentModel.find(studentQuery)
-        .sort({
-          class: { $indexOfArray: [classOrder, "$class"] },
-          section: 1,
-        })
-        .skip(skip)
-        .limit(limit ? parseInt(limit) : undefined)
-        .lean();
+    } else if (fetchAllStudents === "true" || fetchNewAdmissions === "true" || Object.keys(studentQuery).length > 2) {
+      const studentPipeline = [
+        {
+          $match: studentQuery,
+        },
+        {
+          $addFields: {
+            classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
+          },
+        },
+        {
+          $sort: {
+            classOrderIndex: 1,
+            section: 1,
+          },
+        },
+        {
+          $skip: skip,
+        },
+        ...(limitValue ? [{ $limit: limitValue }] : []),
+        {
+          $project: {
+            classOrderIndex: 0,
+          },
+        },
+      ];
+
+      const students = await NewStudentModel.aggregate(studentPipeline);
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.students = {
+
+      const key = fetchNewAdmissions === "true" ? "newAdmissions" : "students";
+      responseData[key] = {
         data: students.map((student) => ({
           ...student,
-          displayClass: `${student.class}-${student.section}`,
+          displayClass: student.section ? `${student.class}-${student.section}` : student.class,
         })),
         pagination: {
           total: totalStudents,
           page: parseInt(page),
-          limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
-        },
-      };
-    } else if (fetchNewAdmissions === "true") {
-      const newStudents = await NewStudentModel.find(studentQuery)
-        .sort({
-          class: { $indexOfArray: [classOrder, "$class"] },
-          section: 1,
-        })
-        .skip(skip)
-        .limit(limit ? parseInt(limit) : undefined)
-        .lean();
-      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.newAdmissions = {
-        data: newStudents.map((student) => ({
-          ...student,
-          displayClass: `${student.class}-${student.section}`,
-        })),
-        pagination: {
-          total: totalNewStudents,
-          page: parseInt(page),
-          limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalNewStudents / limit) : 1,
+          limit: limitValue || null,
+          totalPages: limitValue ? Math.ceil(totalStudents / limitValue) : 1,
         },
       };
     } else if (fetchAllParents === "true") {
       const parents = await ParentModel.find(parentQuery)
         .sort({ createdAt: sortOrder === "desc" ? -1 : 1 })
         .skip(skip)
-        .limit(limit ? parseInt(limit) : undefined)
+        .limit(limitValue)
         .lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
       responseData.parents = {
@@ -6594,63 +6656,37 @@ exports.getStudentParent = async (req, res) => {
         pagination: {
           total: totalParents,
           page: parseInt(page),
-          limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalParents / limit) : 1,
-        },
-      };
-    } else if (
-      Object.keys(studentQuery).length > 2 ||
-      Object.keys(parentQuery).length > 2
-    ) {
-      const students = await NewStudentModel.find(studentQuery)
-        .sort({
-          class: { $indexOfArray: [classOrder, "$class"] },
-          section: 1,
-        })
-        .skip(skip)
-        .limit(limit ? parseInt(limit) : undefined)
-        .lean();
-      const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-      responseData.students = {
-        data: students.map((student) => ({
-          ...student,
-          displayClass: `${student.class}-${student.section}`,
-        })),
-        pagination: {
-          total: totalStudents,
-          page: parseInt(page),
-          limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
-        },
-      };
-
-      const parents = await ParentModel.find(parentQuery)
-        .sort({ createdAt: sortOrder === "desc" ? -1 : 1 })
-        .skip(skip)
-        .limit(limit ? parseInt(limit) : undefined)
-        .lean();
-      const totalParents = await ParentModel.countDocuments(parentQuery);
-      responseData.parents = {
-        data: parents,
-        pagination: {
-          total: totalParents,
-          page: parseInt(page),
-          limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalParents / limit) : 1,
+          limit: limitValue || null,
+          totalPages: limitValue ? Math.ceil(totalParents / limitValue) : 1,
         },
       };
     } else {
-      const students = await NewStudentModel.find({ schoolId, session })
-        .sort({
-          class: { $indexOfArray: [classOrder, "$class"] },
-          section: 1,
-        })
-        .lean();
+      const students = await NewStudentModel.aggregate([
+        {
+          $match: { schoolId, session },
+        },
+        {
+          $addFields: {
+            classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
+          },
+        },
+        {
+          $sort: {
+            classOrderIndex: 1,
+            section: 1,
+          },
+        },
+        {
+          $project: {
+            classOrderIndex: 0,
+          },
+        },
+      ]);
       const totalStudents = students.length;
       responseData.students = {
         data: students.map((student) => ({
           ...student,
-          displayClass: `${student.class}-${student.section}`,
+          displayClass: student.section ? `${student.class}-${student.section}` : student.class,
         })),
         total: totalStudents,
       };

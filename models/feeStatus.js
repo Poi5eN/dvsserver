@@ -88,7 +88,7 @@ const monthlyAdditionalDuesSchema = new mongoose.Schema({
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
-    required: true,
+    // required: true,
   },
 });
 

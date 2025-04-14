@@ -764,6 +764,7 @@ exports.createUnifiedFeePayment = async (req, res) => {
       schoolId,
       unifiedReceiptNumber,
       studentIds: students.map((s) => s.studentId),
+      session, // <-- Add this line
       totalAmountPaid: feeHistoryEntries.reduce(
         (sum, entry) => sum + parseFloat(entry.totalAmountPaid),
         0
@@ -777,6 +778,7 @@ exports.createUnifiedFeePayment = async (req, res) => {
       date: parseDate(unifiedPaymentDetails.date),
       remark: unifiedPaymentDetails.remark || "",
     });
+    
 
     try {
       console.log('Saving UnifiedReceipt:', JSON.stringify(unifiedReceipt.toObject(), null, 2));

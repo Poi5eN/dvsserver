@@ -70,7 +70,9 @@ async function getAllApplicableFees(schoolId, className, studentId) {
       console.log("Found student-specific regular fee");
       regularFee = studentRegularFee;
     } else {
-      console.log("No student-specific regular fee, looking for class regular fee");
+      console.log(
+        "No student-specific regular fee, looking for class regular fee"
+      );
       regularFee = await FeeStructure.findOne({
         schoolId,
         className,
@@ -90,10 +92,14 @@ async function getAllApplicableFees(schoolId, className, studentId) {
     }).lean();
 
     if (studentAdditionalFees.length > 0) {
-      console.log(`Found ${studentAdditionalFees.length} student-specific additional fees`);
+      console.log(
+        `Found ${studentAdditionalFees.length} student-specific additional fees`
+      );
       allApplicableFees = [...allApplicableFees, ...studentAdditionalFees];
     } else {
-      console.log("No student-specific additional fees, getting class-level additional fees");
+      console.log(
+        "No student-specific additional fees, getting class-level additional fees"
+      );
       const classAdditionalFees = await FeeStructure.find({
         schoolId,
         className,
@@ -111,7 +117,9 @@ async function getAllApplicableFees(schoolId, className, studentId) {
     }).lean();
 
     if (schoolLevelFees.length > 0) {
-      console.log(`Found ${schoolLevelFees.length} school-level additional fees`);
+      console.log(
+        `Found ${schoolLevelFees.length} school-level additional fees`
+      );
       schoolLevelFees.forEach((fee) => {
         const feeExists = allApplicableFees.some(
           (existingFee) =>
@@ -194,7 +202,10 @@ exports.addPastDues = async (req, res) => {
             session,
             pastDues: pastDuesAmount,
             dues: pastDuesAmount,
-            monthlyDues: { regularDues: [], additionalDues: [] },
+            monthlyDues: { regularDues: [], additionalDues: [], lateFines: [] },
+            feeHistory: [],
+            overallAmountPaid: 0,
+            overallConcessionApplied: 0,
           });
         } else {
           const previousPastDues = feeStatus.pastDues || 0;
@@ -237,14 +248,18 @@ exports.addPastDues = async (req, res) => {
   }
 };
 
-// Core payment processing function (updated to fix dues calculation)
+// Core payment processing function
 async function processFeePayment(
   studentId,
   session,
   paymentDetails,
   feeReceiptNumber,
-  schoolId
+  schoolId,
+  isUnified = false
 ) {
+  console.log(
+    `Processing payment for student ${studentId}, unified: ${isUnified}`
+  );
   const student = await NewStudentModel.findOne({ schoolId, studentId }).lean();
   if (!student) throw new Error("Student not found.");
 
@@ -272,7 +287,7 @@ async function processFeePayment(
       studentId,
       session,
       year: session.split("-")[0],
-      monthlyDues: { regularDues: [], additionalDues: [] },
+      monthlyDues: { regularDues: [], additionalDues: [], lateFines: [] },
       pastDues: 0,
       dues: 0,
       feeHistory: [],
@@ -293,7 +308,6 @@ async function processFeePayment(
     date,
   } = paymentDetails;
 
-  // Initialize dues for selected fees to match original logic
   const months = [
     "April",
     "May",
@@ -309,7 +323,7 @@ async function processFeePayment(
     "March",
   ];
 
-  // Ensure regular fees have dues
+  // Initialize dues with frequency
   regularFees.forEach((r) => {
     if (!months.includes(r.month)) {
       throw new Error(`Invalid month: ${r.month}`);
@@ -323,12 +337,12 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: regularFeeMap.Monthly,
         status: "Unpaid",
+        frequency: "monthly", // Required by schema
       };
       feeStatus.monthlyDues.regularDues.push(due);
     }
   });
 
-  // Ensure additional fees have dues
   additionalFees.forEach((a) => {
     if (!additionalFeeMap[a.name]) {
       throw new Error(`Invalid additional fee: ${a.name}`);
@@ -344,6 +358,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: additionalFeeMap[a.name].amount,
         status: "Unpaid",
+        frequency: additionalFeeMap[a.name].type.toLowerCase() || "one-time", // Match feeType
       };
       feeStatus.monthlyDues.additionalDues.push(due);
     }
@@ -359,9 +374,9 @@ async function processFeePayment(
     (sum, d) => sum + d.dueAmount,
     0
   );
-  const totalDuesBefore = totalPastDues + totalRegularDues + totalAdditionalDues;
+  const totalDuesBefore =
+    totalPastDues + totalRegularDues + totalAdditionalDues;
 
-  // Compute total fee amount for validation
   const computedFullRegularFeeTotal = regularFees.reduce((sum, r) => {
     const due = feeStatus.monthlyDues.regularDues.find(
       (d) => d.month === r.month
@@ -383,17 +398,18 @@ async function processFeePayment(
     computedFullAdditionalFeeTotal +
     computedPastDues;
 
-  // Relax validation to allow initial payments
-  if (parseFloat(totalAmount) > totalFeeAmount && totalFeeAmount === 0) {
-    // For new students, allow payment if fees are selected
-    if (regularFees.length === 0 && additionalFees.length === 0) {
-      throw new Error(
-        "No fees selected for payment. Please select regular or additional fees."
-      );
-    }
-    // Initialize dues if needed
-    feeStatus.dues = totalFeeAmount;
-  } else if (parseFloat(totalAmount) > totalFeeAmount) {
+  // Validate total amount
+  if (
+    regularFees.length === 0 &&
+    additionalFees.length === 0 &&
+    pastDuesPaid === 0
+  ) {
+    throw new Error(
+      "No fees selected for payment. Please select regular, additional fees, or past dues."
+    );
+  }
+
+  if (parseFloat(totalAmount) > totalFeeAmount && totalFeeAmount > 0) {
     throw new Error(
       `Total amount (₹${totalAmount}) exceeds outstanding amount (₹${totalFeeAmount}).`
     );
@@ -408,6 +424,38 @@ async function processFeePayment(
   const paidPastDues = Math.min(remaining, totalPastDues);
   remaining -= paidPastDues;
 
+  // Process existing dues first
+  const existingRegularDues = feeStatus.monthlyDues.regularDues.filter(
+    (due) =>
+      !regularFees.some((r) => r.month === due.month) && due.dueAmount > 0
+  );
+  for (const due of existingRegularDues) {
+    if (remaining <= 0) break;
+    const payment = Math.min(remaining, due.dueAmount);
+    due.paidAmount += payment;
+    due.dueAmount -= payment;
+    due.status = due.dueAmount === 0 ? "Paid" : "Partial";
+    remaining -= payment;
+  }
+
+  const existingAdditionalDues = feeStatus.monthlyDues.additionalDues.filter(
+    (due) =>
+      !additionalFees.some(
+        (a) =>
+          a.name === due.name &&
+          (a.month === due.month || (!a.month && !due.month))
+      ) && due.dueAmount > 0
+  );
+  for (const due of existingAdditionalDues) {
+    if (remaining <= 0) break;
+    const payment = Math.min(remaining, due.dueAmount);
+    due.paidAmount += payment;
+    due.dueAmount -= payment;
+    due.status = due.dueAmount === 0 ? "Paid" : "Partial";
+    remaining -= payment;
+  }
+
+  // Process selected fees
   const updatedRegular = [];
   regularFees.forEach((r) => {
     let due = feeStatus.monthlyDues.regularDues.find(
@@ -419,6 +467,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: regularFeeMap.Monthly,
         status: "Unpaid",
+        frequency: "monthly",
       };
       feeStatus.monthlyDues.regularDues.push(due);
     }
@@ -429,6 +478,7 @@ async function processFeePayment(
         paidAmount: due.paidAmount + maxPayment,
         dueAmount: Math.max(0, due.dueAmount - maxPayment),
         status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
+        frequency: due.frequency || "monthly",
       };
       updatedRegular.push(updatedDue);
       remaining -= maxPayment;
@@ -450,6 +500,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: additionalFeeMap[a.name].amount,
         status: "Unpaid",
+        frequency: additionalFeeMap[a.name].type.toLowerCase() || "one-time",
       };
       feeStatus.monthlyDues.additionalDues.push(due);
     }
@@ -461,6 +512,10 @@ async function processFeePayment(
         paidAmount: due.paidAmount + maxPayment,
         dueAmount: Math.max(0, due.dueAmount - maxPayment),
         status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
+        frequency:
+          due.frequency ||
+          additionalFeeMap[a.name].type.toLowerCase() ||
+          "one-time",
       };
       updatedAdditional.push(updatedDue);
       remaining -= maxPayment;
@@ -510,11 +565,17 @@ async function processFeePayment(
   );
 
   feeStatus.monthlyDues.regularDues = [...otherRegularDues, ...updatedRegular];
-  feeStatus.monthlyDues.additionalDues = [...otherAdditionalDues, ...updatedAdditional];
+  feeStatus.monthlyDues.additionalDues = [
+    ...otherAdditionalDues,
+    ...updatedAdditional,
+  ];
   feeStatus.pastDues = Math.max(0, totalPastDues - paidPastDues);
   feeStatus.dues =
     feeStatus.monthlyDues.regularDues.reduce((sum, d) => sum + d.dueAmount, 0) +
-    feeStatus.monthlyDues.additionalDues.reduce((sum, d) => sum + d.dueAmount, 0) +
+    feeStatus.monthlyDues.additionalDues.reduce(
+      (sum, d) => sum + d.dueAmount,
+      0
+    ) +
     feeStatus.pastDues;
 
   const concessionDetails = allDuesToApplyConcession
@@ -529,7 +590,9 @@ async function processFeePayment(
     .join(", ");
 
   const paymentMessage =
-    `Paid ${totalAmount} on ${new Date(date || Date.now()).toLocaleDateString()}: ` +
+    `Paid ${totalAmount} on ${new Date(
+      date || Date.now()
+    ).toLocaleDateString()}: ` +
     `Regular Fees - ${
       updatedRegular.length > 0
         ? updatedRegular.map((r) => `${r.month}: ${r.paidAmount}`).join(", ")
@@ -551,8 +614,15 @@ async function processFeePayment(
   const feeHistoryEntry = {
     date: new Date(date || Date.now()),
     status: "active",
-    regularFees: updatedRegular,
-    additionalFees: updatedAdditional,
+    regularFees: updatedRegular.map((r) => ({
+      ...r,
+      frequency: r.frequency || "monthly",
+    })),
+    additionalFees: updatedAdditional.map((a) => ({
+      ...a,
+      frequency: a.frequency || "one-time",
+    })),
+    lateFines: [], // Add late fines logic if needed
     pastDuesPaid,
     concessionApplied: roundedConcession,
     paymentMode: paymentMode || "Cash",
@@ -564,6 +634,7 @@ async function processFeePayment(
     feeReceiptNumber,
     paymentMessage,
     previousDues: previousDuesValue,
+    unifiedReceiptNumber: isUnified ? feeReceiptNumber : undefined,
   };
 
   feeStatus.feeHistory.push(feeHistoryEntry);
@@ -572,16 +643,67 @@ async function processFeePayment(
   feeStatus.overallConcessionApplied =
     (feeStatus.overallConcessionApplied || 0) + roundedConcession;
 
-  await feeStatus.save();
-  return { feeStatus, feeHistoryEntry, student, parent };
+  // Create fee receipt
+  const feeReceipt = {
+    studentId: student.studentId,
+    studentName: student.studentName,
+    studentClass: student.class,
+    parentContact: parent.contact,
+    admissionNumber: student.admissionNumber,
+    fatherName: parent.fatherName,
+    feeReceiptNumber,
+    paymentMode: paymentMode || "Cash",
+    dues: feeStatus.dues,
+    date: new Date(date || Date.now()),
+    status: "active",
+    regularFees: updatedRegular.map((fee) => ({
+      month: fee.month,
+      paidAmount: fee.paidAmount,
+      dueAmount: fee.dueAmount,
+      status: fee.status,
+      frequency: fee.frequency || "monthly",
+    })),
+    additionalFees: updatedAdditional.map((fee) => ({
+      name: fee.name,
+      month: fee.month || "N/A",
+      paidAmount: fee.paidAmount,
+      dueAmount: fee.dueAmount,
+      status: fee.status,
+      frequency: fee.frequency || "one-time",
+    })),
+    lateFines: [],
+    transactionId: transactionId || "N/A",
+    totalFeeAmount,
+    pastDuesPaid,
+    duesPaid: totalDuesBefore - feeStatus.dues,
+    previousDues: previousDuesValue,
+    remark: remark || "",
+    totalAmountPaid: parseFloat(totalAmount),
+    totalDues: feeStatus.dues,
+    concessionFee: 0,
+    lateFinesPaid: 0,
+    concessionApplied: roundedConcession,
+    paymentMessage,
+    paidAfterConcession: 0,
+    newPaidAmount: parseFloat(totalAmount),
+  };
+
+  try {
+    await feeStatus.save();
+  } catch (error) {
+    console.error("Error saving feeStatus:", error);
+    throw new Error(`Failed to save fee status: ${error.message}`);
+  }
+
+  return { feeStatus, feeHistoryEntry, student, parent, feeReceipt };
 }
 
-// Single student fee payment (original logic, restored)
+// Single student fee payment
 exports.createOrUpdateFeePayment = async (req, res) => {
   try {
-    let { studentId, session, paymentDetails, mode = "auto" } = req.body;
+    const { studentId, session, paymentDetails } = req.body;
     const schoolId = req.user.schoolId;
-    console.log("Processing fee payment:", req.body);
+    console.log("Processing single fee payment:", req.body);
 
     if (
       !studentId ||
@@ -591,503 +713,70 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Student ID, session, and totalAmount are required.",
+        message:
+          "Student ID, session, and paymentDetails with totalAmount are required.",
       });
     }
 
-    const student = await NewStudentModel.findOne({
-      schoolId,
+    const feeReceiptNumber = await generateFeeReceiptNumber(schoolId);
+    const result = await processFeePayment(
       studentId,
-    }).lean();
-    if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found." });
-    }
-
-    const parent = await ParentModel.findOne({
-      schoolId,
-      parentId: student.parentId,
-    }).lean();
-    if (!parent) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Parent not found for this student." });
-    }
-
-    const fees = await getAllApplicableFees(schoolId, student.class, studentId);
-    const addiFees = await FeeStructure.find({
-      schoolId,
       session,
-      additional: true,
-    });
-
-    const months = [
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-      "January",
-      "February",
-      "March",
-    ];
-
-    const regularFeeMap = {
-      Monthly: fees.find((f) => !f.additional)?.amount || 0,
-    };
-
-    const additionalFeeMap = fees
-      .filter((f) => f.additional && f.feeType !== "LateFine")
-      .reduce((map, f) => {
-        map[f.name] = { amount: f.amount, type: f.feeType };
-        return map;
-      }, {});
-
-    let feeStatus = await FeeStatus.findOne({ schoolId, studentId, session });
-    if (!feeStatus) {
-      feeStatus = new FeeStatus({
-        schoolId,
-        studentId,
-        session,
-        year: session.split("-")[0],
-        monthlyDues: { regularDues: [], additionalDues: [] },
-        pastDues: 0,
-        dues: 0,
-        feeHistory: [],
-        overallAmountPaid: 0,
-        overallConcessionApplied: 0,
-      });
-    }
-
-    const {
-      regularFees = [],
-      additionalFees = [],
-      pastDuesPaid = 0,
-      concession = 0,
-      totalAmount,
-      paymentMode,
-      transactionId,
-      remark,
-    } = paymentDetails;
-
-    // Initialize dues for selected fees
-    regularFees.forEach((r) => {
-      if (!months.includes(r.month)) {
-        throw new Error(`Invalid month: ${r.month}`);
-      }
-      let due = feeStatus.monthlyDues.regularDues.find(
-        (d) => d.month === r.month
-      );
-      if (!due) {
-        due = {
-          month: r.month,
-          paidAmount: 0,
-          dueAmount: regularFeeMap.Monthly,
-          status: "Unpaid",
-        };
-        feeStatus.monthlyDues.regularDues.push(due);
-      }
-    });
-
-    additionalFees.forEach((a) => {
-      if (!additionalFeeMap[a.name]) {
-        throw new Error(`Invalid additional fee: ${a.name}`);
-      }
-      let due = feeStatus.monthlyDues.additionalDues.find(
-        (d) =>
-          d.name === a.name && (d.month === a.month || (!d.month && !a.month))
-      );
-      if (!due) {
-        due = {
-          name: a.name,
-          month: a.month || undefined,
-          paidAmount: 0,
-          dueAmount: additionalFeeMap[a.name].amount,
-          status: "Unpaid",
-        };
-        feeStatus.monthlyDues.additionalDues.push(due);
-      }
-    });
-
-    const totalPastDues = feeStatus.pastDues || 0;
-    const totalRegularDues = feeStatus.monthlyDues.regularDues.reduce(
-      (sum, d) => sum + d.dueAmount,
-      0
-    );
-    const totalAdditionalDues = feeStatus.monthlyDues.additionalDues.reduce(
-      (sum, d) => sum + d.dueAmount,
-      0
-    );
-    const totalDuesBefore =
-      totalPastDues + totalRegularDues + totalAdditionalDues;
-
-    const computedFullRegularFeeTotal = regularFees.reduce((sum, r) => {
-      const due = feeStatus.monthlyDues.regularDues.find(
-        (d) => d.month === r.month
-      );
-      return sum + (due ? due.dueAmount : regularFeeMap.Monthly);
-    }, 0);
-
-    const computedFullAdditionalFeeTotal = additionalFees.reduce((sum, a) => {
-      const due = feeStatus.monthlyDues.additionalDues.find(
-        (d) =>
-          d.name === a.name && (d.month === a.month || (!d.month && !a.month))
-      );
-      return sum + (due ? due.dueAmount : additionalFeeMap[a.name]?.amount || 0);
-    }, 0);
-
-    const computedPastDues = feeStatus.pastDues;
-    const totalFeeAmount =
-      computedFullRegularFeeTotal +
-      computedFullAdditionalFeeTotal +
-      computedPastDues;
-
-    // Allow initial payments for new students
-    if (parseFloat(totalAmount) > totalFeeAmount && totalFeeAmount === 0) {
-      if (regularFees.length === 0 && additionalFees.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "No fees selected for payment. Please select regular or additional fees.",
-        });
-      }
-      feeStatus.dues = totalFeeAmount;
-    } else if (parseFloat(totalAmount) > totalFeeAmount) {
-      return res.status(400).json({
-        success: false,
-        message: `Total amount (₹${totalAmount}) exceeds the full outstanding amount (₹${totalFeeAmount}).`,
-      });
-    }
-
-    if (feeStatus.feeHistory.length === 0 && totalPastDues > 0) {
-      feeStatus.dues += totalPastDues;
-      feeStatus.pastDues = 0;
-    }
-
-    const previousDuesValue =
-      feeStatus.feeHistory.length === 0
-        ? computedFullRegularFeeTotal +
-          computedFullAdditionalFeeTotal +
-          computedPastDues
-        : feeStatus.dues;
-
-    let feeReceiptNumber = await generateFeeReceiptNumber(schoolId);
-
-    const roundedConcession = Math.round(concession);
-    let remainingConcession = roundedConcession;
-    let remaining = totalAmount;
-
-    const paidPastDues = Math.min(remaining, totalPastDues);
-    remaining -= paidPastDues;
-
-    const existingRegularDues = feeStatus.monthlyDues.regularDues.filter(
-      (due) =>
-        !regularFees.some((r) => r.month === due.month) && due.dueAmount > 0
-    );
-    for (const due of existingRegularDues) {
-      if (remaining <= 0) break;
-      const payment = Math.min(remaining, due.dueAmount);
-      due.paidAmount += payment;
-      due.dueAmount -= payment;
-      due.status = due.dueAmount === 0 ? "Paid" : "Partial";
-      remaining -= payment;
-    }
-
-    const existingAdditionalDues = feeStatus.monthlyDues.additionalDues.filter(
-      (due) =>
-        !additionalFees.some(
-          (a) =>
-            a.name === due.name &&
-            (a.month === due.month || (!a.month && !due.month))
-        ) && due.dueAmount > 0
-    );
-    for (const due of existingAdditionalDues) {
-      if (remaining <= 0) break;
-      const payment = Math.min(remaining, due.dueAmount);
-      due.paidAmount += payment;
-      due.dueAmount -= payment;
-      due.status = due.dueAmount === 0 ? "Paid" : "Partial";
-      remaining -= payment;
-    }
-
-    const updatedRegular = [];
-    regularFees.forEach((r) => {
-      let due = feeStatus.monthlyDues.regularDues.find(
-        (d) => d.month === r.month
-      );
-      if (!due) {
-        due = {
-          month: r.month,
-          paidAmount: 0,
-          dueAmount: regularFeeMap.Monthly,
-          status: "Unpaid",
-        };
-      }
-      if (remaining > 0) {
-        const maxPayment = Math.min(remaining, due.dueAmount);
-        const updatedDue = {
-          month: r.month,
-          paidAmount: due.paidAmount + maxPayment,
-          dueAmount: Math.max(0, due.dueAmount - maxPayment),
-          status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
-        };
-        updatedRegular.push(updatedDue);
-        remaining -= maxPayment;
-      } else {
-        updatedRegular.push({ ...due });
-      }
-    });
-
-    const updatedAdditional = [];
-    additionalFees.forEach((a) => {
-      let due = feeStatus.monthlyDues.additionalDues.find(
-        (d) =>
-          d.name === a.name && (d.month === a.month || (!d.month && !a.month))
-      );
-      if (!due && additionalFeeMap[a.name]) {
-        due = {
-          name: a.name,
-          month: a.month || undefined,
-          paidAmount: 0,
-          dueAmount: additionalFeeMap[a.name].amount,
-          status: "Unpaid",
-        };
-      }
-      if (due) {
-        if (remaining > 0) {
-          const maxPayment = Math.min(remaining, due.dueAmount);
-          const updatedDue = {
-            name: a.name,
-            month: a.month || undefined,
-            paidAmount: due.paidAmount + maxPayment,
-            dueAmount: Math.max(0, due.dueAmount - maxPayment),
-            status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
-          };
-          updatedAdditional.push(updatedDue);
-          remaining -= maxPayment;
-        } else {
-          updatedAdditional.push({ ...due });
-        }
-      }
-    });
-
-    const allDuesToApplyConcession = [
-      ...updatedRegular
-        .filter((r) => r.dueAmount > 0)
-        .map((r) => ({
-          type: "regular",
-          item: r,
-          dueAmount: r.dueAmount,
-        })),
-      ...updatedAdditional
-        .filter((a) => a.dueAmount > 0)
-        .map((a) => ({
-          type: "additional",
-          item: a,
-          dueAmount: a.dueAmount,
-        })),
-    ];
-
-    allDuesToApplyConcession.sort((a, b) => {
-      if (a.item.status === "Partial" && b.item.status !== "Partial") return -1;
-      if (a.item.status !== "Partial" && b.item.status === "Partial") return 1;
-      return 0;
-    });
-
-    if (remainingConcession > 0) {
-      for (const dueItem of allDuesToApplyConcession) {
-        if (dueItem.dueAmount > 0) {
-          const concessionToApply = Math.min(
-            remainingConcession,
-            dueItem.dueAmount
-          );
-          dueItem.item.dueAmount -= concessionToApply;
-          dueItem.item.concessionApplied =
-            (dueItem.item.concessionApplied || 0) + concessionToApply;
-          if (dueItem.item.dueAmount === 0) {
-            dueItem.item.status = "Paid";
-          }
-          remainingConcession -= concessionToApply;
-          if (remainingConcession <= 0) break;
-        }
-      }
-    }
-
-    const otherRegularDues = feeStatus.monthlyDues.regularDues.filter(
-      (due) => !regularFees.some((r) => r.month === due.month)
-    );
-    const otherAdditionalDues = feeStatus.monthlyDues.additionalDues.filter(
-      (due) =>
-        !additionalFees.some(
-          (a) =>
-            a.name === due.name &&
-            (a.month === due.month || (!a.month && !due.month))
-        )
-    );
-    feeStatus.monthlyDues.regularDues = [...otherRegularDues, ...updatedRegular];
-    feeStatus.monthlyDues.additionalDues = [
-      ...otherAdditionalDues,
-      ...updatedAdditional,
-    ];
-
-    feeStatus.pastDues = Math.max(0, totalPastDues - paidPastDues);
-
-    const totalRegularDuesAfter = feeStatus.monthlyDues.regularDues.reduce(
-      (sum, d) => sum + d.dueAmount,
-      0
-    );
-    const totalAdditionalDuesAfter = feeStatus.monthlyDues.additionalDues.reduce(
-      (sum, d) => sum + d.dueAmount,
-      0
-    );
-    feeStatus.dues =
-      totalRegularDuesAfter + totalAdditionalDuesAfter + feeStatus.pastDues;
-
-    const concessionDetails = allDuesToApplyConcession
-      .filter((item) => item.item.concessionApplied > 0)
-      .map((item) => {
-        if (item.type === "regular") {
-          return `Regular Fee (${item.item.month}): ${item.item.concessionApplied}`;
-        } else {
-          return `${item.item.name} (${item.item.month || "N/A"}): ${
-            item.item.concessionApplied
-          }`;
-        }
-      })
-      .join(", ");
-
-    const paymentMessage =
-      `Paid ${totalAmount} on ${new Date().toLocaleDateString()}: ` +
-      `Regular Fees - ${
-        updatedRegular.length > 0
-          ? updatedRegular
-              .map((r) => `${r.month}: ${r.paidAmount}`)
-              .join(", ")
-          : "None"
-      }, ` +
-      `Additional Fees - ${
-        updatedAdditional.length > 0
-          ? updatedAdditional
-              .map((a) => `${a.name} (${a.month || "N/A"}): ${a.paidAmount}`)
-              .join(", ")
-          : "None"
-      }, ` +
-      `Past Dues: ${paidPastDues}, ` +
-      `Concession: ${roundedConcession}${
-        concessionDetails ? ` (${concessionDetails})` : ""
-      }, ` +
-      `Remaining Dues: ${feeStatus.dues}`;
-
-    feeStatus.feeHistory.push({
-      date: new Date(),
-      status: "active",
-      regularFees: updatedRegular,
-      additionalFees: updatedAdditional,
-      pastDuesPaid,
-      concessionApplied: roundedConcession,
-      paymentMode: paymentMode || "Cash",
-      transactionId: transactionId || "N/A",
-      totalFeeAmount,
-      totalAmountPaid: totalAmount,
-      totalDues: feeStatus.dues,
-      remark,
+      paymentDetails,
       feeReceiptNumber,
-      paymentMessage,
-      previousDues: previousDuesValue,
-    });
+      schoolId,
+      false
+    );
 
-    feeStatus.overallAmountPaid =
-      (feeStatus.overallAmountPaid || 0) + parseFloat(totalAmount);
-    feeStatus.overallConcessionApplied =
-      (feeStatus.overallConcessionApplied || 0) + roundedConcession;
+    if (!result.feeStatus) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to process payment",
+        error: result.error || "Unknown error",
+      });
+    }
 
-    await feeStatus.save();
-
-    const latestFeeHistory = feeStatus.feeHistory[feeStatus.feeHistory.length - 1];
-    const feeReceipt = {
-      studentId: student.studentId,
-      studentName: student.studentName,
-      studentClass: student.class,
-      parentContact: parent.contact,
-      admissionNumber: student.admissionNumber,
-      fatherName: parent.fatherName,
-      feeReceiptNumber: feeReceiptNumber,
-      paymentMode: latestFeeHistory.paymentMode,
-      dues: latestFeeHistory.totalDues,
-      date: latestFeeHistory.date,
-      status: latestFeeHistory.status,
-      regularFees: latestFeeHistory.regularFees.map((fee) => ({
-        month: fee.month,
-        paidAmount: fee.paidAmount,
-        dueAmount: fee.dueAmount,
-        status: fee.status,
-      })),
-      additionalFees: latestFeeHistory.additionalFees.map((fee) => ({
-        name: fee.name,
-        month: fee.month || "N/A",
-        paidAmount: fee.paidAmount,
-        dueAmount: fee.dueAmount,
-        status: fee.status,
-      })),
-      transactionId: latestFeeHistory.transactionId,
-      totalFeeAmount: latestFeeHistory.totalFeeAmount,
-      pastDuesPaid: latestFeeHistory.pastDuesPaid,
-      duesPaid: totalDuesBefore - latestFeeHistory.totalDues,
-      previousDues: latestFeeHistory.previousDues,
-      remark: latestFeeHistory.remark || "",
-      totalAmountPaid: latestFeeHistory.totalAmountPaid,
-      totalDues: latestFeeHistory.totalDues,
-      concessionFee: 0,
-      lateFinesPaid: 0,
-      concessionApplied: latestFeeHistory.concessionApplied,
-      paymentMessage: latestFeeHistory.paymentMessage,
-      paidAfterConcession: 0,
-      newPaidAmount: latestFeeHistory.totalAmountPaid,
-      lateFines: [],
-    };
-
-    return {
+    res.status(201).json({
       success: true,
       message: "Fee payment processed successfully",
       data: {
         feeReceiptNumber,
-        feeStatus,
-        studentAdmissionNumber: student.admissionNumber,
-        studentName: student.studentName,
-        fatherContact: student.parentContact,
-        parentContact: parent.contact,
-        feeReceipt,
+        feeStatus: result.feeStatus,
+        studentAdmissionNumber: result.student.admissionNumber,
+        studentName: result.student.studentName,
+        fatherContact: result.student.parentContact,
+        parentContact: result.parent.contact,
+        feeReceipt: result.feeReceipt,
       },
-    };
+    });
   } catch (error) {
-    return {
+    console.error("Error in createOrUpdateFeePayment:", error);
+    res.status(500).json({
       success: false,
       message: "Failed to process payment",
       error: error.message,
-    };
+    });
   }
 };
 
-// Unified fee payment for multiple students (siblings)
+// Unified fee payment for multiple students
 exports.createUnifiedFeePayment = async (req, res) => {
   try {
     const { students, session, unifiedPaymentDetails } = req.body;
     const schoolId = req.user.schoolId;
+    console.log("Processing unified fee payment:", req.body);
 
     if (
       !students ||
       !Array.isArray(students) ||
       students.length === 0 ||
-      !session
+      !session ||
+      !unifiedPaymentDetails
     ) {
       return res.status(400).json({
         success: false,
-        message: "Students array and session are required.",
+        message:
+          "Students array, session, and unifiedPaymentDetails are required.",
       });
     }
 
@@ -1098,25 +787,37 @@ exports.createUnifiedFeePayment = async (req, res) => {
       });
     }
 
+    if (
+      students.some(
+        (s) =>
+          !s.studentId || !s.paymentDetails || !s.paymentDetails.totalAmount
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Each student must have studentId and paymentDetails with totalAmount.",
+      });
+    }
+
     const feeReceiptNumber = await generateFeeReceiptNumber(schoolId);
     const feeHistoryEntries = [];
     const studentDetails = [];
     const feeReceipts = [];
 
     for (const { studentId, paymentDetails } of students) {
-      if (!studentId || !paymentDetails || !paymentDetails.totalAmount) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Each student must have studentId and paymentDetails with totalAmount.",
-        });
-      }
-
       const combinedPaymentDetails = {
         ...paymentDetails,
-        paymentMode: unifiedPaymentDetails.paymentMode || paymentDetails.paymentMode || "Cash",
-        transactionId: unifiedPaymentDetails.transactionId || paymentDetails.transactionId,
-        date: unifiedPaymentDetails.date || paymentDetails.date || new Date().toISOString(),
+        paymentMode:
+          unifiedPaymentDetails.paymentMode ||
+          paymentDetails.paymentMode ||
+          "Cash",
+        transactionId:
+          unifiedPaymentDetails.transactionId || paymentDetails.transactionId,
+        date:
+          unifiedPaymentDetails.date ||
+          paymentDetails.date ||
+          new Date().toISOString(),
         remark: unifiedPaymentDetails.remark || paymentDetails.remark,
       };
 
@@ -1125,27 +826,28 @@ exports.createUnifiedFeePayment = async (req, res) => {
         session,
         combinedPaymentDetails,
         feeReceiptNumber,
-        schoolId
+        schoolId,
+        true
       );
 
-      if (!result.success) {
+      if (!result.feeStatus) {
         return res.status(400).json({
           success: false,
-          message: `Failed to process payment for student ${studentId}: ${result.error}`,
+          message: `Failed to process payment for student ${studentId}: ${
+            result.error || "Unknown error"
+          }`,
         });
       }
 
-      const { feeStatus, feeHistoryEntry, student, parent, feeReceipt } = result.data;
-
-      feeHistoryEntries.push(feeHistoryEntry);
-      feeReceipts.push(feeReceipt);
+      feeHistoryEntries.push(result.feeHistoryEntry);
+      feeReceipts.push(result.feeReceipt);
       studentDetails.push({
         studentId,
-        studentName: student.studentName,
-        class: student.class,
-        admissionNumber: student.admissionNumber,
-        feeStatus,
-        feeReceipt,
+        studentName: result.student.studentName,
+        class: result.student.class,
+        admissionNumber: result.student.admissionNumber,
+        feeStatus: result.feeStatus,
+        feeReceipt: result.feeReceipt,
       });
     }
 
@@ -1167,7 +869,12 @@ exports.createUnifiedFeePayment = async (req, res) => {
       remark: unifiedPaymentDetails.remark,
     });
 
-    await unifiedReceipt.save();
+    try {
+      await unifiedReceipt.save();
+    } catch (error) {
+      console.error("Error saving unifiedReceipt:", error);
+      throw new Error(`Failed to save unified receipt: ${error.message}`);
+    }
 
     res.status(201).json({
       success: true,
@@ -1181,6 +888,7 @@ exports.createUnifiedFeePayment = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Error in createUnifiedFeePayment:", error);
     res.status(500).json({
       success: false,
       message: "Failed to process unified payment",
@@ -1258,6 +966,7 @@ exports.generateFeeReceipt = async (req, res) => {
               paidAmount: fee.paidAmount,
               dueAmount: fee.dueAmount,
               status: fee.status,
+              frequency: fee.frequency,
             })),
             additionalFees: entry.feeHistory.additionalFees.map((fee) => ({
               name: fee.name,
@@ -1265,6 +974,7 @@ exports.generateFeeReceipt = async (req, res) => {
               paidAmount: fee.paidAmount,
               dueAmount: fee.dueAmount,
               status: fee.status,
+              frequency: fee.frequency,
             })),
             pastDuesPaid: entry.feeHistory.pastDuesPaid,
             totalFeeAmount: entry.feeHistory.totalFeeAmount,
@@ -1293,6 +1003,7 @@ exports.generateFeeReceipt = async (req, res) => {
 
     res.status(200).json({ success: true, data: receiptData });
   } catch (error) {
+    console.error("Error in generateFeeReceipt:", error);
     res.status(500).json({
       success: false,
       message: "Failed to generate receipt",

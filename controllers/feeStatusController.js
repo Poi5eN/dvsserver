@@ -665,7 +665,9 @@ exports.createOrUpdateFeePayment = async (req, res) => {
 // Unified fee payment for multiple students
 exports.createUnifiedFeePayment = async (req, res) => {
   try {
-    const { students, session, unifiedPaymentDetails } = req.body;
+    const { students, unifiedPaymentDetails } = req.body;
+    // Extract session from the user token instead of the request body
+    const session = req.user.session;
     const schoolId = req.user.schoolId;
     console.log("Processing unified fee payment:", JSON.stringify(req.body, null, 2));
 
@@ -805,6 +807,7 @@ exports.createUnifiedFeePayment = async (req, res) => {
     });
   }
 };
+
 
 // Generate fee receipt (supports both single and unified receipts)
 exports.generateFeeReceipt = async (req, res) => {

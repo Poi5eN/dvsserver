@@ -56,7 +56,9 @@ router.get('/students/:studentId', verifyToken, admin.getStudentParent);
 router.put('/students/:studentId/toggle', verifyToken, admin.toggleStudentStatus);
 router.put('/students/:studentId/toggle-admission', admin.toggleAdmissionStatus);
 router.put('/students/update/:studentId', verifyToken, singleUpload, admin.updateStudent);
+router.post("/students/toggle-printed", verifyToken, admin.toggleIsPrinted);
 router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents);
+
 
 
 
@@ -65,6 +67,7 @@ router.put('/bulkupdatestudents', verifyToken,uploads, admin.bulkUpdateStudents)
 router.post('/parents', verifyToken, uploads, admin.createParentOnly);
 router.put('/parents/:parentId', verifyToken, uploads, admin.updateParent);
 router.put('/parents/:parentId/toggle', verifyToken, admin.toggleParentStatus);
+router.get('/parentandchild', verifyToken, uploads, admin.parentsWithChildren);
 router.get('/parentandchild/:parentId', verifyToken, uploads, admin.getParentWithChildren);
 
 

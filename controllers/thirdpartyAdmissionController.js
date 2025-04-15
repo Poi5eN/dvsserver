@@ -1457,28 +1457,46 @@ exports.linkStudentToParentThirdParty = async (req, res) => {
 
 
 
-
+/**
+ * Create Initial Student Photo (Third-Party)
+ */
 exports.createInitialStudentPhoto = async (req, res) => {
   try {
     const { schoolId, studentName, class: studentClass, section } = req.body;
-    const session = req.user.session;
-    const assignedThirdParty = req.user.userId;
+    const session = req.user?.session;
+    const assignedThirdParty = req.user?.userId;
 
-    // Check access
+    if (!req.user || !req.user.assignedSchools || !session || !assignedThirdParty) {
+      console.error("User data missing:", { user: req.user });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication data is missing or invalid.",
+      });
+    }
+
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID is required.",
+      });
+    }
+
+    // Debug logging
+    console.log("Received schoolId:", schoolId);
+    console.log("Assigned schools:", req.user.assignedSchools.map(s => s.schoolId));
+
     const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
     if (!hasAccess) {
+      console.error("Access denied for schoolId:", schoolId);
       return res.status(403).json({
         success: false,
         message: "You don't have access to create records for this school.",
       });
     }
 
-    // Validation
-    if (!studentName) return res.status(400).json({ success: false, message: "Student name is required." });
     if (!studentClass) return res.status(400).json({ success: false, message: "Class is required." });
     if (!section) return res.status(400).json({ success: false, message: "Section is required." });
 
-    // Handle image upload
     const files = req.files || [];
     const studentFile = files.find(f => f.fieldname === "studentImage");
     let studentImageResult = { public_id: "", url: "" };
@@ -1498,12 +1516,11 @@ exports.createInitialStudentPhoto = async (req, res) => {
       return res.status(400).json({ success: false, message: "Student image is required." });
     }
 
-    // Create record in PhotoModel
     const photoData = await PhotoModel.create({
       photoId: uuidv4(),
       schoolId,
       session,
-      studentName,
+      studentName: studentName?.trim() || null,
       class: studentClass,
       section,
       studentImage: studentImageResult,

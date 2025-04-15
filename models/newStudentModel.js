@@ -103,6 +103,7 @@ const studentSchema = new mongoose.Schema({
     // },
   },
   isGenerated: { type: Boolean, default: false },
+  isPrinted: { type: Boolean, default: false }, // <-- NEW FIELD
   religion: { type: String },
   caste: { type: String },
   nationality: { type: String },

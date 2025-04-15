@@ -6573,6 +6573,44 @@ exports.getStudentAndParent = async (req, res) => {
   }
 };
 
+
+// POST /api/students/toggle-printed
+exports.toggleIsPrinted = async (req, res) => {
+  try {
+    const { studentIds, isPrinted } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!Array.isArray(studentIds) || typeof isPrinted !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payload. 'studentIds' must be an array and 'isPrinted' a boolean.",
+      });
+    }
+
+    const result = await NewStudentModel.updateMany(
+      {
+        studentId: { $in: studentIds },
+        schoolId,
+        $or: [{ session }, { sessionHistory: session }],
+      },
+      { $set: { isPrinted } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Updated ${result.modifiedCount} student(s)`,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating print status.",
+      error: error.message,
+    });
+  }
+};
+
+
 exports.toggleAdmissionStatus = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -7629,6 +7667,101 @@ exports.getParentWithChildren = async (req, res) => {
     });
   }
 };
+
+
+exports.parentsWithChildren = async (req, res) => {
+  try {
+    const { studentId, admissionNumber, class: className, section } = req.query;
+
+    // Get schoolId and session from the verified token
+    const { schoolId, session } = req.user;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required in token",
+      });
+    }
+
+    // Build filter for students
+    let studentFilter = { schoolId, session };
+    if (studentId) studentFilter.studentId = studentId;
+    if (admissionNumber) studentFilter.admissionNumber = admissionNumber;
+    if (className) studentFilter.class = className;
+    if (section) studentFilter.section = section;
+
+    // Find students matching the filter
+    const students = await NewStudentModel.find(studentFilter);
+
+    // Get unique parentIds from the filtered students
+    const parentIds = [...new Set(students.map(s => s.parentId))];
+
+    if (parentIds.length === 0) {
+      return res.status(404).json({ success: false, message: "No parents found for the given filters." });
+    }
+
+    // Fetch all matching parents
+    const parents = await ParentModel.find({ parentId: { $in: parentIds }, schoolId, session });
+
+    // For each parent, get their children and dues
+    const results = await Promise.all(parents.map(async (parent) => {
+      const children = students.filter(child => child.parentId === parent.parentId);
+
+      const childrenWithDues = await Promise.all(children.map(async (student) => {
+        const feeStatus = await FeeStatus.findOne({
+          schoolId: student.schoolId,
+          studentId: student.studentId,
+        });
+        const totalDues = feeStatus ? feeStatus.dues : 0;
+
+        return {
+          ...student.toObject(),
+          dues: totalDues,
+        };
+      }));
+
+      return {
+        parent: {
+          parentId: parent.parentId,
+          schoolId: parent.schoolId,
+          session: parent.session,
+          studentIds: parent.studentIds,
+          studentNames: parent.studentNames,
+          fatherName: parent.fatherName,
+          motherName: parent.motherName,
+          email: parent.email,
+          contact: parent.contact,
+          admissionNumber: parent.admissionNumber,
+          income: parent.income,
+          qualification: parent.qualification,
+          parentImage: parent.parentImage,
+          fatherImage: parent.fatherImage,
+          motherImage: parent.motherImage,
+          guardianImage: parent.guardianImage,
+          base64: parent.base64,
+          createdBy: parent.createdBy,
+          createdAt: parent.createdAt,
+          status: parent.status,
+          role: parent.role,
+        },
+        children: childrenWithDues,
+      };
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: results,
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving parents with children",
+      error: error.message,
+    });
+  }
+};
+
 
 exports.getAllParentsWithChildren = async (req, res) => {
   try {

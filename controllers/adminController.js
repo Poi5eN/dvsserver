@@ -5144,132 +5144,6 @@ exports.createBulkStudentParent = async (req, res) => {
       });
     }
 
-    // Improved email generation - generate unique emails using multiple strategies
-    const generateUniqueEmail = async (baseName, model, schoolId, type = "student") => {
-      // Try with timestamp first (most likely to be unique immediately)
-      const timestamp = Date.now().toString().slice(-6);
-      let email = `${baseName}${timestamp}@dvs.com`;
-      
-      // Check if this email exists
-      let emailExists = await model.findOne({ email: { $regex: new RegExp(`^${email}$`, "i") }, schoolId });
-      if (!emailExists) return email;
-      
-      // Try with random numbers (1000-9999)
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
-        email = `${baseName}${randomNum}@dvs.com`;
-        emailExists = await model.findOne({ email: { $regex: new RegExp(`^${email}$`, "i") }, schoolId });
-        if (!emailExists) return email;
-      }
-      
-      // Try with prefix based on type + timestamp
-      const prefix = type === "student" ? "st" : "pr";
-      email = `${prefix}_${baseName}${timestamp}@dvs.com`;
-      emailExists = await model.findOne({ email: { $regex: new RegExp(`^${email}$`, "i") }, schoolId });
-      if (!emailExists) return email;
-      
-      // Last resort: use UUID-like string
-      const uniqueId = Math.random().toString(36).substring(2, 8);
-      return `${baseName}_${uniqueId}@dvs.com`;
-    };
-
-    // Parse date with better error handling
-    const parseDate = (dateString) => {
-      if (!dateString) return null;
-      
-      // Handle Excel date numeric format
-      if (typeof dateString === "number") {
-        const excelEpoch = new Date(1899, 11, 30);
-        const parsedDate = new Date(excelEpoch.getTime() + dateString * 86400000);
-        if (isNaN(parsedDate.getTime())) return null;
-        
-        const day = String(parsedDate.getDate()).padStart(2, "0");
-        const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
-        const year = parsedDate.getFullYear();
-        return `${day}/${month}/${year}`;
-      }
-      
-      // Handle string date formats
-      if (typeof dateString !== "string") return null;
-      
-      // Try DD/MM/YYYY
-      const ddmmyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-      let match = dateString.match(ddmmyyyyRegex);
-      if (match) {
-        const day = match[1].padStart(2, '0');
-        const month = match[2].padStart(2, '0');
-        const year = match[3];
-        return `${day}/${month}/${year}`;
-      }
-      
-      // Try MM/DD/YYYY
-      const mmddyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-      match = dateString.match(mmddyyyyRegex);
-      if (match) {
-        const month = match[1].padStart(2, '0');
-        const day = match[2].padStart(2, '0');
-        const year = match[3];
-        return `${day}/${month}/${year}`;
-      }
-
-      // Try YYYY-MM-DD
-      const yyyymmddRegex = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-      match = dateString.match(yyyymmddRegex);
-      if (match) {
-        const year = match[1];
-        const month = match[2].padStart(2, '0');
-        const day = match[3].padStart(2, '0');
-        return `${day}/${month}/${year}`;
-      }
-      
-      return null;
-    };
-
-    // Generate admission number with auto-increment fallback
-    const generateAdmissionNumber = async (schoolId, model, prefixOverride = null) => {
-      try {
-        // Get the latest admission number for this school
-        const latestRecord = await model.findOne({ schoolId })
-          .sort({ createdAt: -1 })
-          .select('admissionNumber');
-
-        let prefix = prefixOverride || (model.modelName === 'NewStudentModel' ? 'ST' : 'PR');
-        let nextNumber = 1;
-
-        if (latestRecord && latestRecord.admissionNumber) {
-          // Extract number from existing admission number
-          const match = latestRecord.admissionNumber.match(/([A-Z]+)(\d+)/);
-          if (match) {
-            if (!prefixOverride) prefix = match[1];
-            nextNumber = parseInt(match[2], 10) + 1;
-          }
-        }
-
-        // Format with leading zeros (e.g., ST0001)
-        const formattedNumber = nextNumber.toString().padStart(4, '0');
-        const admissionNumber = `${prefix}${formattedNumber}`;
-
-        // Verify uniqueness
-        const existingWithSameNumber = await model.findOne({ 
-          admissionNumber, 
-          schoolId 
-        });
-
-        if (existingWithSameNumber) {
-          // If somehow still a conflict, try with a different prefix
-          return generateAdmissionNumber(schoolId, model, `${prefix}X`);
-        }
-
-        return admissionNumber;
-      } catch (error) {
-        // Fallback to timestamp-based number in case of any error
-        const timestamp = Date.now().toString().slice(-6);
-        const prefix = model.modelName === 'NewStudentModel' ? 'ST' : 'PR';
-        return `${prefix}${timestamp}`;
-      }
-    };
-
-    // Process students with transaction support for atomicity
     for (const student of studentsData) {
       let finalStudentEmail = null;
       let finalParentEmail = null;
@@ -5298,97 +5172,134 @@ exports.createBulkStudentParent = async (req, res) => {
           studentContact,
           admissionNumber,
           parentAdmissionNumber,
-          studentEmail,
-          parentEmail,
           // ... other fields ...
         } = student;
 
         // Validate required fields
-        if (!studentFullName || !fatherName || !studentJoiningDate || !studentClass) {
-          throw new Error("Required fields (studentFullName, fatherName, joiningDate, class) are missing.");
+        if (
+          !studentFullName ||
+          !fatherName ||
+          !studentJoiningDate ||
+          !studentClass
+        ) {
+          throw new Error(
+            "Required fields (studentFullName, fatherName, joiningDate, class) are missing."
+          );
         }
 
-        // Sanitize student full name for email
-        const sanitizedStudentName = studentFullName
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "")
-          .substring(0, 15); // Limit length to avoid very long emails
-        
         // Generate student email if not provided
-        finalStudentEmail = studentEmail || await generateUniqueEmail(
-          sanitizedStudentName, 
-          NewStudentModel, 
-          schoolId, 
-          "student"
-        );
-
-        // Parse dates with better error handling
-        let parsedJoiningDate = parseDate(studentJoiningDate);
-        if (!parsedJoiningDate) {
-          throw new Error(`Invalid joining date format: ${studentJoiningDate}. Use DD/MM/YYYY.`);
+        finalStudentEmail = student.studentEmail;
+        if (!finalStudentEmail) {
+          const baseName = studentFullName.toLowerCase().replace(/\s+/g, "");
+          let uniqueNumber = Math.floor(100 + Math.random() * 900);
+          finalStudentEmail = `${baseName}${uniqueNumber}@dvs.com`;
+          
+          // Check if this email already exists, if so, try with different numbers
+          while (
+            await NewStudentModel.findOne({
+              email: finalStudentEmail,
+              schoolId,
+            })
+          ) {
+            uniqueNumber = Math.floor(100 + Math.random() * 900);
+            finalStudentEmail = `${baseName}${uniqueNumber}@dvs.com`;
+          }
+          
+          // If still having issues, add timestamp to ensure uniqueness
+          if (await NewStudentModel.findOne({ email: finalStudentEmail, schoolId })) {
+            const timestamp = Date.now().toString().slice(-6);
+            finalStudentEmail = `${baseName}${timestamp}@dvs.com`;
+          }
         }
-        
-        let parsedDateOfBirth = parseDate(studentDateOfBirth);
-        // Date of birth is optional, so don't throw error if missing
+
+        // Check for existing student
+        const studentExist = await NewStudentModel.findOne({
+          email: { $regex: new RegExp(`^${finalStudentEmail}$`, "i") },
+          schoolId,
+        });
+        if (studentExist) {
+          throw new Error(
+            `Student with email ${finalStudentEmail} already exists in this school.`
+          );
+        }
+
+        // Parse and handle dates - PRESERVING ORIGINAL DATE HANDLING LOGIC
+        let parsedJoiningDate;
+        if (typeof studentJoiningDate === "number") {
+          const excelEpoch = new Date(1899, 11, 30);
+          parsedJoiningDate = new Date(
+            excelEpoch.getTime() + studentJoiningDate * 86400000
+          );
+          if (isNaN(parsedJoiningDate.getTime())) {
+            throw new Error(
+              `Invalid joiningDate serial number: ${studentJoiningDate}`
+            );
+          }
+          const day = String(parsedJoiningDate.getDate()).padStart(2, "0");
+          const month = String(parsedJoiningDate.getMonth() + 1).padStart(
+            2,
+            "0"
+          );
+          const year = parsedJoiningDate.getFullYear();
+          parsedJoiningDate = `${day}/${month}/${year}`;
+        } else {
+          parsedJoiningDate = parseDate(studentJoiningDate);
+          if (!parsedJoiningDate) {
+            throw new Error(
+              `Invalid joiningDate format: ${studentJoiningDate}. Use DD/MM/YYYY.`
+            );
+          }
+          parsedJoiningDate = studentJoiningDate; // Keep as string per schema
+        }
+
+        let parsedDateOfBirth;
+        if (typeof studentDateOfBirth === "number") {
+          // MAINTAINING ORIGINAL DATE OF BIRTH EXCEL HANDLING
+          const excelEpoch = new Date(1899, 11, 30);
+          parsedDateOfBirth = new Date(
+            excelEpoch.getTime() + studentDateOfBirth * 86400000
+          );
+          if (isNaN(parsedDateOfBirth.getTime())) {
+            throw new Error(
+              `Invalid dateOfBirth serial number: ${studentDateOfBirth}`
+            );
+          }
+          // Keep the Date object as is
+        } else if (studentDateOfBirth) {
+          parsedDateOfBirth = parseDate(studentDateOfBirth);
+          if (!parsedDateOfBirth) {
+            throw new Error(
+              `Invalid dateOfBirth format: ${studentDateOfBirth}. Use DD/MM/YYYY.`
+            );
+          }
+        } else {
+          parsedDateOfBirth = null;
+        }
 
         // Set passwords
         const studentPassword = "dvs@student";
         const studentHashPassword = await hashPassword(studentPassword);
 
-        // Generate or use provided admission number for student
+        // Generate or use provided admission number for student - PRESERVING ORIGINAL BEHAVIOR
         let studentAdmissionNumberToUse;
         if (admissionNumber && admissionNumber.trim() !== "") {
-          // Use provided admission number and check for uniqueness
+          // Use provided admission number exactly as is from Excel
           studentAdmissionNumberToUse = admissionNumber.trim();
           const existingStudent = await NewStudentModel.findOne({
             admissionNumber: studentAdmissionNumberToUse,
             schoolId,
           });
-          
           if (existingStudent) {
-            // If admission number exists, generate a new one by appending a suffix
-            let suffix = 1;
-            let tempAdmission = `${studentAdmissionNumberToUse}-${suffix}`;
-            
-            while (await NewStudentModel.findOne({ admissionNumber: tempAdmission, schoolId })) {
-              suffix++;
-              tempAdmission = `${studentAdmissionNumberToUse}-${suffix}`;
-            }
-            
-            studentAdmissionNumberToUse = tempAdmission;
+            throw new Error(
+              `Admission number ${studentAdmissionNumberToUse} is already in use by another student.`
+            );
           }
         } else {
           // Generate default admission number if not provided
-          studentAdmissionNumberToUse = await generateAdmissionNumber(schoolId, NewStudentModel);
-        }
-
-        // Calculate roll number with conflict avoidance
-        let rollNo = (await NewStudentModel.countDocuments({
-          schoolId,
-          class: studentClass,
-          section: studentSection || "A",
-        }) + 1).toString();
-
-        // Check if roll number already exists
-        const rollExists = await NewStudentModel.findOne({
-          schoolId,
-          class: studentClass,
-          section: studentSection || "A",
-          rollNo
-        });
-
-        if (rollExists) {
-          // Find the next available roll number
-          let nextRoll = parseInt(rollNo, 10) + 1;
-          while (await NewStudentModel.findOne({
+          studentAdmissionNumberToUse = await generateAdmissionNumber(
             schoolId,
-            class: studentClass,
-            section: studentSection || "A",
-            rollNo: nextRoll.toString()
-          })) {
-            nextRoll++;
-          }
-          rollNo = nextRoll.toString();
+            NewStudentModel
+          );
         }
 
         // Create student with the determined admission number
@@ -5399,7 +5310,13 @@ exports.createBulkStudentParent = async (req, res) => {
           email: finalStudentEmail,
           password: studentHashPassword,
           dateOfBirth: parsedDateOfBirth,
-          rollNo,
+          rollNo: (
+            (await NewStudentModel.countDocuments({
+              schoolId,
+              class: studentClass,
+              section: studentSection || "A",
+            })) + 1
+          ).toString(),
           gender: studentGender,
           joiningDate: parsedJoiningDate,
           address: studentAddress,
@@ -5430,105 +5347,62 @@ exports.createBulkStudentParent = async (req, res) => {
         let parentData = null;
 
         if (parentAdmissionNumber) {
-          // Try to find parent by admission number
           parentData = await ParentModel.findOne({
             admissionNumber: parentAdmissionNumber,
             schoolId,
             session,
           });
-          
           if (!parentData) {
-            // Create new parent if the admission number doesn't exist
-            const sanitizedFatherName = fatherName
-              .toLowerCase()
-              .replace(/[^a-z0-9]/g, "")
-              .substring(0, 15);
-            
-            finalParentEmail = parentEmail || await generateUniqueEmail(
-              sanitizedFatherName,
-              ParentModel,
-              schoolId,
-              "parent"
-            );
-            
-            const parentPassword = "dvs@parent";
-            const parentHashPassword = await hashPassword(parentPassword);
-
-            parentData = await ParentModel.create({
-              schoolId,
-              session,
-              studentIds: [studentData.studentId],
-              studentNames: [studentFullName],
-              fatherName,
-              motherName,
-              guardianName,
-              email: finalParentEmail,
-              password: parentHashPassword,
-              contact: parentContact || "",
-              admissionNumber: parentAdmissionNumber, // Use the provided admission number
-              createdBy,
-            });
-
-            const parentEmailContent = `
-              <!DOCTYPE html>
-              <html>
-              <head><meta charset="UTF-8"><title>Parent Account Created</title></head>
-              <body style="font-family: Arial, sans-serif;">
-                <h1>Welcome, Parent!</h1>
-                <p>Your account has been created.</p>
-                <p><strong>Email:</strong> ${finalParentEmail}</p>
-                <p><strong>Password:</strong> ${parentPassword}</p>
-                <p><strong>Parent ID:</strong> ${parentData.admissionNumber}</p>
-              </body>
-              </html>
-            `;
-            await sendEmail(finalParentEmail, "Parent Login Credentials", parentEmailContent);
-          } else {
-            // Update existing parent with new student info
-            await ParentModel.updateOne(
-              { _id: parentData._id },
-              {
-                $addToSet: { 
-                  studentIds: studentData.studentId,
-                  studentNames: studentFullName
-                }
-              }
+            throw new Error(
+              `Parent with admission number ${parentAdmissionNumber} does not exist.`
             );
           }
-        } else {
-          // Handle parent email generation if no admission number provided
-          const sanitizedFatherName = fatherName
-            .toLowerCase()
-            .replace(/[^a-z0-9]/g, "")
-            .substring(0, 15);
-          
-          finalParentEmail = parentEmail || await generateUniqueEmail(
-            sanitizedFatherName,
-            ParentModel,
-            schoolId,
-            "parent"
+          await ParentModel.updateOne(
+            { _id: parentData._id },
+            {
+              $push: { studentIds: studentData.studentId },
+              $addToSet: { studentNames: studentFullName },
+            }
           );
+        } else {
+          finalParentEmail = student.parentEmail;
+          if (!finalParentEmail) {
+            const baseName = fatherName.toLowerCase().replace(/\s+/g, "");
+            const contact =
+              parentContact ||
+              Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            finalParentEmail = `${baseName}${contact}@dvs.com`;
+            
+            // Add uniqueness check to prevent duplicate parent emails
+            let suffix = "";
+            let attempt = 0;
+            while (
+              await ParentModel.findOne({
+                email: `${finalParentEmail}${suffix}`,
+                schoolId,
+              })
+            ) {
+              attempt++;
+              suffix = attempt.toString();
+            }
+            finalParentEmail = `${finalParentEmail}${suffix}`;
+          }
 
-          // Check if parent already exists with this email
           parentData = await ParentModel.findOne({
-            email: { $regex: new RegExp(`^${finalParentEmail}$`, "i") },
+            email: finalParentEmail,
             schoolId,
             session,
           });
 
           if (parentData) {
-            // Update existing parent with new student
             await ParentModel.updateOne(
               { _id: parentData._id },
               {
-                $addToSet: { 
-                  studentIds: studentData.studentId,
-                  studentNames: studentFullName 
-                }
+                $push: { studentIds: studentData.studentId },
+                $addToSet: { studentNames: studentFullName },
               }
             );
           } else {
-            // Create new parent
             const parentPassword = "dvs@parent";
             const parentHashPassword = await hashPassword(parentPassword);
 
@@ -5543,7 +5417,10 @@ exports.createBulkStudentParent = async (req, res) => {
               email: finalParentEmail,
               password: parentHashPassword,
               contact: parentContact || "",
-              admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
+              admissionNumber: await generateAdmissionNumber(
+                schoolId,
+                ParentModel
+              ),
               createdBy,
             });
 
@@ -5560,7 +5437,11 @@ exports.createBulkStudentParent = async (req, res) => {
               </body>
               </html>
             `;
-            await sendEmail(finalParentEmail, "Parent Login Credentials", parentEmailContent);
+            await sendEmail(
+              finalParentEmail,
+              "Parent Login Credentials",
+              parentEmailContent
+            );
           }
         }
 
@@ -5576,7 +5457,9 @@ exports.createBulkStudentParent = async (req, res) => {
         }
 
         // Send student email
-        const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+        const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+          "schoolName image.url"
+        );
         const schoolName = schoolDetails?.schoolName || "Your School";
         const studentEmailContent = `
           <!DOCTYPE html>
@@ -5594,7 +5477,11 @@ exports.createBulkStudentParent = async (req, res) => {
           </body>
           </html>
         `;
-        await sendEmail(finalStudentEmail, "Admission Confirmation", studentEmailContent);
+        await sendEmail(
+          finalStudentEmail,
+          "Admission Confirmation",
+          studentEmailContent
+        );
 
         createdStudents.push(studentData);
         generatedCredentials.push({
@@ -5607,9 +5494,9 @@ exports.createBulkStudentParent = async (req, res) => {
         });
       } catch (error) {
         errors.push({
-          studentEmail: finalStudentEmail || student.studentEmail || student.studentFullName || "unknown",
+          studentEmail:
+            finalStudentEmail || student.studentFullName || "unknown",
           error: error.message,
-          studentData: student // Include original data for debugging
         });
       }
     }

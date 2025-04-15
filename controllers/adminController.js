@@ -6212,27 +6212,6 @@ exports.getStudentParent = async (req, res) => {
       dateOfBirthEnd,
     } = req.query;
 
-    // Define the class order
-    const classOrder = [
-      "PRE NUR",
-      "NUR",
-      "LKG",
-      "UKG",
-      "I",
-      "II",
-      "III",
-      "IV",
-      "V",
-      "VI",
-      "VII",
-      "VIII",
-      "IX",
-      "X",
-      "XI",
-      "XII",
-      "PASS OUT",
-    ];
-
     let studentQuery = { schoolId };
     let parentQuery = { schoolId };
 
@@ -6296,7 +6275,7 @@ exports.getStudentParent = async (req, res) => {
     if (email) parentQuery.email = email;
 
     const skip = (page - 1) * (limit || 0);
-    const limitValue = limit ? parseInt(limit) : undefined;
+    const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
     let responseData = {};
 
@@ -6314,11 +6293,7 @@ exports.getStudentParent = async (req, res) => {
             session,
           }).lean()
         : null;
-      responseData.student = {
-        ...student,
-        displayClass: student.section ? `${student.class}-${student.section}` : student.class,
-        parentDetails: parentData,
-      };
+      responseData.student = { ...student, parentDetails: parentData };
     } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
       if (!parent)
@@ -6326,139 +6301,82 @@ exports.getStudentParent = async (req, res) => {
           success: false,
           message: `Parent with ID ${parentId} not found`,
         });
-      const students = await NewStudentModel.aggregate([
-        {
-          $match: {
-            parentId: parent.parentId,
-            schoolId,
-            session,
-          },
-        },
-        {
-          $addFields: {
-            classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
-          },
-        },
-        {
-          $sort: {
-            classOrderIndex: 1,
-            section: 1,
-          },
-        },
-        {
-          $project: {
-            classOrderIndex: 0, // Remove temporary field
-          },
-        },
-      ]);
+      const students = await NewStudentModel.find({
+        parentId: parent.parentId,
+        schoolId,
+        session,
+      }).lean();
       responseData.parent = {
         ...parent,
-        studentDetails: students.map((student) => ({
-          ...student,
-          displayClass: student.section ? `${student.class}-${student.section}` : student.class,
-        })),
+        studentDetails: students,
         hasMultipleChildren: students.length > 1,
         totalChildren: students.length,
       };
     } else if (fetchParentsWithMultipleChildren === "true") {
-      const parents = await ParentModel.find(parentQuery).lean();
+      const parents = await ParentModel.find(parentQuery).sort(sort).lean();
       const parentsWithMultipleChildren = [];
       for (const parent of parents) {
-        const students = await NewStudentModel.aggregate([
-          {
-            $match: {
-              parentId: parent.parentId,
-              schoolId,
-              session,
-            },
-          },
-          {
-            $addFields: {
-              classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
-            },
-          },
-          {
-            $sort: {
-              classOrderIndex: 1,
-              section: 1,
-            },
-          },
-          {
-            $project: {
-              classOrderIndex: 0,
-            },
-          },
-        ]);
+        const students = await NewStudentModel.find({
+          parentId: parent.parentId,
+          schoolId,
+          session,
+        }).lean();
         if (students.length > 1)
           parentsWithMultipleChildren.push({
             ...parent,
-            studentDetails: students.map((student) => ({
-              ...student,
-              displayClass: student.section ? `${student.class}-${student.section}` : student.class,
-            })),
+            studentDetails: students,
             totalChildren: students.length,
           });
       }
       const totalParentsWithMultiple = parentsWithMultipleChildren.length;
       responseData.parentsWithMultipleChildren = {
-        data: limitValue
-          ? parentsWithMultipleChildren.slice(skip, skip + limitValue)
+        data: limit
+          ? parentsWithMultipleChildren.slice(skip, skip + parseInt(limit))
           : parentsWithMultipleChildren,
         pagination: {
           total: totalParentsWithMultiple,
           page: parseInt(page),
-          limit: limitValue || null,
-          totalPages: limitValue ? Math.ceil(totalParentsWithMultiple / limitValue) : 1,
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalParentsWithMultiple / limit) : 1,
         },
       };
-    } else if (fetchAllStudents === "true" || fetchNewAdmissions === "true" || Object.keys(studentQuery).length > 2) {
-      const studentPipeline = [
-        {
-          $match: studentQuery,
-        },
-        {
-          $addFields: {
-            classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
-          },
-        },
-        {
-          $sort: {
-            classOrderIndex: 1,
-            section: 1,
-          },
-        },
-        {
-          $skip: skip,
-        },
-        ...(limitValue ? [{ $limit: limitValue }] : []),
-        {
-          $project: {
-            classOrderIndex: 0,
-          },
-        },
-      ];
-
-      const students = await NewStudentModel.aggregate(studentPipeline);
+    } else if (fetchAllStudents === "true") {
+      const students = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
-
-      const key = fetchNewAdmissions === "true" ? "newAdmissions" : "students";
-      responseData[key] = {
-        data: students.map((student) => ({
-          ...student,
-          displayClass: student.section ? `${student.class}-${student.section}` : student.class,
-        })),
+      responseData.students = {
+        data: students,
         pagination: {
           total: totalStudents,
           page: parseInt(page),
-          limit: limitValue || null,
-          totalPages: limitValue ? Math.ceil(totalStudents / limitValue) : 1,
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
+        },
+      };
+    } else if (fetchNewAdmissions === "true") {
+      const newStudents = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
+      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
+      responseData.newAdmissions = {
+        data: newStudents,
+        pagination: {
+          total: totalNewStudents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalNewStudents / limit) : 1,
         },
       };
     } else if (fetchAllParents === "true") {
       const parents = await ParentModel.find(parentQuery)
-        .sort({ createdAt: sortOrder === "desc" ? -1 : 1 })
+        .sort(sort)
         .skip(skip)
-        .limit(limitValue)
+        .limit(limit ? parseInt(limit) : undefined)
         .lean();
       const totalParents = await ParentModel.countDocuments(parentQuery);
       responseData.parents = {
@@ -6466,43 +6384,54 @@ exports.getStudentParent = async (req, res) => {
         pagination: {
           total: totalParents,
           page: parseInt(page),
-          limit: limitValue || null,
-          totalPages: limitValue ? Math.ceil(totalParents / limitValue) : 1,
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalParents / limit) : 1,
+        },
+      };
+    } else if (
+      Object.keys(studentQuery).length > 2 ||
+      Object.keys(parentQuery).length > 2
+    ) {
+      const students = await NewStudentModel.find(studentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
+      const totalStudents = await NewStudentModel.countDocuments(studentQuery);
+      responseData.students = {
+        data: students,
+        pagination: {
+          total: totalStudents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
+        },
+      };
+
+      const parents = await ParentModel.find(parentQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit ? parseInt(limit) : undefined)
+        .lean();
+      const totalParents = await ParentModel.countDocuments(parentQuery);
+      responseData.parents = {
+        data: parents,
+        pagination: {
+          total: totalParents,
+          page: parseInt(page),
+          limit: limit ? parseInt(limit) : null,
+          totalPages: limit ? Math.ceil(totalParents / limit) : 1,
         },
       };
     } else {
-      const students = await NewStudentModel.aggregate([
-        {
-          $match: { schoolId, session },
-        },
-        {
-          $addFields: {
-            classOrderIndex: { $indexOfArray: [classOrder, "$class"] },
-          },
-        },
-        {
-          $sort: {
-            classOrderIndex: 1,
-            section: 1,
-          },
-        },
-        {
-          $project: {
-            classOrderIndex: 0,
-          },
-        },
-      ]);
+      const students = await NewStudentModel.find({ schoolId, session })
+        .sort(sort)
+        .lean();
       const totalStudents = students.length;
-      responseData.students = {
-        data: students.map((student) => ({
-          ...student,
-          displayClass: student.section ? `${student.class}-${student.section}` : student.class,
-        })),
-        total: totalStudents,
-      };
+      responseData.students = { data: students, total: totalStudents };
 
       const parents = await ParentModel.find({ schoolId, session })
-        .sort({ createdAt: sortOrder === "desc" ? -1 : 1 })
+        .sort(sort)
         .lean();
       const totalParents = parents.length;
       responseData.parents = { data: parents, total: totalParents };
@@ -7720,6 +7649,7 @@ exports.parentsWithChildren = async (req, res) => {
         };
       }));
 
+      // ✅ Return parent with children inside it
       return {
         parent: {
           parentId: parent.parentId,
@@ -7743,8 +7673,8 @@ exports.parentsWithChildren = async (req, res) => {
           createdAt: parent.createdAt,
           status: parent.status,
           role: parent.role,
-        },
-        children: childrenWithDues,
+          children: childrenWithDues, // 👈 children are now nested here
+        }
       };
     }));
 
@@ -7761,6 +7691,7 @@ exports.parentsWithChildren = async (req, res) => {
     });
   }
 };
+
 
 
 exports.getAllParentsWithChildren = async (req, res) => {

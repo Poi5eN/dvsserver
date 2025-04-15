@@ -64,6 +64,7 @@ const studentSchema = new mongoose.Schema({
       "XI",
       "XII",
       "PASS OUT",
+      "Passout2025",
     ],
   },
   section: { type: String, required: false },

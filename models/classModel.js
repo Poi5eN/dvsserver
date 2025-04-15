@@ -13,6 +13,11 @@ const classSchema = new mongoose.Schema(
       default: uuidv4,
       unique: true,
     },
+    // className: {
+    //   type: String,
+    //   required: true,
+    //   match: /^(PRE NUR|NUR|LKG|UKG|I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|PASS OUT(?: \d{4})?)$/,
+    // },
     className: {
       type: String,
       required: true,
@@ -34,6 +39,7 @@ const classSchema = new mongoose.Schema(
         "XI",
         "XII",
         "PASS OUT",
+        "Passout2025",
       ],
     },
     sections: [

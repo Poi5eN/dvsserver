@@ -153,12 +153,20 @@ exports.createAdmin = async (req, res) => {
       schoolId,
       email,
       password: hashedPassword,
-      plainPassword: password, // Store plain-text password
       schoolName,
       slug,
       createdBy: superAdminId,
       image: imageObj,
       ...userFields,
+    });
+
+    // Save credentials in AdminCredentials model
+    await AdminCredentials.create({
+      adminId: schoolId,
+      email,
+      password, // Store plain-text password
+      schoolName,
+      createdBy: superAdminId,
     });
 
     const schoolImageUrl = imageObj.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
@@ -216,6 +224,41 @@ exports.createAdmin = async (req, res) => {
     await sendEmail(email, 'Your School Portal Credentials', emailContent);
 
     res.status(201).json({ success: true, message: 'Admin created successfully', admin });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+// controllers/superAdminController.js (updated getAdminsBySuperAdmin)
+exports.getAdminsBySuperAdmin = async (req, res) => {
+  try {
+    const { superAdminId } = req.params;
+    // Fetch admins created by the super admin
+    const admins = await AdminInfo.find({ createdBy: superAdminId });
+    
+    // Fetch corresponding credentials
+    const adminIds = admins.map(admin => admin.schoolId);
+    const credentials = await AdminCredentials.find({
+      adminId: { $in: adminIds },
+      createdBy: superAdminId,
+    }).select('+password');
+
+    // Map admins with their credentials
+    const responseAdmins = admins.map(admin => {
+      const credential = credentials.find(cred => cred.adminId === admin.schoolId);
+      return {
+        ...admin._doc,
+        password: credential ? credential.password : null, // Include plain-text password or null
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      totalAdmins: admins.length,
+      admins: responseAdmins,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

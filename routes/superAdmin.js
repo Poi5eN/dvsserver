@@ -29,5 +29,11 @@ router.post('/createReceptionist', singleUpload, createReceptionist);
 router.get('/receptionists/:superAdminId', getAllReceptionists);
 router.put('/receptionists/:userId/:superAdminId', singleUpload, updateReceptionist);
 router.delete('/receptionists/:userId/:superAdminId', deleteReceptionist);
+router.get('/admins/:superAdminId', (req, res, next) => {
+  if (req.user.role !== 'superadmin') {
+    return res.status(403).json({ success: false, message: 'Access denied: SuperAdmin only' });
+  }
+  next();
+}, getAdminsBySuperAdmin);
 
 module.exports = router;

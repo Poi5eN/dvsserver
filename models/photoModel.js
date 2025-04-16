@@ -1,12 +1,18 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
+// Updated Photo Schema
 const photoSchema = new mongoose.Schema({
   photoId: {
     type: String,
     required: true,
     unique: true,
     default: uuidv4,
+  },
+  photoNo: {
+    type: String,
+    required: true,
+    unique: true,
   },
   schoolId: {
     type: String,
@@ -18,11 +24,11 @@ const photoSchema = new mongoose.Schema({
   },
   studentName: {
     type: String,
-    required: false, // Changed to optional
+    required: false,
   },
   class: {
     type: String,
-    required: [true, "Please enter the class"],
+    required: false,
     enum: [
       "PRE NUR",
       "NUR",
@@ -41,11 +47,12 @@ const photoSchema = new mongoose.Schema({
       "XI",
       "XII",
       "PASS OUT",
+      null
     ],
   },
   section: {
     type: String,
-    required: [false, "Please enter the section"],
+    required: false,
   },
   studentImage: {
     public_id: { type: String, default: "" },
@@ -62,8 +69,8 @@ const photoSchema = new mongoose.Schema({
 });
 
 photoSchema.index({ photoId: 1 }, { unique: true });
-photoSchema.index({ schoolId: 1, session: 1, studentName: 1 }); // For efficient searching
-photoSchema.index({ schoolId: 1, session: 1, class: 1, section: 1 }); // For class/section queries
+photoSchema.index({ photoNo: 1 }, { unique: true });
+photoSchema.index({ schoolId: 1, session: 1, studentName: 1 });
+photoSchema.index({ schoolId: 1, session: 1, class: 1, section: 1 });
 
 const PhotoModel = mongoose.model("PhotoModel", photoSchema);
-module.exports = PhotoModel;

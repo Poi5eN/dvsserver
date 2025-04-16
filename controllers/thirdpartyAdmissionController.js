@@ -1458,6 +1458,21 @@ exports.linkStudentToParentThirdParty = async (req, res) => {
 
 
 
+// Function to generate DVS photo number
+const generatePhotoNumber = async () => {
+  const lastPhoto = await PhotoModel.findOne()
+    .sort({ photoNo: -1 })
+    .select("photoNo");
+  
+  let nextNumber = 1;
+  if (lastPhoto && lastPhoto.photoNo) {
+    const numberPart = parseInt(lastPhoto.photoNo.replace("DVS", ""));
+    nextNumber = numberPart + 1;
+  }
+  
+  return `DVS${nextNumber.toString().padStart(5, "0")}`;
+};
+
 /**
  * Create Initial Student Photo (Third-Party)
  */
@@ -1482,7 +1497,6 @@ exports.createInitialStudentPhoto = async (req, res) => {
       });
     }
 
-    // Debug logging
     console.log("Received schoolId:", schoolId);
     console.log("Assigned schools:", req.user.assignedSchools.map(s => s.schoolId));
 
@@ -1494,9 +1508,6 @@ exports.createInitialStudentPhoto = async (req, res) => {
         message: "You don't have access to create records for this school.",
       });
     }
-
-    if (!studentClass) return res.status(400).json({ success: false, message: "Class is required." });
-    if (!section) return res.status(400).json({ success: false, message: "Section is required." });
 
     const files = req.files || [];
     const studentFile = files.find(f => f.fieldname === "studentImage");
@@ -1517,13 +1528,16 @@ exports.createInitialStudentPhoto = async (req, res) => {
       return res.status(400).json({ success: false, message: "Student image is required." });
     }
 
+    const photoNo = await generatePhotoNumber();
+
     const photoData = await PhotoModel.create({
       photoId: uuidv4(),
+      photoNo,
       schoolId,
       session,
       studentName: studentName?.trim() || null,
-      class: studentClass,
-      section,
+      class: studentClass || null,
+      section: section || null,
       studentImage: studentImageResult,
       assignedThirdParty,
     });
@@ -1543,22 +1557,19 @@ exports.createInitialStudentPhoto = async (req, res) => {
   }
 };
 
-
 /**
  * Complete Admission from Photo (Third-Party)
  */
 exports.completeAdmissionFromPhoto = async (req, res) => {
   try {
-    // Debug: Log raw inputs
     console.log("completeAdmissionFromPhoto - req.body:", req.body);
     console.log("completeAdmissionFromPhoto - req.files:", req.files);
     console.log("completeAdmissionFromPhoto - req.user:", req.user);
 
-    const { photoId, schoolId, parentContact } = req.body;
+    const { photoId, schoolId, parentContact, studentName, class: studentClass, section } = req.body;
     const session = req.user?.session || "2025-2026";
     const assignedThirdPartyId = req.user?.userId || req.user?._id;
 
-    // Validate user
     if (!req.user || !assignedThirdPartyId) {
       console.error("User data missing:", { user: req.user });
       return res.status(401).json({
@@ -1567,7 +1578,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       });
     }
 
-    // Get createdBy ObjectId
     let createdBy = req.user._id;
     if (!mongoose.Types.ObjectId.isValid(createdBy)) {
       const thirdParty = await ThirdPartyUser.findOne({ userId: assignedThirdPartyId });
@@ -1581,7 +1591,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       createdBy = thirdParty._id;
     }
 
-    // Validate schoolId
     if (!schoolId) {
       console.error("schoolId is undefined or empty");
       return res.status(400).json({
@@ -1590,7 +1599,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       });
     }
 
-    // Check access
     const assignedSchools = Array.isArray(req.user.assignedSchools) ? req.user.assignedSchools : [];
     console.log("Received schoolId:", schoolId);
     console.log("Assigned schools:", assignedSchools.map(s => s.schoolId));
@@ -1603,7 +1611,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       });
     }
 
-    // Validate photoId
     if (!photoId) {
       console.error("photoId is undefined or empty");
       return res.status(400).json({
@@ -1612,7 +1619,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       });
     }
 
-    // Find photo record
     const photo = await PhotoModel.findOne({ photoId, schoolId });
     if (!photo) {
       return res.status(404).json({
@@ -1648,7 +1654,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
     if (!parentContact) return res.status(400).json({ success: false, message: "Parent contact is required." });
 
-    // Check for existing student
     const existingStudent = await NewStudentModel.findOne({ email: studentEmail, schoolId });
     if (existingStudent) {
       return res.status(400).json({
@@ -1657,11 +1662,9 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       });
     }
 
-    // Hash passwords
     const studentHashedPassword = await hashPassword(studentPassword);
     const parentHashedPassword = await hashPassword(parentPassword);
 
-    // Handle additional images
     const files = req.files || [];
     let fatherImageResult = { public_id: "", url: "" };
     let motherImageResult = { public_id: "", url: "" };
@@ -1690,17 +1693,20 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    // Generate admission numbers
     const studentAdmissionNumberToUse = studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
       ? studentAdmissionNumber
       : await generateAdmissionNumber(schoolId, NewStudentModel);
 
-    // Create student record
+    // Use provided values if available, else fall back to photo record
+    const finalStudentName = studentName?.trim() || photo.studentName || student_name || "Unknown";
+    const finalClass = studentClass || photo.class || studentUdiseClass || "Unknown";
+    const finalSection = section || photo.section || studentUdiseSection || null;
+
     const studentData = await NewStudentModel.create({
       studentId: uuidv4(),
       schoolId,
       session,
-      studentName: photo.studentName || student_name || "Unknown",
+      studentName: finalStudentName,
       email: studentEmail,
       password: studentHashedPassword,
       dateOfBirth: studentDateOfBirth,
@@ -1714,8 +1720,8 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       joiningDate: studentJoiningDate,
       address: studentAddress,
       contact: studentContact,
-      class: photo.class,
-      section: photo.section,
+      class: finalClass,
+      section: finalSection,
       country: studentCountry,
       subject: studentSubject ? studentSubject.split(",") : [],
       guardianName,
@@ -1797,12 +1803,11 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       },
     });
 
-    // Create or update parent record
     let parentData = null;
     if (parentAdmissionNumber) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId },
-        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: photo.studentName || student_name || "Unknown" } },
+        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: finalStudentName } },
         { new: true }
       );
       if (!parentData) {
@@ -1827,7 +1832,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
         schoolId,
         session,
         studentIds: [studentData._id],
-        studentNames: [photo.studentName || student_name || "Unknown"],
+        studentNames: [finalStudentName],
         fatherName,
         motherName,
         email: parentEmail,
@@ -1844,11 +1849,10 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
         income: parentIncome ? Number(parentIncome) : undefined,
         qualification: parentQualification,
         guardianName,
-        createdBy, // Use ObjectId
+        createdBy,
       });
     }
 
-    // Link parent to student
     if (parentData) {
       studentData.parentId = parentData._id.toString();
       studentData.parentAdmissionNumber = parentData.admissionNumber;
@@ -1858,7 +1862,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
     }
 
-    // Send student email
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
     const schoolName = schoolDetails?.schoolName || 'Your School';
     const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
@@ -1874,7 +1877,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
               <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
@@ -1882,22 +1884,20 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
               <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your Learning Journey!</p>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
-              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${photo.studentName || 'Student'}!</h2>
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${finalStudentName}!</h2>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been submitted and is awaiting approval.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${photo.studentName || 'N/A'}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${photo.class}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${finalStudentName}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${finalClass}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
               </div>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Hang tight! We’re reviewing your details and will notify you once approved. Your journey starts on ${studentJoiningDate}.</p>
             </td>
           </tr>
-          <!-- Footer -->
           <tr>
             <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
               <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -1916,7 +1916,6 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     `;
     await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
 
-    // Delete photo record
     await PhotoModel.deleteOne({ photoId });
 
     return res.status(201).json({
@@ -1940,13 +1939,11 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
  */
 exports.getPhotoRecords = async (req, res) => {
   try {
-    // Debug: Log query parameters
     console.log("getPhotoRecords - req.query:", req.query);
     console.log("getPhotoRecords - req.user:", req.user);
 
-    const { schoolId, studentName, class: studentClass, section, page = 1, limit = 10 } = req.query;
+    const { schoolId, studentName, class: studentClass, section, photoNo, page = 1, limit = 10 } = req.query;
 
-    // Validate user
     if (!req.user || !req.user.session) {
       console.error("User data missing:", { user: req.user });
       return res.status(401).json({
@@ -1955,7 +1952,6 @@ exports.getPhotoRecords = async (req, res) => {
       });
     }
 
-    // Validate assignedSchools
     if (!Array.isArray(req.user.assignedSchools)) {
       console.error("assignedSchools is not an array:", req.user.assignedSchools);
       return res.status(500).json({
@@ -1964,7 +1960,6 @@ exports.getPhotoRecords = async (req, res) => {
       });
     }
 
-    // Debug logging
     console.log("Received schoolId:", schoolId);
     console.log("Assigned schools:", req.user.assignedSchools.map(s => s.schoolId));
 
@@ -1982,13 +1977,11 @@ exports.getPhotoRecords = async (req, res) => {
       filterSchoolIds = [schoolId];
     }
 
-    // Build query
     const query = {
       schoolId: { $in: filterSchoolIds },
       session: req.user.session,
     };
 
-    // Add optional filters
     if (studentName) {
       query.studentName = { $regex: studentName.trim(), $options: "i" };
     }
@@ -1998,15 +1991,16 @@ exports.getPhotoRecords = async (req, res) => {
     if (section) {
       query.section = section;
     }
+    if (photoNo) {
+      query.photoNo = photoNo.trim();
+    }
 
-    // Pagination
     const parsedPage = parseInt(page) || 1;
     const parsedLimit = parseInt(limit) || 10;
     const skip = (parsedPage - 1) * parsedLimit;
 
-    // Execute query
     const photos = await PhotoModel.find(query)
-      .select("photoId schoolId session studentName class section studentImage createdAt assignedThirdParty")
+      .select("photoId photoNo schoolId session studentName class section studentImage createdAt assignedThirdParty")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parsedLimit)

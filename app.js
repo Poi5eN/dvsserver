@@ -17,6 +17,7 @@ const corsOptions = {
     'https://digitalvidyasaarthi.netlify.app',
     'https://superdvs.netlify.app',
     'https://dvsschool.netlify.app',
+    'https://dvssuperadmin.netlify.app',
     'https://corplyxsuperadmin.netlify.app' // Add your new frontend URL here
   ],
   credentials: true, // Include cookies and authentication headers

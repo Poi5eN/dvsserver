@@ -264,24 +264,24 @@ exports.getAdminsBySuperAdmin = async (req, res) => {
   }
 };
 
-// Get admins created by a specific SuperAdmin
-// Get Admins by SuperAdmin
-exports.getAdminsBySuperAdmin = async (req, res) => {
-  try {
-    const { superAdminId } = req.params;
-    const admins = await AdminInfo.find({ createdBy: superAdminId }).select('+plainPassword');
-    res.status(200).json({
-      success: true,
-      totalAdmins: admins.length,
-      admins: admins.map(admin => ({
-        ...admin._doc,
-        password: admin.plainPassword, // Return plain-text password as 'password'
-      })),
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+// // Get admins created by a specific SuperAdmin
+// // Get Admins by SuperAdmin
+// exports.getAdminsBySuperAdmin = async (req, res) => {
+//   try {
+//     const { superAdminId } = req.params;
+//     const admins = await AdminInfo.find({ createdBy: superAdminId }).select('+plainPassword');
+//     res.status(200).json({
+//       success: true,
+//       totalAdmins: admins.length,
+//       admins: admins.map(admin => ({
+//         ...admin._doc,
+//         password: admin.plainPassword, // Return plain-text password as 'password'
+//       })),
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
 
 // In your updateAdmin controller
 // Modified createThirdPartyUser to include createdBy

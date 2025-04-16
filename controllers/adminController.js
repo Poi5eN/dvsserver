@@ -1288,6 +1288,234 @@ exports.editLateFineFee = async (req, res) => {
   }
 };
 
+
+
+// Bulk create fee structures (Regular, Additional, or Student-Specific)
+exports.bulkCreateFees = async (req, res) => {
+  try {
+    const { fees } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    if (!Array.isArray(fees) || fees.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Fees array is required and cannot be empty.",
+      });
+    }
+
+    const createdFees = [];
+    const errors = [];
+
+    for (const fee of fees) {
+      const { className, studentId, feeType, amount, name, lateFineDueDay } = fee;
+
+      // Validate required fields
+      if (!feeType || !amount || amount <= 0) {
+        errors.push({ fee, message: "Fee type and valid amount are required." });
+        continue;
+      }
+
+      // Handle student-specific fees
+      if (studentId) {
+        const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+        if (!student) {
+          errors.push({ fee, message: `Student with ID ${studentId} not found.` });
+          continue;
+        }
+
+        const feesExist = await FeeStructure.findOne({
+          schoolId,
+          session,
+          studentId,
+          feeType,
+          additional: !!name,
+          ...(name ? { name } : {}),
+        });
+
+        if (feesExist) {
+          errors.push({ fee, message: `Student-specific fee for ${feeType}${name ? ` (${name})` : ""} already exists.` });
+          continue;
+        }
+
+        const feeStructure = new FeeStructure({
+          schoolId,
+          session,
+          className: student.class,
+          name: name || undefined,
+          feeType,
+          amount,
+          additional: !!name,
+          studentId,
+          updatedBy,
+        });
+
+        await feeStructure.save();
+        createdFees.push(feeStructure);
+      } else {
+        // Handle class-wise fees (Regular or Additional)
+        if (!className) {
+          errors.push({ fee, message: "Class name is required for non-student-specific fees." });
+          continue;
+        }
+
+        // Additional fee validation
+        if (name && !fee.additional) {
+          errors.push({ fee, message: "Additional fees must have additional set to true." });
+          continue;
+        }
+
+        // Late fine validation
+        if (feeType === "LateFine") {
+          if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
+            errors.push({ fee, message: "Late fine due day must be between 1 and 31." });
+            continue;
+          }
+        }
+
+        const feesExist = await FeeStructure.findOne({
+          schoolId,
+          session,
+          className,
+          feeType,
+          additional: !!name,
+          ...(name ? { name } : {}),
+        });
+
+        if (feesExist) {
+          errors.push({ fee, message: `Fee for ${feeType}${name ? ` (${name})` : ""} already exists for this class.` });
+          continue;
+        }
+
+        const feeStructure = new FeeStructure({
+          schoolId,
+          session,
+          className,
+          name: name || undefined,
+          feeType,
+          amount,
+          additional: !!name,
+          ...(lateFineDueDay ? { lateFineDueDay } : {}),
+          updatedBy,
+        });
+
+        await feeStructure.save();
+        createdFees.push(feeStructure);
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Bulk fee creation processed.",
+      data: createdFees,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    console.error("Error in bulkCreateFees:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to process bulk fee creation.",
+      error: error.message,
+    });
+  }
+};
+
+// Bulk edit fee structures
+exports.bulkEditFees = async (req, res) => {
+  try {
+    const { fees } = req.body;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const updatedBy = req.user._id;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    if (!Array.isArray(fees) || fees.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Fees array is required and cannot be empty.",
+      });
+    }
+
+    const updatedFees = [];
+    const errors = [];
+
+    for (const fee of fees) {
+      const { feeStructureId, amount, lateFineDueDay } = fee;
+
+      if (!feeStructureId) {
+        errors.push({ fee, message: "Fee structure ID is required." });
+        continue;
+      }
+
+      const existingFee = await FeeStructure.findOne({
+        feeStructureId,
+        schoolId,
+        session,
+      });
+
+      if (!existingFee) {
+        errors.push({ fee, message: `Fee structure with ID ${feeStructureId} not found.` });
+        continue;
+      }
+
+      // Validate updates
+      if (amount !== undefined && amount <= 0) {
+        errors.push({ fee, message: "Valid amount is required." });
+        continue;
+      }
+
+      if (existingFee.feeType === "LateFine" && lateFineDueDay !== undefined) {
+        if (lateFineDueDay < 1 || lateFineDueDay > 31) {
+          errors.push({ fee, message: "Late fine due day must be between 1 and 31." });
+          continue;
+        }
+      }
+
+      const updateData = {};
+      if (amount !== undefined) updateData.amount = amount;
+      if (lateFineDueDay !== undefined) updateData.lateFineDueDay = lateFineDueDay;
+      updateData.updatedBy = updatedBy;
+      updateData.updatedAt = new Date();
+
+      const updatedFee = await FeeStructure.findOneAndUpdate(
+        { feeStructureId, schoolId, session },
+        { $set: updateData },
+        { new: true, runValidators: true }
+      );
+
+      updatedFees.push(updatedFee);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Bulk fee edit processed.",
+      data: updatedFees,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    console.error("Error in bulkEditFees:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to process bulk fee edit.",
+      error: error.message,
+    });
+  }
+};
+
 // --------------------------------Book Controller
 
 // Create a Book Details for a class

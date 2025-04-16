@@ -44,8 +44,13 @@ router.post('/link', verifyToken, thirdpartyAdmissionController.linkStudentToPar
 
 
 // NEW PHOTOS AND DOCUMENTS UPLOAD ROUTES
-router.post('/photo', verifyToken, thirdpartyAdmissionController.createInitialStudentPhoto);
-router.post('/completeadmission', verifyToken, thirdpartyAdmissionController.completeAdmissionFromPhoto);
-router.get('/photorecords', verifyToken, thirdpartyAdmissionController.getPhotoRecords);
+router.post('/photo', verifyToken, uploads, thirdpartyAdmissionController.createInitialStudentPhoto);
+router.post('/completeadmission', verifyToken, uploads, thirdpartyAdmissionController.completeAdmissionFromPhoto);
+router.get('/photorecords', verifyToken, uploads, thirdpartyAdmissionController.getPhotoRecords);
+
+
+
+// NEW TOGGLE PRINTED THIRD PARTY ROUTES
+router.put('/printed', verifyToken, thirdpartyAdmissionController.toggleIsPrinted);
 
 module.exports = router;

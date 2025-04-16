@@ -45,7 +45,7 @@ const photoSchema = new mongoose.Schema({
   },
   section: {
     type: String,
-    required: [true, "Please enter the section"],
+    required: [false, "Please enter the section"],
   },
   studentImage: {
     public_id: { type: String, default: "" },

@@ -10,6 +10,7 @@ const s3 = require('../config/minio');
 const getDataUri = require("../utils/dataUri");
 const { generateStructuredNumber } = require('../utils/numberGenerator');
 const mongoose = require("mongoose");
+const ThirdPartyUser = require('../models/thirdPartyModel');
 const { v4: uuidv4 } = require("uuid");
 
 // Generate Admission Number
@@ -1542,20 +1543,72 @@ exports.createInitialStudentPhoto = async (req, res) => {
   }
 };
 
+
 /**
  * Complete Admission from Photo (Third-Party)
  */
 exports.completeAdmissionFromPhoto = async (req, res) => {
   try {
-    const { photoId, schoolId } = req.body;
-    const session = req.user.session;
+    // Debug: Log raw inputs
+    console.log("completeAdmissionFromPhoto - req.body:", req.body);
+    console.log("completeAdmissionFromPhoto - req.files:", req.files);
+    console.log("completeAdmissionFromPhoto - req.user:", req.user);
+
+    const { photoId, schoolId, parentContact } = req.body;
+    const session = req.user?.session || "2025-2026";
+    const assignedThirdPartyId = req.user?.userId || req.user?._id;
+
+    // Validate user
+    if (!req.user || !assignedThirdPartyId) {
+      console.error("User data missing:", { user: req.user });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication data is missing or invalid.",
+      });
+    }
+
+    // Get createdBy ObjectId
+    let createdBy = req.user._id;
+    if (!mongoose.Types.ObjectId.isValid(createdBy)) {
+      const thirdParty = await ThirdPartyUser.findOne({ userId: assignedThirdPartyId });
+      if (!thirdParty) {
+        console.error("Third-party user not found for userId:", assignedThirdPartyId);
+        return res.status(401).json({
+          success: false,
+          message: "Authenticated third-party user not found.",
+        });
+      }
+      createdBy = thirdParty._id;
+    }
+
+    // Validate schoolId
+    if (!schoolId) {
+      console.error("schoolId is undefined or empty");
+      return res.status(400).json({
+        success: false,
+        message: "School ID is required.",
+      });
+    }
 
     // Check access
-    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    const assignedSchools = Array.isArray(req.user.assignedSchools) ? req.user.assignedSchools : [];
+    console.log("Received schoolId:", schoolId);
+    console.log("Assigned schools:", assignedSchools.map(s => s.schoolId));
+    const hasAccess = assignedSchools.some(s => s.schoolId === schoolId);
     if (!hasAccess) {
+      console.error("Access denied for schoolId:", schoolId);
       return res.status(403).json({
         success: false,
         message: "You don't have access to create admissions for this school.",
+      });
+    }
+
+    // Validate photoId
+    if (!photoId) {
+      console.error("photoId is undefined or empty");
+      return res.status(400).json({
+        success: false,
+        message: "Photo ID is required.",
       });
     }
 
@@ -1571,7 +1624,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     const {
       studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
       studentAddress, studentContact, studentCountry, studentSubject,
-      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
+      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword,
       parentIncome, parentQualification, religion, caste, nationality, pincode, state, city,
       studentAdmissionNumber, parentAdmissionNumber, rollNo,
       // UDISE+ fields
@@ -1593,6 +1646,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
     if (!parentEmail) return res.status(400).json({ success: false, message: "Parent email is required." });
     if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
+    if (!parentContact) return res.status(400).json({ success: false, message: "Parent contact is required." });
 
     // Check for existing student
     const existingStudent = await NewStudentModel.findOne({ email: studentEmail, schoolId });
@@ -1609,7 +1663,10 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
 
     // Handle additional images
     const files = req.files || [];
-    let fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
+    let fatherImageResult = { public_id: "", url: "" };
+    let motherImageResult = { public_id: "", url: "" };
+    let guardianImageResult = { public_id: "", url: "" };
+
     const fatherFile = files.find(f => f.fieldname === "fatherImage");
     const motherFile = files.find(f => f.fieldname === "motherImage");
     const guardianFile = files.find(f => f.fieldname === "guardianImage");
@@ -1643,13 +1700,13 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       studentId: uuidv4(),
       schoolId,
       session,
-      studentName: photo.studentName,
+      studentName: photo.studentName || student_name || "Unknown",
       email: studentEmail,
       password: studentHashedPassword,
       dateOfBirth: studentDateOfBirth,
       motherName,
       fatherName,
-      parentContact: parentContact,
+      parentContact,
       role: "student",
       rollNo,
       status: "active",
@@ -1666,9 +1723,9 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       transport,
       base64: undefined,
       studentImage: photo.studentImage,
-      fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
-      motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
-      guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+      fatherImage: fatherImageResult,
+      motherImage: motherImageResult,
+      guardianImage: guardianImageResult,
       admissionNumber: studentAdmissionNumberToUse,
       isGenerated: !studentAdmissionNumber,
       religion,
@@ -1679,8 +1736,8 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       city,
       approvalStatus: "pending",
       isNewAdmission: true,
-      assignedThirdParty: req.user.userId,
-      photoId: photoId, // Link to photoId
+      assignedThirdParty: assignedThirdPartyId,
+      photoId,
       udisePlusDetails: {
         stu_id,
         class: studentUdiseClass,
@@ -1745,7 +1802,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     if (parentAdmissionNumber) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId },
-        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: photo.studentName } },
+        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: photo.studentName || student_name || "Unknown" } },
         { new: true }
       );
       if (!parentData) {
@@ -1756,7 +1813,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       }
     } else {
       const parentFile = files.find(f => f.fieldname === "parentImage");
-      let parentImageResult = {};
+      let parentImageResult = { public_id: "", url: "" };
       if (parentFile) {
         const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
         const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
@@ -1770,7 +1827,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
         schoolId,
         session,
         studentIds: [studentData._id],
-        studentNames: [photo.studentName],
+        studentNames: [photo.studentName || student_name || "Unknown"],
         fatherName,
         motherName,
         email: parentEmail,
@@ -1778,16 +1835,16 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
         status: "active",
         contact: parentContact,
         role: "parent",
-        parentImage: parentImageResult.url ? parentImageResult : { public_id: "", url: "" },
-        fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
-        motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
-        guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+        parentImage: parentImageResult,
+        fatherImage: fatherImageResult,
+        motherImage: motherImageResult,
+        guardianImage: guardianImageResult,
         admissionNumber: parentAdmissionNumberGenerated,
         base64: undefined,
         income: parentIncome ? Number(parentIncome) : undefined,
         qualification: parentQualification,
         guardianName,
-        createdBy: req.user._id || mongoose.Types.ObjectId(req.user.userId),
+        createdBy, // Use ObjectId
       });
     }
 
@@ -1801,7 +1858,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
     }
 
-    // Send student email (same as createAdmission)
+    // Send student email
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
     const schoolName = schoolDetails?.schoolName || 'Your School';
     const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
@@ -1828,11 +1885,11 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
           <!-- Body -->
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
-              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${photo.studentName}!</h2>
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${photo.studentName || 'Student'}!</h2>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been submitted and is awaiting approval.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${photo.studentName}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${photo.studentName || 'N/A'}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${photo.class}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
@@ -1859,7 +1916,7 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     `;
     await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
 
-    // Optionally delete photo record after successful admission
+    // Delete photo record
     await PhotoModel.deleteOne({ photoId });
 
     return res.status(201).json({
@@ -1878,21 +1935,45 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
   }
 };
 
-
 /**
  * Get Photo Records (Third-Party)
  */
 exports.getPhotoRecords = async (req, res) => {
   try {
-    // Extract query parameters
+    // Debug: Log query parameters
+    console.log("getPhotoRecords - req.query:", req.query);
+    console.log("getPhotoRecords - req.user:", req.user);
+
     const { schoolId, studentName, class: studentClass, section, page = 1, limit = 10 } = req.query;
 
-    // Validate user access
+    // Validate user
+    if (!req.user || !req.user.session) {
+      console.error("User data missing:", { user: req.user });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication data is missing or invalid.",
+      });
+    }
+
+    // Validate assignedSchools
+    if (!Array.isArray(req.user.assignedSchools)) {
+      console.error("assignedSchools is not an array:", req.user.assignedSchools);
+      return res.status(500).json({
+        success: false,
+        message: "User schools data is invalid.",
+      });
+    }
+
+    // Debug logging
+    console.log("Received schoolId:", schoolId);
+    console.log("Assigned schools:", req.user.assignedSchools.map(s => s.schoolId));
+
     const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
     let filterSchoolIds = assignedSchoolIds;
 
     if (schoolId) {
       if (!assignedSchoolIds.includes(schoolId)) {
+        console.error("Access denied for schoolId:", schoolId);
         return res.status(403).json({
           success: false,
           message: "You do not have access to this school.",
@@ -1909,7 +1990,7 @@ exports.getPhotoRecords = async (req, res) => {
 
     // Add optional filters
     if (studentName) {
-      query.studentName = { $regex: studentName, $options: "i" }; // Case-insensitive search
+      query.studentName = { $regex: studentName.trim(), $options: "i" };
     }
     if (studentClass) {
       query.class = studentClass;
@@ -1919,14 +2000,14 @@ exports.getPhotoRecords = async (req, res) => {
     }
 
     // Pagination
-    const parsedPage = parseInt(page);
-    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page) || 1;
+    const parsedLimit = parseInt(limit) || 10;
     const skip = (parsedPage - 1) * parsedLimit;
 
     // Execute query
     const photos = await PhotoModel.find(query)
       .select("photoId schoolId session studentName class section studentImage createdAt assignedThirdParty")
-      .sort({ createdAt: -1 }) // Newest first
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parsedLimit)
       .lean();
@@ -1948,6 +2029,64 @@ exports.getPhotoRecords = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch photo records.",
+      error: error.message,
+    });
+  }
+};
+
+
+
+exports.toggleIsPrinted = async (req, res) => {
+  try {
+    const { studentIds, isPrinted, schoolId } = req.body;
+    const session = req.user?.session || "2025-2026";
+
+    // Validate payload
+    if (!Array.isArray(studentIds) || typeof isPrinted !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payload. 'studentIds' must be an array and 'isPrinted' a boolean.",
+      });
+    }
+
+    // Validate schoolId
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID is required.",
+      });
+    }
+
+    // Check access
+    const assignedSchools = Array.isArray(req.user.assignedSchools) ? req.user.assignedSchools : [];
+    const hasAccess = assignedSchools.some(s => s.schoolId === schoolId);
+    if (!hasAccess) {
+      console.error("Access denied for schoolId:", schoolId);
+      return res.status(403).json({
+        success: false,
+        message: "You don't have access to update students for this school.",
+      });
+    }
+
+    // Update students
+    const result = await NewStudentModel.updateMany(
+      {
+        studentId: { $in: studentIds },
+        schoolId,
+        $or: [{ session }, { sessionHistory: session }],
+      },
+      { $set: { isPrinted } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `Updated ${result.modifiedCount} student(s)`,
+    });
+  } catch (error) {
+    console.error("Error in toggleIsPrinted:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error updating print status.",
       error: error.message,
     });
   }

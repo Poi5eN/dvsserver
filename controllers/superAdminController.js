@@ -6,6 +6,7 @@ const { hashPassword } = require('./authController');
 const { v4: uuidv4 } = require('uuid');
 const sendEmail = require('../utils/email');
 const ThirdPartyUser = require('../models/thirdPartyModel');
+const AdminCredentials = require('../models/adminCredentialsModel');
 const ReceptionistModel = require('../models/receptionistModel'); // New import
 const s3 = require('../config/minio');
 const AdminInfo = require('../models/adminModel');

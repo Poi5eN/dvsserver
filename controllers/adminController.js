@@ -9237,7 +9237,6 @@ exports.createClass = async (req, res) => {
 };
 
 // Get all classes
-// Get all classes
 exports.getAllClasses = async (req, res) => {
   try {
     // Define the class order
@@ -9271,9 +9270,14 @@ exports.getAllClasses = async (req, res) => {
     const sortedClasses = classes
       .map((cls) => ({
         ...cls,
-        sections: cls.sections ? cls.sections.sort() : [], // Sort sections alphabetically
+        sections: cls.sections ? [...new Set(cls.sections)].sort() : [], // Sort sections and remove duplicates
       }))
-      .sort((a, b) => classOrder.indexOf(a.className) - classOrder.indexOf(b.className));
+      .sort((a, b) => {
+        const aIndex = classOrder.indexOf(a.className);
+        const bIndex = classOrder.indexOf(b.className);
+        // Handle cases where className is not in classOrder (put at the end)
+        return aIndex === -1 ? (bIndex === -1 ? 0 : 1) : bIndex === -1 ? -1 : aIndex - bIndex;
+      });
 
     // Format classes as className-section (e.g., I-A, I-B)
     const formattedClasses = sortedClasses.flatMap((cls) =>
@@ -9361,6 +9365,7 @@ exports.updateClass = async (req, res) => {
       });
     }
 
+    // Check for className conflicts
     if (className && className !== classToUpdate.className) {
       const existingClass = await classModel.findOne({
         schoolId: req.user.schoolId,
@@ -9372,11 +9377,22 @@ exports.updateClass = async (req, res) => {
           message: "Another class with this name already exists",
         });
       }
+      classToUpdate.className = className;
     }
 
-    if (className) classToUpdate.className = className;
-    if (sections.length > 0) classToUpdate.sections = sections;
-    if (subjects.length > 0) classToUpdate.subjects = subjects;
+    // Merge sections (add new ones, keep existing ones)
+    if (sections.length > 0) {
+      const existingSections = classToUpdate.sections || [];
+      const updatedSections = [...new Set([...existingSections, ...sections])]; // Remove duplicates
+      classToUpdate.sections = updatedSections.sort(); // Sort alphabetically
+    }
+
+    // Merge subjects (add new ones, keep existing ones)
+    if (subjects.length > 0) {
+      const existingSubjects = classToUpdate.subjects || [];
+      const updatedSubjects = [...new Set([...existingSubjects, ...subjects])];
+      classToUpdate.subjects = updatedSubjects;
+    }
 
     const updatedClass = await classToUpdate.save();
 

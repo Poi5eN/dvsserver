@@ -927,28 +927,55 @@ exports.generateFeeReceipt = async (req, res) => {
         0
       );
 
+      // Fetch fee structures for all students
+      const feeStructures = await FeeStructure.find({
+        schoolId,
+        $or: [
+          { studentId: { $in: studentIds } },
+          { className: { $in: students.map((s) => s.class) }, studentId: { $exists: false } },
+        ],
+      }).lean();
+
       receiptData.students.push({
         studentNames,
         classes,
         admissionNumbers,
         feeDetails: {
-          regularFees: feeHistoryEntries.flatMap((entry) =>
-            entry.feeHistory.regularFees.map((fee) => ({
-              month: fee.month,
-              paidAmount: fee.paidAmount,
-              dueAmount: fee.dueAmount,
-              status: fee.status,
-            }))
-          ),
-          additionalFees: feeHistoryEntries.flatMap((entry) =>
-            entry.feeHistory.additionalFees.map((fee) => ({
-              name: fee.name,
-              month: fee.month || "N/A",
-              paidAmount: fee.paidAmount,
-              dueAmount: fee.dueAmount,
-              status: fee.status,
-            }))
-          ),
+          regularFees: feeHistoryEntries.flatMap((entry) => {
+            const student = students.find((s) => s.studentId === entry.studentId);
+            return entry.feeHistory.regularFees.map((fee) => {
+              const feeStructure = feeStructures.find(
+                (fs) =>
+                  (!fs.studentId && fs.className === student.class && !fs.additional) ||
+                  (fs.studentId === student.studentId && !fs.additional)
+              );
+              return {
+                month: fee.month,
+                paidAmount: fee.paidAmount,
+                dueAmount: fee.dueAmount,
+                status: fee.status,
+                feeStructureAmount: feeStructure ? feeStructure.amount : 0,
+              };
+            });
+          }),
+          additionalFees: feeHistoryEntries.flatMap((entry) => {
+            const student = students.find((s) => s.studentId === entry.studentId);
+            return entry.feeHistory.additionalFees.map((fee) => {
+              const feeStructure = feeStructures.find(
+                (fs) =>
+                  (fs.studentId === student.studentId && fs.name === fee.name && fs.additional) ||
+                  (!fs.studentId && fs.className === student.class && fs.name === fee.name && fs.additional)
+              );
+              return {
+                name: fee.name,
+                month: fee.month || "N/A",
+                paidAmount: fee.paidAmount,
+                dueAmount: fee.dueAmount,
+                status: fee.status,
+                feeStructureAmount: feeStructure ? feeStructure.amount : 0,
+              };
+            });
+          }),
           pastDuesPaid: feeHistoryEntries.reduce(
             (sum, e) => sum + (e.feeHistory.pastDuesPaid || 0),
             0
@@ -969,24 +996,49 @@ exports.generateFeeReceipt = async (req, res) => {
       const student = students[0];
       const entry = feeHistoryEntries[0];
 
+      // Fetch fee structure for the student
+      const feeStructures = await FeeStructure.find({
+        schoolId,
+        $or: [
+          { studentId: student.studentId },
+          { className: student.class, studentId: { $exists: false } },
+        ],
+      }).lean();
+
       receiptData.students.push({
         studentName: student.studentName,
         class: student.class,
         admissionNumber: student.admissionNumber,
         feeDetails: {
-          regularFees: entry.feeHistory.regularFees.map((fee) => ({
-            month: fee.month,
-            paidAmount: fee.paidAmount,
-            dueAmount: fee.dueAmount,
-            status: fee.status,
-          })),
-          additionalFees: entry.feeHistory.additionalFees.map((fee) => ({
-            name: fee.name,
-            month: fee.month || "N/A",
-            paidAmount: fee.paidAmount,
-            dueAmount: fee.dueAmount,
-            status: fee.status,
-          })),
+          regularFees: entry.feeHistory.regularFees.map((fee) => {
+            const feeStructure = feeStructures.find(
+              (fs) =>
+                (!fs.studentId && fs.className === student.class && !fs.additional) ||
+                (fs.studentId === student.studentId && !fs.additional)
+            );
+            return {
+              month: fee.month,
+              paidAmount: fee.paidAmount,
+              dueAmount: fee.dueAmount,
+              status: fee.status,
+              feeStructureAmount: feeStructure ? feeStructure.amount : 0,
+            };
+          }),
+          additionalFees: entry.feeHistory.additionalFees.map((fee) => {
+            const feeStructure = feeStructures.find(
+              (fs) =>
+                (fs.studentId === student.studentId && fs.name === fee.name && fs.additional) ||
+                (!fs.studentId && fs.className === student.class && fs.name === fee.name && fs.additional)
+            );
+            return {
+              name: fee.name,
+              month: fee.month || "N/A",
+              paidAmount: fee.paidAmount,
+              dueAmount: fee.dueAmount,
+              status: fee.status,
+              feeStructureAmount: feeStructure ? feeStructure.amount : 0,
+            };
+          }),
           pastDuesPaid: entry.feeHistory.pastDuesPaid || 0,
           totalFeeAmount: entry.feeHistory.totalFeeAmount || 0,
           totalAmountPaid: entry.feeHistory.totalAmountPaid || 0,

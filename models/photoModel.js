@@ -74,3 +74,5 @@ photoSchema.index({ schoolId: 1, session: 1, studentName: 1 });
 photoSchema.index({ schoolId: 1, session: 1, class: 1, section: 1 });
 
 const PhotoModel = mongoose.model("PhotoModel", photoSchema);
+
+module.exports = PhotoModel;

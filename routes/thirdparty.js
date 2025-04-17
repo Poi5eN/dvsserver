@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const thirdpartyAdmissionController = require('../controllers/thirdpartyAdmissionController');
 const { uploads } = require('../middleware/multer');
+const photoUpload = require("../middleware/photoUploadMiddleware");
 const { convertImagesToBase64 } = require('../middleware/imageUpload');
 const verifyToken = require('../middleware/auth');
 
@@ -44,7 +45,7 @@ router.post('/link', verifyToken, thirdpartyAdmissionController.linkStudentToPar
 
 
 // NEW PHOTOS AND DOCUMENTS UPLOAD ROUTES
-router.post('/photo', verifyToken, uploads, thirdpartyAdmissionController.createInitialStudentPhoto);
+router.post("/photo", verifyToken, photoUpload, thirdpartyAdmissionController.createInitialStudentPhoto);
 router.post('/completeadmission', verifyToken, uploads, thirdpartyAdmissionController.completeAdmissionFromPhoto);
 router.get('/photorecords', verifyToken, uploads, thirdpartyAdmissionController.getPhotoRecords);
 

@@ -9237,7 +9237,71 @@ exports.createClass = async (req, res) => {
 };
 
 // Get all classes
-exports.getAllClasses = async (req, res) => {
+// exports.getAllClasses = async (req, res) => {
+//   try {
+//     // Define the class order
+//     const classOrder = [
+//       "PRE NUR",
+//       "NUR",
+//       "LKG",
+//       "UKG",
+//       "I",
+//       "II",
+//       "III",
+//       "IV",
+//       "V",
+//       "VI",
+//       "VII",
+//       "VIII",
+//       "IX",
+//       "X",
+//       "XI",
+//       "XII",
+//       "PASS OUT",
+//     ];
+
+//     const classes = await classModel
+//       .find({
+//         schoolId: req.user.schoolId,
+//       })
+//       .lean();
+
+//     // Sort classes by className based on classOrder and sort sections alphabetically
+//     const sortedClasses = classes
+//       .map((cls) => ({
+//         ...cls,
+//         sections: cls.sections ? [...new Set(cls.sections)].sort() : [], // Sort sections and remove duplicates
+//       }))
+//       .sort((a, b) => {
+//         const aIndex = classOrder.indexOf(a.className);
+//         const bIndex = classOrder.indexOf(b.className);
+//         // Handle cases where className is not in classOrder (put at the end)
+//         return aIndex === -1 ? (bIndex === -1 ? 0 : 1) : bIndex === -1 ? -1 : aIndex - bIndex;
+//       });
+
+//     // Format classes as className-section (e.g., I-A, I-B)
+//     const formattedClasses = sortedClasses.flatMap((cls) =>
+//       cls.sections.map((section) => ({
+//         ...cls,
+//         displayName: `${cls.className}-${section}`,
+//         section,
+//       }))
+//     );
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Class list fetched successfully",
+//       classes: formattedClasses,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching class list",
+//       error: error.message,
+//     });
+//   }
+// };
+exports.getClassesGrouped = async (req, res) => {
   try {
     // Define the class order
     const classOrder = [
@@ -9270,33 +9334,20 @@ exports.getAllClasses = async (req, res) => {
     const sortedClasses = classes
       .map((cls) => ({
         ...cls,
-        sections: cls.sections ? [...new Set(cls.sections)].sort() : [], // Sort sections and remove duplicates
+        sections: cls.sections ? cls.sections.sort() : [], // Sort sections alphabetically
+        order: classOrder.indexOf(cls.className), // Optional: Add order for sorting
       }))
-      .sort((a, b) => {
-        const aIndex = classOrder.indexOf(a.className);
-        const bIndex = classOrder.indexOf(b.className);
-        // Handle cases where className is not in classOrder (put at the end)
-        return aIndex === -1 ? (bIndex === -1 ? 0 : 1) : bIndex === -1 ? -1 : aIndex - bIndex;
-      });
-
-    // Format classes as className-section (e.g., I-A, I-B)
-    const formattedClasses = sortedClasses.flatMap((cls) =>
-      cls.sections.map((section) => ({
-        ...cls,
-        displayName: `${cls.className}-${section}`,
-        section,
-      }))
-    );
+      .sort((a, b) => a.order - b.order);
 
     res.status(200).json({
       success: true,
-      message: "Class list fetched successfully",
-      classes: formattedClasses,
+      message: "Grouped class list fetched successfully",
+      classes: sortedClasses,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error fetching class list",
+      message: "Error fetching grouped class list",
       error: error.message,
     });
   }

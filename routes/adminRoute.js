@@ -17,7 +17,8 @@ router.put('/admin', verifyToken, uploads, admin.updateAdmin);
 
 // CLASS RELATED ROUTES FLOW
 router.post('/class', verifyToken, admin.createClass);
-router.get('/class', verifyToken, admin.getAllClasses);
+// router.get('/class', verifyToken, admin.getAllClasses);
+router.get('/class', verifyToken, admin.getClassesGrouped);
 router.get('/class/:classId', verifyToken, admin.getClassById);
 router.put('/class/:classId', verifyToken, admin.updateClass);
 router.delete('/class/:classId', verifyToken, admin.deleteClass);

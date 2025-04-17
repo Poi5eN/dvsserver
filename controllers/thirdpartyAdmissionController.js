@@ -1522,10 +1522,24 @@ exports.createInitialStudentPhoto = async (req, res) => {
         ContentType: studentFile.mimetype,
         ACL: "public-read",
       };
-      const minioData = await s3.upload(params).promise();
-      studentImageResult = { public_id: fileKey, url: minioData.Location };
+      try {
+        const minioData = await s3.upload(params).promise();
+        studentImageResult = { public_id: fileKey, url: minioData.Location };
+      } catch (s3Error) {
+        console.error("MinIO upload error:", s3Error);
+        if (s3Error.statusCode === 413) {
+          return res.status(413).json({
+            success: false,
+            message: "Image file is too large. Maximum size is 10 MB.",
+          });
+        }
+        throw s3Error;
+      }
     } else {
-      return res.status(400).json({ success: false, message: "Student image is required." });
+      return res.status(400).json({
+        success: false,
+        message: "Student image is required.",
+      });
     }
 
     const photoNo = await generatePhotoNumber();
@@ -1677,20 +1691,53 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     if (fatherFile) {
       const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
       const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
-      const minioData = await s3.upload(params).promise();
-      fatherImageResult = { public_id: fileKey, url: minioData.Location };
+      try {
+        const minioData = await s3.upload(params).promise();
+        fatherImageResult = { public_id: fileKey, url: minioData.Location };
+      } catch (s3Error) {
+        console.error("MinIO upload error:", s3Error);
+        if (s3Error.statusCode === 413) {
+          return res.status(413).json({
+            success: false,
+            message: "Father image file is too large. Maximum size is 10 MB.",
+          });
+        }
+        throw s3Error;
+      }
     }
     if (motherFile) {
       const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
       const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
-      const minioData = await s3.upload(params).promise();
-      motherImageResult = { public_id: fileKey, url: minioData.Location };
+      try {
+        const minioData = await s3.upload(params).promise();
+        motherImageResult = { public_id: fileKey, url: minioData.Location };
+      } catch (s3Error) {
+        console.error("MinIO upload error:", s3Error);
+        if (s3Error.statusCode === 413) {
+          return res.status(413).json({
+            success: false,
+            message: "Mother image file is too large. Maximum size is 10 MB.",
+          });
+        }
+        throw s3Error;
+      }
     }
     if (guardianFile) {
       const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
       const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
-      const minioData = await s3.upload(params).promise();
-      guardianImageResult = { public_id: fileKey, url: minioData.Location };
+      try {
+        const minioData = await s3.upload(params).promise();
+        guardianImageResult = { public_id: fileKey, url: minioData.Location };
+      } catch (s3Error) {
+        console.error("MinIO upload error:", s3Error);
+        if (s3Error.statusCode === 413) {
+          return res.status(413).json({
+            success: false,
+            message: "Guardian image file is too large. Maximum size is 10 MB.",
+          });
+        }
+        throw s3Error;
+      }
     }
 
     const studentAdmissionNumberToUse = studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
@@ -1822,8 +1869,19 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       if (parentFile) {
         const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
         const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
-        const minioData = await s3.upload(params).promise();
-        parentImageResult = { public_id: fileKey, url: minioData.Location };
+        try {
+          const minioData = await s3.upload(params).promise();
+          parentImageResult = { public_id: fileKey, url: minioData.Location };
+        } catch (s3Error) {
+          console.error("MinIO upload error:", s3Error);
+          if (s3Error.statusCode === 413) {
+            return res.status(413).json({
+              success: false,
+              message: "Parent image file is too large. Maximum size is 10 MB.",
+            });
+          }
+          throw s3Error;
+        }
       }
 
       const parentAdmissionNumberGenerated = await generateAdmissionNumber(schoolId, ParentModel);
@@ -2027,8 +2085,6 @@ exports.getPhotoRecords = async (req, res) => {
     });
   }
 };
-
-
 
 exports.toggleIsPrinted = async (req, res) => {
   try {

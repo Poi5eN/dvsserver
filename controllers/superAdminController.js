@@ -1,13 +1,13 @@
 // controllers/superAdminController.js
 const Collection = require('../models/adminModel');
 const SuperAdmin = require('../models/superAdminModel');
+const AdminCredentials = require('../models/adminCredentialsModel');
 const bcrypt = require('bcryptjs');
 const { hashPassword } = require('./authController');
 const { v4: uuidv4 } = require('uuid');
 const sendEmail = require('../utils/email');
 const ThirdPartyUser = require('../models/thirdPartyModel');
-const AdminCredentials = require('../models/adminCredentialsModel');
-const ReceptionistModel = require('../models/receptionistModel'); // New import
+const ReceptionistModel = require('../models/receptionistModel');
 const s3 = require('../config/minio');
 const AdminInfo = require('../models/adminModel');
 
@@ -115,7 +115,7 @@ exports.loginSuperAdmin = async (req, res) => {
   }
 };
 
-// controllers/superAdminController.js (partial update for createAdmin)
+// controllers/superAdminController.js (updated createAdmin)
 exports.createAdmin = async (req, res) => {
   try {
     const { email, password, schoolName, superAdminId, ...userFields } = req.body;
@@ -134,6 +134,16 @@ exports.createAdmin = async (req, res) => {
       });
     }
 
+    // Check for existing credentials to avoid unique constraint errors
+    const schoolId = uuidv4(); // Generate schoolId early to check AdminCredentials
+    const existingCredentials = await AdminCredentials.findOne({ $or: [{ email }, { adminId: schoolId }] });
+    if (existingCredentials) {
+      return res.status(409).json({
+        success: false,
+        message: `Credentials with this ${existingCredentials.email === email ? 'email' : 'adminId'} already exist`,
+      });
+    }
+
     const hashedPassword = await hashPassword(password);
     let imageObj = {};
     if (file) {
@@ -149,7 +159,6 @@ exports.createAdmin = async (req, res) => {
       imageObj = { public_id: fileKey, url: minioData.Location };
     }
 
-    const schoolId = uuidv4();
     const admin = await AdminInfo.create({
       schoolId,
       email,
@@ -162,13 +171,20 @@ exports.createAdmin = async (req, res) => {
     });
 
     // Save credentials in AdminCredentials model
-    await AdminCredentials.create({
-      adminId: schoolId,
-      email,
-      password, // Store plain-text password
-      schoolName,
-      createdBy: superAdminId,
-    });
+    try {
+      await AdminCredentials.create({
+        adminId: schoolId,
+        email,
+        password, // Store plain-text password
+        schoolName,
+        createdBy: superAdminId,
+      });
+      console.log(`Credentials saved for admin: ${email}`);
+    } catch (credError) {
+      // Roll back AdminInfo creation if credentials fail
+      await AdminInfo.deleteOne({ schoolId });
+      throw new Error(`Failed to save credentials: ${credError.message}`);
+    }
 
     const schoolImageUrl = imageObj.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
     const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
@@ -226,6 +242,7 @@ exports.createAdmin = async (req, res) => {
 
     res.status(201).json({ success: true, message: 'Admin created successfully', admin });
   } catch (error) {
+    console.error(`Error in createAdmin: ${error.message}`);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -246,6 +263,12 @@ exports.getAdminsBySuperAdmin = async (req, res) => {
       createdBy: superAdminId,
     }).select('+password');
 
+    // Log missing credentials for debugging
+    const missingCredentials = adminIds.filter(id => !credentials.some(cred => cred.adminId === id));
+    if (missingCredentials.length > 0) {
+      console.warn(`No credentials found for adminIds: ${missingCredentials.join(', ')}`);
+    }
+
     // Map admins with their credentials
     const responseAdmins = admins.map(admin => {
       const credential = credentials.find(cred => cred.adminId === admin.schoolId);
@@ -261,6 +284,7 @@ exports.getAdminsBySuperAdmin = async (req, res) => {
       admins: responseAdmins,
     });
   } catch (error) {
+    console.error(`Error in getAdminsBySuperAdmin: ${error.message}`);
     res.status(500).json({ success: false, message: error.message });
   }
 };

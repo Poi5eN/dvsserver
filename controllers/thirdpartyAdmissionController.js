@@ -23,7 +23,7 @@ const generateAdmissionNumber = async (schoolId, Model) => {
  */
 exports.createAdmission = async (req, res) => {
   try {
-    const { schoolId } = req.body;
+    const { schoolId, photoId } = req.body;
     const session = req.user.session;
     const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
     if (!hasAccess) {
@@ -52,11 +52,11 @@ exports.createAdmission = async (req, res) => {
     } = req.body;
 
     // Validation
-    if (!studentFullName) return res.status(400).json({ success: false, message: "Student name is required." });
+    if (!studentFullName && !photoId) return res.status(400).json({ success: false, message: "Student name or photoId is required." });
     if (!studentEmail) return res.status(400).json({ success: false, message: "Student email is required." });
     if (!studentPassword) return res.status(400).json({ success: false, message: "Student password is required." });
     if (!studentJoiningDate) return res.status(400).json({ success: false, message: "Student joining date is required." });
-    if (!studentClass) return res.status(400).json({ success: false, message: "Student class is required." });
+    if (!studentClass && !photoId) return res.status(400).json({ success: false, message: "Student class or photoId is required." });
     if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
     if (!parentEmail) return res.status(400).json({ success: false, message: "Parent email is required." });
     if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
@@ -72,6 +72,17 @@ exports.createAdmission = async (req, res) => {
     const studentHashedPassword = await hashPassword(studentPassword);
     const parentHashedPassword = await hashPassword(parentPassword);
 
+    let photoData = null;
+    if (photoId) {
+      photoData = await PhotoModel.findOne({ photoId, schoolId });
+      if (!photoData) {
+        return res.status(404).json({
+          success: false,
+          message: "Photo record not found.",
+        });
+      }
+    }
+
     const files = req.files || [];
     let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
     const studentFile = files.studentPhoto || files.find(f => f.fieldname === "studentImage");
@@ -79,12 +90,16 @@ exports.createAdmission = async (req, res) => {
     const motherFile = files.find(f => f.fieldname === "motherImage");
     const guardianFile = files.find(f => f.fieldname === "guardianImage");
 
+    // Prioritize studentImage from file upload, then photoId, then empty
     if (studentFile) {
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
       const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
+    } else if (photoData && photoData.studentImage?.url) {
+      studentImageResult = photoData.studentImage;
     }
+
     if (fatherFile) {
       const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
       const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
@@ -108,33 +123,38 @@ exports.createAdmission = async (req, res) => {
       ? studentAdmissionNumber 
       : await generateAdmissionNumber(schoolId, NewStudentModel);
 
+    // Prioritize provided fields, then photoData
+    const finalStudentName = studentFullName?.trim() || photoData?.studentName || student_name || "Unknown";
+    const finalClass = studentClass || photoData?.class || studentUdiseClass || "Unknown";
+    const finalSection = studentSection || photoData?.section || studentUdiseSection || null;
+
     // Match NewStudentModel schema
     const studentData = await NewStudentModel.create({
       studentId: uuidv4(),
       schoolId,
       session,
-      studentName: studentFullName, // Changed from fullName
+      studentName: finalStudentName,
       email: studentEmail,
       password: studentHashedPassword,
       dateOfBirth: studentDateOfBirth,
       motherName,
       fatherName,
-      parentContact: parentContact, // Added for schema
-      role: "student", // Default per schema
+      parentContact: parentContact,
+      role: "student",
       rollNo,
-      status: "active", // Default per schema
+      status: "active",
       gender: studentGender,
       joiningDate: studentJoiningDate,
       address: studentAddress,
       contact: studentContact,
-      class: studentClass,
-      section: studentSection,
+      class: finalClass,
+      section: finalSection,
       country: studentCountry,
       subject: studentSubject ? studentSubject.split(",") : [],
       guardianName,
       remarks,
       transport,
-      base64: undefined, // Not provided in request
+      base64: undefined,
       studentImage: studentImageResult.url ? studentImageResult : { public_id: "", url: "" },
       fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
       motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
@@ -148,8 +168,9 @@ exports.createAdmission = async (req, res) => {
       state,
       city,
       approvalStatus: "pending",
-      isNewAdmission: true, // Default per schema
+      isNewAdmission: true,
       assignedThirdParty: req.user.userId,
+      photoId: photoId || undefined,
       udisePlusDetails: {
         stu_id,
         class: studentUdiseClass,
@@ -213,7 +234,7 @@ exports.createAdmission = async (req, res) => {
     if (parentAdmissionNumber) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId },
-        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: studentFullName } },
+        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: finalStudentName } },
         { new: true }
       );
       if (!parentData) {
@@ -233,26 +254,25 @@ exports.createAdmission = async (req, res) => {
       }
 
       const parentAdmissionNumberGenerated = await generateAdmissionNumber(schoolId, ParentModel);
-      // Match ParentModel schema
       parentData = await ParentModel.create({
         parentId: uuidv4(),
         schoolId,
         session,
         studentIds: [studentData._id],
-        studentNames: [studentFullName],
-        fatherName, // Changed from fullName
+        studentNames: [finalStudentName],
+        fatherName,
         motherName,
         email: parentEmail,
         password: parentHashedPassword,
-        status: "active", // Default per schema
+        status: "active",
         contact: parentContact,
-        role: "parent", // Default per schema
+        role: "parent",
         parentImage: parentImageResult.url ? parentImageResult : { public_id: "", url: "" },
         fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
         motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
         guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
         admissionNumber: parentAdmissionNumberGenerated,
-        base64: undefined, // Not provided in request
+        base64: undefined,
         income: parentIncome ? Number(parentIncome) : undefined,
         qualification: parentQualification,
         guardianName,
@@ -271,8 +291,8 @@ exports.createAdmission = async (req, res) => {
 
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
     const schoolName = schoolDetails?.schoolName || 'Your School';
-    const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
-    const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+    const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94';
+    const softwareLogoUrl = 'https://digitalvidyasaarthხ://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -284,7 +304,6 @@ exports.createAdmission = async (req, res) => {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
               <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
@@ -292,22 +311,20 @@ exports.createAdmission = async (req, res) => {
               <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your Learning Journey!</p>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
-              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${finalStudentName}!</h2>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been submitted and is awaiting approval.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${finalStudentName}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${finalClass}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
               </div>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Hang tight! We’re reviewing your details and will notify you once approved. Your journey starts on ${studentJoiningDate}.</p>
             </td>
           </tr>
-          <!-- Footer -->
           <tr>
             <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
               <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -326,6 +343,11 @@ exports.createAdmission = async (req, res) => {
     `;
     await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
 
+    // Delete photo record if used
+    if (photoId && photoData) {
+      await PhotoModel.deleteOne({ photoId });
+    }
+
     return res.status(201).json({
       success: true,
       message: "Admission created successfully and is pending admin approval.",
@@ -337,6 +359,125 @@ exports.createAdmission = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to create admission.",
+      error: error.message,
+    });
+  }
+};
+
+
+/**
+ * Unified Get Students API
+ */
+exports.getStudentsUnified = async (req, res) => {
+  try {
+    if (!req.user || !req.user.assignedSchools) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication failed or no assigned schools',
+      });
+    }
+
+    const {
+      schoolId, studentId, studentName, class: studentClass, section, admissionNumber, email,
+      parentId, parentAdmissionNumber, approvalStatus, isNewAdmission, assignedThirdParty,
+      page = 1, limit = 0, sortBy = 'createdAt', sortOrder = -1
+    } = req.query;
+
+    const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
+    let filterSchoolIds = assignedSchoolIds;
+
+    if (schoolId) {
+      if (!assignedSchoolIds.includes(schoolId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have access to this school',
+        });
+      }
+      filterSchoolIds = [schoolId];
+    }
+
+    const query = {
+      schoolId: { $in: filterSchoolIds },
+    };
+
+    if (studentId) query.studentId = studentId;
+    if (studentName) query.studentName = { $regex: studentName.trim(), $options: 'i' };
+    if (studentClass) query.class = studentClass;
+    if (section) query.section = section;
+    if (admissionNumber) query.admissionNumber = admissionNumber;
+    if (email) query.email = email;
+    if (parentId) query.parentId = parentId;
+    if (parentAdmissionNumber) query.parentAdmissionNumber = parentAdmissionNumber;
+    if (approvalStatus) query.approvalStatus = approvalStatus;
+    if (isNewAdmission !== undefined) query.isNewAdmission = isNewAdmission === 'true';
+    if (assignedThirdParty) {
+      if (req.user.role !== 'admin' && assignedThirdParty !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only fetch your own assigned students',
+        });
+      }
+      query.assignedThirdParty = assignedThirdParty;
+    }
+
+    const parsedPage = parseInt(page) || 1;
+    const parsedLimit = parseInt(limit) || 10;
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const sortOptions = {};
+    sortOptions[sortBy] = parseInt(sortOrder) || -1;
+
+    // Fetch students with pagination
+    const students = await NewStudentModel.find(query)
+      .select(
+        'studentId schoolId session studentName email dateOfBirth motherName fatherName parentContact rollNo parentId parentAdmissionNumber status gender joiningDate address contact class section country subject guardianName remarks transport base64 studentImage fatherImage motherImage guardianImage admissionNumber isGenerated religion caste nationality pincode state city approvalStatus isNewAdmission assignedThirdParty createdAt udisePlusDetails'
+      )
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean();
+
+    const totalStudents = await NewStudentModel.countDocuments(query);
+
+    // Calculate image stats
+    const studentsWithImages = await NewStudentModel.countDocuments({
+      ...query,
+      'studentImage.url': { $ne: '' }
+    });
+    const studentsWithoutImages = totalStudents - studentsWithImages;
+
+    // Fetch parent data for each student
+    for (let student of students) {
+      if (student.parentId) {
+        const parent = await ParentModel.findOne({ parentId: student.parentId }).select(
+          'parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt'
+        ).lean();
+        student.parent = parent || null;
+      } else {
+        student.parent = null;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Students fetched successfully',
+      imageStats: {
+        withImages: studentsWithImages,
+        withoutImages: studentsWithoutImages
+      },
+      count: students.length,
+      data: students,
+      pagination: {
+        currentPage: parsedPage,
+        totalPages: Math.ceil(totalStudents / parsedLimit),
+        totalStudents,
+      },
+    });
+  } catch (error) {
+    console.error('Error in getStudentsUnified:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch students',
       error: error.message,
     });
   }

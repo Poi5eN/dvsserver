@@ -12,6 +12,8 @@ router.post('/admissions', verifyToken, uploads, convertImagesToBase64, thirdpar
 router.put('/admissions/:studentId', verifyToken, uploads, thirdpartyAdmissionController.editAdmission);
 router.get('/admissions', verifyToken, thirdpartyAdmissionController.getAllStudentsForThirdParty);
 
+router.get('/scholars', verifyToken, thirdpartyAdmissionController.getStudentsUnified);
+
 
 // SCHOOL ORIENTED CONTROLLER FLOW FOR THIRD PARTY
 router.get('/schools/students', verifyToken, thirdpartyAdmissionController.getStudentsBySchool);

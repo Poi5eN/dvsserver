@@ -1065,6 +1065,245 @@ exports.generateFeeReceipt = async (req, res) => {
 };
 
 
+// Cancel a fee payment
+exports.cancelFeePayment = async (req, res) => {
+  try {
+    const { studentId, feeReceiptNumber } = req.body;
+    const schoolId = req.user.schoolId;
+
+    if (!studentId || !feeReceiptNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and Fee Receipt Number are required.",
+      });
+    }
+
+    // Start a MongoDB session for transactions
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Fetch fee status
+      const feeStatus = await FeeStatus.findOne({ schoolId, studentId }).session(session);
+      if (!feeStatus) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({
+          success: false,
+          message: "Fee status not found for this student.",
+        });
+      }
+
+      // Find the fee history entry to cancel
+      const feeToCancel = feeStatus.feeHistory.find(
+        (fee) => fee.feeReceiptNumber === feeReceiptNumber
+      );
+      if (!feeToCancel) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({
+          success: false,
+          message: "Fee receipt number not found.",
+        });
+      }
+      if (feeToCancel.status === "canceled") {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Fee is already canceled.",
+        });
+      }
+
+      // Fetch student and fee structure for original amounts
+      const student = await NewStudentModel.findOne({ schoolId, studentId }).lean();
+      if (!student) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(404).json({ success: false, message: "Student not found." });
+      }
+
+      const fees = await getAllApplicableFees(schoolId, student.class, studentId);
+      const regularFeeMap = {
+        Monthly: fees.find((f) => !f.additional)?.amount || 0,
+      };
+      const additionalFeeMap = fees
+        .filter((f) => f.additional && f.feeType !== "LateFine")
+        .reduce((map, f) => {
+          map[f.name] = { amount: f.amount, type: f.feeType };
+          return map;
+        }, {});
+
+      // Mark fee history as canceled
+      feeToCancel.status = "canceled";
+
+      // Reverse regular fees
+      feeToCancel.regularFees.forEach((canceledFee) => {
+        let regularDue = feeStatus.monthlyDues.regularDues.find(
+          (due) => due.month === canceledFee.month
+        );
+        if (!regularDue) {
+          // If no due exists, create one with the original amount
+          regularDue = {
+            month: canceledFee.month,
+            paidAmount: 0,
+            dueAmount: regularFeeMap.Monthly,
+            status: "Unpaid",
+            frequency: "monthly",
+          };
+          feeStatus.monthlyDues.regularDues.push(regularDue);
+        } else {
+          // Reverse the payment
+          regularDue.paidAmount = Math.max(0, (regularDue.paidAmount || 0) - canceledFee.paidAmount);
+          regularDue.dueAmount = regularFeeMap.Monthly - regularDue.paidAmount;
+          regularDue.status =
+            regularDue.dueAmount > 0
+              ? regularDue.paidAmount > 0
+                ? "Partial"
+                : "Unpaid"
+              : "Paid";
+        }
+      });
+
+      // Reverse additional fees
+      feeToCancel.additionalFees.forEach((canceledFee) => {
+        let additionalDue = feeStatus.monthlyDues.additionalDues.find(
+          (due) =>
+            due.name === canceledFee.name &&
+            (due.month === canceledFee.month || (!due.month && !canceledFee.month))
+        );
+        if (!additionalDue && additionalFeeMap[canceledFee.name]) {
+          // If no due exists, create one with the original amount
+          additionalDue = {
+            name: canceledFee.name,
+            month: canceledFee.month || undefined,
+            paidAmount: 0,
+            dueAmount: additionalFeeMap[canceledFee.name].amount,
+            status: "Unpaid",
+            frequency: additionalFeeMap[canceledFee.name].type.toLowerCase(),
+          };
+          feeStatus.monthlyDues.additionalDues.push(additionalDue);
+        } else if (additionalDue) {
+          // Reverse the payment
+          additionalDue.paidAmount = Math.max(
+            0,
+            (additionalDue.paidAmount || 0) - canceledFee.paidAmount
+          );
+          additionalDue.dueAmount =
+            additionalFeeMap[canceledFee.name].amount - additionalDue.paidAmount;
+          additionalDue.status =
+            additionalDue.dueAmount > 0
+              ? additionalDue.paidAmount > 0
+                ? "Partial"
+                : "Unpaid"
+              : "Paid";
+        }
+      });
+
+      // Reverse past dues paid
+      feeStatus.pastDues += feeToCancel.pastDuesPaid || 0;
+
+      // Reverse concession applied
+      feeToCancel.regularFees.forEach((canceledFee) => {
+        const regularDue = feeStatus.monthlyDues.regularDues.find(
+          (due) => due.month === canceledFee.month
+        );
+        if (regularDue && canceledFee.concessionApplied) {
+          regularDue.dueAmount += canceledFee.concessionApplied || 0;
+          regularDue.status =
+            regularDue.dueAmount > 0
+              ? regularDue.paidAmount > 0
+                ? "Partial"
+                : "Unpaid"
+              : "Paid";
+        }
+      });
+
+      feeToCancel.additionalFees.forEach((canceledFee) => {
+        const additionalDue = feeStatus.monthlyDues.additionalDues.find(
+          (due) =>
+            due.name === canceledFee.name &&
+            (due.month === canceledFee.month || (!due.month && !canceledFee.month))
+        );
+        if (additionalDue && canceledFee.concessionApplied) {
+          additionalDue.dueAmount += canceledFee.concessionApplied || 0;
+          additionalDue.status =
+            additionalDue.dueAmount > 0
+              ? additionalDue.paidAmount > 0
+                ? "Partial"
+                : "Unpaid"
+              : "Paid";
+        }
+      });
+
+      // Recalculate overall totals
+      feeStatus.overallAmountPaid = Math.max(
+        0,
+        (feeStatus.overallAmountPaid || 0) - feeToCancel.totalAmountPaid
+      );
+      feeStatus.overallConcessionApplied = Math.max(
+        0,
+        (feeStatus.overallConcessionApplied || 0) - feeToCancel.concessionApplied
+      );
+
+      // Recalculate total dues
+      feeStatus.dues =
+        feeStatus.monthlyDues.regularDues.reduce((sum, due) => sum + (due.dueAmount || 0), 0) +
+        feeStatus.monthlyDues.additionalDues.reduce((sum, due) => sum + (due.dueAmount || 0), 0) +
+        feeStatus.pastDues;
+
+      // Handle unified receipt if applicable
+      if (feeToCancel.unifiedReceiptNumber) {
+        const unifiedReceipt = await UnifiedReceipt.findOne({
+          schoolId,
+          unifiedReceiptNumber: feeToCancel.unifiedReceiptNumber,
+        }).session(session);
+        if (unifiedReceipt) {
+          // Check if all related fee histories are canceled
+          const relatedFeeStatuses = await FeeStatus.find({
+            schoolId,
+            "feeHistory.unifiedReceiptNumber": feeToCancel.unifiedReceiptNumber,
+          }).session(session);
+          const allCanceled = relatedFeeStatuses.every((fs) =>
+            fs.feeHistory
+              .filter((fh) => fh.unifiedReceiptNumber === feeToCancel.unifiedReceiptNumber)
+              .every((fh) => fh.status === "canceled")
+          );
+          if (allCanceled) {
+            unifiedReceipt.status = "canceled";
+            await unifiedReceipt.save({ session });
+          }
+        }
+      }
+
+      // Save the updated fee status
+      await feeStatus.save({ session });
+
+      // Commit the transaction
+      await session.commitTransaction();
+      session.endSession();
+
+      res.status(200).json({
+        success: true,
+        message: "Fee payment canceled successfully",
+        data: feeStatus.toObject(),
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
+  } catch (error) {
+    console.error("Error in cancelFeePayment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel fee payment",
+      error: error.message,
+    });
+  }
+};
+
+
 // Add past dues (unchanged)
 exports.addPastDues = async (req, res) => {
   try {
@@ -1284,119 +1523,7 @@ exports.getMonthlyDues = async (req, res) => {
   }
 };
 
-// Cancel a fee payment
-exports.cancelFeePayment = async (req, res) => {
-  try {
-    const { studentId, feeReceiptNumber } = req.body;
-    const schoolId = req.user.schoolId;
 
-    if (!studentId || !feeReceiptNumber) {
-      return res.status(400).json({
-        success: false,
-        message: "Student ID and Fee Receipt Number are required.",
-      });
-    }
-
-    const feeStatus = await FeeStatus.findOne({ schoolId, studentId });
-    if (!feeStatus) {
-      return res.status(404).json({
-        success: false,
-        message: "Fee status not found for this student.",
-      });
-    }
-
-    const feeToCancel = feeStatus.feeHistory.find(
-      (fee) => fee.feeReceiptNumber === feeReceiptNumber
-    );
-    if (!feeToCancel) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Fee receipt number not found." });
-    }
-    if (feeToCancel.status === "canceled") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Fee is already canceled." });
-    }
-
-    feeToCancel.status = "canceled";
-
-    feeToCancel.regularFees.forEach((canceledFee) => {
-      const regularDue = feeStatus.monthlyDues.regularDues.find(
-        (due) => due.month === canceledFee.month
-      );
-      if (regularDue) {
-        regularDue.paidAmount = Math.max(
-          0,
-          (regularDue.paidAmount || 0) - canceledFee.paidAmount
-        );
-        regularDue.dueAmount += canceledFee.paidAmount;
-        regularDue.status =
-          regularDue.dueAmount > 0
-            ? regularDue.paidAmount > 0
-              ? "Partial"
-              : "Unpaid"
-            : "Paid";
-      }
-    });
-
-    feeToCancel.additionalFees.forEach((canceledFee) => {
-      const additionalDue = feeStatus.monthlyDues.additionalDues.find(
-        (due) =>
-          due.name === canceledFee.name && due.month === canceledFee.month
-      );
-      if (additionalDue) {
-        additionalDue.paidAmount = Math.max(
-          0,
-          (additionalDue.paidAmount || 0) - canceledFee.paidAmount
-        );
-        additionalDue.dueAmount += canceledFee.paidAmount;
-        additionalDue.status =
-          additionalDue.dueAmount > 0
-            ? additionalDue.paidAmount > 0
-              ? "Partial"
-              : "Unpaid"
-            : "Paid";
-      }
-    });
-
-    const activeFeeHistory = feeStatus.feeHistory.filter(
-      (fee) => fee.status === "active"
-    );
-    const totalPastDuesPaid = activeFeeHistory.reduce(
-      (sum, fee) => sum + (fee.pastDuesPaid || 0),
-      0
-    );
-    feeStatus.pastDues = Math.max(
-      0,
-      feeStatus.pastDues - totalPastDuesPaid + feeToCancel.pastDuesPaid
-    );
-    feeStatus.dues =
-      feeStatus.monthlyDues.regularDues.reduce(
-        (sum, due) => sum + due.dueAmount,
-        0
-      ) +
-      feeStatus.monthlyDues.additionalDues.reduce(
-        (sum, due) => sum + due.dueAmount,
-        0
-      ) +
-      feeStatus.pastDues;
-
-    const updatedFeeStatus = await feeStatus.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Fee payment canceled successfully",
-      data: updatedFeeStatus.toObject(),
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to cancel fee payment",
-      error: error.message,
-    });
-  }
-};
 
 // Get fee status by month
 exports.getFeeStatusByMonth = async (req, res) => {

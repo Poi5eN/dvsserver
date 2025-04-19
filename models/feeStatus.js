@@ -5,6 +5,7 @@ const regularFeeHistorySchema = new mongoose.Schema({
   paidAmount: { type: Number, required: true },
   dueAmount: { type: Number, required: true },
   status: { type: String, required: true },
+  concessionApplied: { type: Number, default: 0 }, // Add this
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
@@ -17,6 +18,7 @@ const additionalFeeHistorySchema = new mongoose.Schema({
   month: { type: String },
   paidAmount: { type: Number, required: true },
   dueAmount: { type: Number, required: true },
+  concessionApplied: { type: Number, default: 0 }, // Add this
   status: { type: String, required: true },
   frequency: {
     type: String,

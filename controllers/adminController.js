@@ -588,6 +588,19 @@ exports.getAllTeachers = async (req, res) => {
 // END OF TEACHER RELATED FLOW
 
 // --------------------------------Fee Controller--------------------------------------\\
+const getFrequencyFromFeeType = (feeType) => {
+  switch (feeType.toLowerCase()) {
+    case "one time":
+      return "one-time";
+    case "monthly":
+      return "monthly";
+    case "annual":
+      return "annual";
+    default:
+      return "monthly"; // fallback or handle error
+  }
+};
+
 
 // Create a student-specific fee structure
 exports.createStudentSpecificFee = async (req, res) => {
@@ -658,11 +671,13 @@ exports.createStudentSpecificFee = async (req, res) => {
       className: student.class,
       name: name || undefined,
       feeType,
+      frequency: getFrequencyFromFeeType(feeType),
       amount,
       additional: !!name,
       studentId,
       updatedBy,
     });
+    
 
     await feeStructure.save();
 
@@ -728,10 +743,12 @@ exports.createFeeStructure = async (req, res) => {
       session,
       className,
       feeType,
+      frequency: getFrequencyFromFeeType(feeType),
       amount,
       additional: false,
       updatedBy,
     });
+    
 
     await feeStructure.save();
 
@@ -791,10 +808,12 @@ exports.createAdditionalFee = async (req, res) => {
       className,
       name,
       feeType,
+      frequency: getFrequencyFromFeeType(feeType),
       amount,
       additional: true,
       updatedBy,
     });
+    
 
     await feeStructure.save();
 

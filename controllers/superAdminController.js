@@ -1,7 +1,7 @@
 // controllers/superAdminController.js
 const Collection = require('../models/adminModel');
 const SuperAdmin = require('../models/superAdminModel');
-const AdminCredentials = require('../models/adminCredentialsModel');
+const UserCredentials = require('../models/userCredentialsModel');
 const bcrypt = require('bcryptjs');
 const { hashPassword } = require('./authController');
 const { v4: uuidv4 } = require('uuid');
@@ -135,8 +135,8 @@ exports.createAdmin = async (req, res) => {
     }
 
     // Check for existing credentials to avoid unique constraint errors
-    const schoolId = uuidv4(); // Generate schoolId early to check AdminCredentials
-    const existingCredentials = await AdminCredentials.findOne({ $or: [{ email }, { adminId: schoolId }] });
+    const schoolId = uuidv4(); // Generate schoolId early to check UserCredentials
+    const existingCredentials = await UserCredentials.findOne({ $or: [{ email }, { adminId: schoolId }] });
     if (existingCredentials) {
       return res.status(409).json({
         success: false,
@@ -170,9 +170,9 @@ exports.createAdmin = async (req, res) => {
       ...userFields,
     });
 
-    // Save credentials in AdminCredentials model
+    // Save credentials in UserCredentials model
     try {
-      await AdminCredentials.create({
+      await UserCredentials.create({
         adminId: schoolId,
         email,
         password, // Store plain-text password
@@ -258,7 +258,7 @@ exports.getAdminsBySuperAdmin = async (req, res) => {
     
     // Fetch corresponding credentials
     const adminIds = admins.map(admin => admin.schoolId);
-    const credentials = await AdminCredentials.find({
+    const credentials = await UserCredentials.find({
       adminId: { $in: adminIds },
       createdBy: superAdminId,
     }).select('+password');
@@ -315,7 +315,6 @@ exports.createThirdPartyUser = async (req, res) => {
     const { name, email, password, assignedSchools, session, superAdminId } = req.body;
     const file = req.file;
 
-    // Updated validation to include session
     if (!name || !email || !password || !assignedSchools || !session || !superAdminId) {
       return res.status(400).json({ 
         success: false, 
@@ -328,8 +327,16 @@ exports.createThirdPartyUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'User already exists with this email' });
     }
 
-    const hashedPassword = await hashPassword(password);
     const userId = uuidv4();
+    const existingCredentials = await UserCredentials.findOne({ $or: [{ email }, { userId }] });
+    if (existingCredentials) {
+      return res.status(409).json({
+        success: false,
+        message: `Credentials with this ${existingCredentials.email === email ? 'email' : 'userId'} already exist`,
+      });
+    }
+
+    const hashedPassword = await hashPassword(password);
     let imageObj = {};
     if (file) {
       const fileKey = `thirdparty/${Date.now()}-${file.originalname}`;
@@ -360,10 +367,25 @@ exports.createThirdPartyUser = async (req, res) => {
       email,
       password: hashedPassword,
       assignedSchools: parsedAssignedSchools,
-      session, // Assign the session from the request body
+      session,
       image: imageObj,
       createdBy: superAdminId,
     });
+
+    // Save credentials in UserCredentials model
+    try {
+      await UserCredentials.create({
+        userId,
+        email,
+        password, // Store plain-text password
+        userType: 'thirdparty',
+        createdBy: superAdminId,
+      });
+      console.log(`Credentials saved for third-party user: ${email}`);
+    } catch (credError) {
+      await ThirdPartyUser.deleteOne({ userId });
+      throw new Error(`Failed to save credentials: ${credError.message}`);
+    }
 
     const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
     const emailContent = `
@@ -426,6 +448,43 @@ exports.createThirdPartyUser = async (req, res) => {
       user: userResponse,
     });
   } catch (error) {
+    console.error(`Error in createThirdPartyUser: ${error.message}`);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getThirdPartyUsersBySuperAdmin = async (req, res) => {
+  try {
+    const { superAdminId } = req.params;
+    const thirdPartyUsers = await ThirdPartyUser.find({ createdBy: superAdminId });
+
+    const userIds = thirdPartyUsers.map(user => user.userId);
+    const credentials = await UserCredentials.find({
+      userId: { $in: userIds },
+      createdBy: superAdminId,
+      userType: 'thirdparty',
+    }).select('+password');
+
+    const missingCredentials = userIds.filter(id => !credentials.some(cred => cred.userId === id));
+    if (missingCredentials.length > 0) {
+      console.warn(`No credentials found for thirdParty userIds: ${missingCredentials.join(', ')}`);
+    }
+
+    const responseUsers = thirdPartyUsers.map(user => {
+      const credential = credentials.find(cred => cred.userId === user.userId);
+      return {
+        ...user._doc,
+        password: credential ? credential.password : null,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      totalUsers: thirdPartyUsers.length,
+      thirdPartyUsers: responseUsers,
+    });
+  } catch (error) {
+    console.error(`Error in getThirdPartyUsersBySuperAdmin: ${error.message}`);
     res.status(500).json({ success: false, message: error.message });
   }
 };

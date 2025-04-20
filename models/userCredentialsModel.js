@@ -1,11 +1,10 @@
-// models/adminCredentialsModel.js
 const mongoose = require('mongoose');
 
-const adminCredentialsSchema = new mongoose.Schema({
-  adminId: {
+const userCredentialsSchema = new mongoose.Schema({
+  userId: {
     type: String,
     required: true,
-    unique: true, // Links to AdminInfo schoolId
+    unique: true, // Links to AdminInfo schoolId or ThirdPartyUser userId
   },
   email: {
     type: String,
@@ -17,9 +16,13 @@ const adminCredentialsSchema = new mongoose.Schema({
     required: true,
     select: false, // Prevent default selection
   },
-  schoolName: {
+  userType: {
     type: String,
     required: true,
+    enum: ['admin', 'thirdparty'], // To differentiate user types
+  },
+  schoolName: {
+    type: String, // Optional for third-party users
   },
   createdBy: {
     type: String,
@@ -31,5 +34,5 @@ const adminCredentialsSchema = new mongoose.Schema({
   },
 });
 
-const AdminCredentials = mongoose.model('AdminCredentials', adminCredentialsSchema);
-module.exports = AdminCredentials;
+const UserCredentials = mongoose.model('UserCredentials', userCredentialsSchema);
+module.exports = UserCredentials;

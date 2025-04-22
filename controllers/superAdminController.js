@@ -134,7 +134,6 @@ exports.createAdmin = async (req, res) => {
       });
     }
 
-    // Check for existing credentials
     const schoolId = uuidv4();
     const existingCredentials = await UserCredentials.findOne({ $or: [{ email }, { userId: schoolId }] });
     if (existingCredentials) {
@@ -170,12 +169,11 @@ exports.createAdmin = async (req, res) => {
       ...userFields,
     });
 
-    // Save credentials in UserCredentials model
     try {
       await UserCredentials.create({
         userId: schoolId,
         email,
-        password, // Store plain-text password
+        password,
         userType: 'admin',
         schoolName,
         createdBy: superAdminId,
@@ -188,50 +186,63 @@ exports.createAdmin = async (req, res) => {
 
     const schoolImageUrl = imageObj.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
     const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+    const safeSchoolName = sanitizeHtml(schoolName);
+    const safeEmail = sanitizeHtml(email);
+    const safePassword = sanitizeHtml(password);
+    const safeSlug = sanitizeHtml(slug);
     const emailContent = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>School Admin Account Created</title>
+        <style>
+          body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #e0f7fa; color: #000000; }
+          .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center; }
+          .header img { max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; }
+          .header h1 { color: #ffffff; font-size: 28px; margin: 10px 0 0; }
+          .header p { color: #ffffff; font-size: 18px; margin: 5px 0; }
+          .content { padding: 30px; text-align: center; }
+          .content h2 { color: #ff5600; font-size: 24px; margin: 0 0 20px; }
+          .content p { font-size: 16px; line-height: 1.5; margin: 10px 0; }
+          .credentials { background-color: #e0f7fa; padding: 20px; border-radius: 10px; border: 2px dashed #ff5600; margin: 20px 0; }
+          .credentials h3 { font-size: 20px; margin: 0 0 10px; }
+          .credentials p { margin: 5px 0; font-size: 16px; }
+          .footer { background-color: #e5e5e5; padding: 20px; text-align: center; }
+          .footer img { max-width: 150px; height: auto; }
+          .footer p { margin: 5px 0; font-size: 14px; }
+          .footer a { color: #ff5600; text-decoration: none; }
+        </style>
       </head>
-      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
-              <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
-              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
-              <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your School Portal</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 30px; background-color: #ffffff;">
-              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, School Admin!</h2>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Your admin account for ${schoolName} has been created successfully.</p>
-              <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
-                <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Login URL:</strong> <a href="https://digitalvidyasaarthi.in/${slug}" style="color: #ff5600;">https://digitalvidyasaarthi.in/${slug}</a></p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>School ID:</strong> ${schoolId}</p>
-              </div>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to manage your school’s operations with ease!</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
-              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
-              <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
-              <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
-              <p style="margin: 5px 0; font-size: 12px; color: #000000;">
-                Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
-                <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
-              </p>
-              <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
-            </td>
-          </tr>
-        </table>
+      <body>
+        <div class="container">
+          <div class="header">
+            <img src="${schoolImageUrl}" alt="School Logo">
+            <h1>${safeSchoolName}</h1>
+            <p>Welcome to Your School Portal</p>
+          </div>
+          <div class="content">
+            <h2>Hello, School Admin!</h2>
+            <p>Your admin account for ${safeSchoolName} has been created successfully.</p>
+            <div class="credentials">
+              <h3>Your Credentials</h3>
+              <p><strong>Login URL:</strong> <a href="https://digitalvidyasaarthi.in/${safeSlug}">https://digitalvidyasaarthi.in/${safeSlug}</a></p>
+              <p><strong>Email:</strong> ${safeEmail}</p>
+              <p><strong>Password:</strong> ${safePassword}</p>
+              <p><strong>School ID:</strong> ${schoolId}</p>
+            </div>
+            <p>Log in to manage your school’s operations with ease!</p>
+          </div>
+          <div class="footer">
+            <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi">
+            <p><strong>Digital Vidya Saarthi | Vidyaalay ERP</strong></p>
+            <p>Empowering Education with Technology</p>
+            <p>Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com">digitalvidyasaarthi@gmail.com</a> | <a href="https://digitalvidyasaarthi.in">DigitalVidyaSaarthi.in</a></p>
+            <p>© ${new Date().getFullYear()} All Rights Reserved</p>
+          </div>
+        </div>
       </body>
       </html>
     `;
@@ -366,12 +377,11 @@ exports.createThirdPartyUser = async (req, res) => {
       createdBy: superAdminId,
     });
 
-    // Save credentials in UserCredentials model
     try {
       await UserCredentials.create({
         userId,
         email,
-        password, // Store plain-text password
+        password,
         userType: 'thirdparty',
         createdBy: superAdminId,
       });
@@ -382,52 +392,66 @@ exports.createThirdPartyUser = async (req, res) => {
     }
 
     const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+    const safeName = sanitizeHtml(name);
+    const safeEmail = sanitizeHtml(email);
+    const safePassword = sanitizeHtml(password);
+    const safeSession = sanitizeHtml(session);
     const emailContent = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Third Party Account Created</title>
+        <style>
+          body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; background-color: #e0f7fa; color: #000000; }
+          .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; box-shadow: 0 Its likely the sanitization of the assignedSchools that is causing the issue
+4px 10px rgba(0,0,0,0.1); }
+          .header { background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center; }
+          .header img { max-width: 120px; height: auto; }
+          .header h1 { color: #ffffff; font-size: 28px; margin: 10px 0 0; }
+          .header p { color: #ffffff; font-size: 18px; margin: 5px 0; }
+          .content { padding: 30px; text-align: center; }
+          .content h2 { color: #ff5600; font-size: 24px; margin: 0 0 20px; }
+          .content p { font-size: 16px; line-height: 1.5; margin: 10px 0; }
+          .credentials { background-color: #e0f7fa; padding: 20px; border-radius: 10px; border: 2px dashed #ff5600; margin: 20px 0; }
+          .credentials h3 { font-size: 20px; margin: 0 0 10px; }
+          .credentials p { margin: 5px 0; font-size: 16px; }
+          .footer { background-color: #e5e5e5; padding: 20px; text-align: center; }
+          .footer img { max-width: 150px; height: auto; }
+          .footer p { margin: 5px 0; font-size: 14px; }
+          .footer a { color: #ff5600; text-decoration: none; }
+        </style>
       </head>
-      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
-              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi" style="max-width: 120px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
-              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">Welcome, Third Party User!</h1>
-              <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Your Registration Handler Role Begins</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 30px; background-color: #ffffff;">
-              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${name}!</h2>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Your Third Party account has been created to assist with registrations.</p>
-              <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
-                <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>User ID:</strong> ${userId}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Session:</strong> ${session}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Assigned Schools:</strong></p>
-                ${thirdPartyUser.assignedSchools.map((school) => `<p style="margin: 5px 0 0 20px; font-size: 16px;">- ${school.schoolName}</p>`).join('')}
-              </div>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start handling registrations for your assigned schools!</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
-              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
-              <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
-              <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
-              <p style="margin: 5px 0; font-size: 12px; color: #000000;">
-                Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
-                <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
-              </p>
-              <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
-            </td>
-          </tr>
-        </table>
+      <body>
+        <div class="container">
+          <div class="header">
+            <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi">
+            <h1>Welcome, Third Party User!</h1>
+            <p>Your Registration Handler Role Begins</p>
+          </div>
+          <div class="content">
+            <h2>Hello, ${safeName}!</h2>
+            <p>Your Third Party account has been created to assist with registrations.</p>
+            <div class="credentials">
+              <h3>Your Credentials</h3>
+              <p><strong>Email:</strong> ${safeEmail}</p>
+              <p><strong>Password:</strong> ${safePassword}</p>
+              <p><strong>User ID:</strong> ${userId}</p>
+              <p><strong>Session:</strong> ${safeSession}</p>
+              <p><strong>Assigned Schools:</strong></p>
+              ${parsedAssignedSchools.map((school) => `<p style="margin: 5px 0 0 20px; font-size: 16px;">- ${sanitizeHtml(school.schoolName)}</p>`).join('')}
+            </div>
+            <p>Log in to start handling registrations for your assigned schools!</p>
+          </div>
+          <div class="footer">
+            <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi">
+            <p><strong>Digital Vidya Saarthi | Vidyaalay ERP</strong></p>
+            <p>Empowering Education with Technology</p>
+            <p>Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com">digitalvidyasaarthi@gmail.com</a> | <a href="https://digitalvidyasaarthi.in">DigitalVidyaSaarthi.in</a></p>
+            <p>© ${new Date().getFullYear()} All Rights Reserved</p>
+          </div>
+        </div>
       </body>
       </html>
     `;

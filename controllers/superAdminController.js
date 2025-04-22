@@ -10,6 +10,7 @@ const ThirdPartyUser = require('../models/thirdPartyModel');
 const ReceptionistModel = require('../models/receptionistModel');
 const s3 = require('../config/minio');
 const AdminInfo = require('../models/adminModel');
+const { sanitizeHtml } = require('../utils/sanitize'); // Add this import
 
 // console.log('s3 in controller:', s3); // Debug log
 

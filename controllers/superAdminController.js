@@ -135,13 +135,13 @@ exports.createAdmin = async (req, res) => {
       });
     }
 
-    // Check for existing credentials to avoid unique constraint errors
-    const schoolId = uuidv4(); // Generate schoolId early to check AdminCredentials
-    const existingCredentials = await AdminCredentials.findOne({ $or: [{ email }, { adminId: schoolId }] });
+    // Check for existing credentials
+    const schoolId = uuidv4();
+    const existingCredentials = await UserCredentials.findOne({ $or: [{ email }, { userId: schoolId }] });
     if (existingCredentials) {
       return res.status(409).json({
         success: false,
-        message: `Credentials with this ${existingCredentials.email === email ? 'email' : 'adminId'} already exist`,
+        message: `Credentials with this ${existingCredentials.email === email ? 'email' : 'userId'} already exist`,
       });
     }
 
@@ -171,18 +171,18 @@ exports.createAdmin = async (req, res) => {
       ...userFields,
     });
 
-    // Save credentials in AdminCredentials model
+    // Save credentials in UserCredentials model
     try {
-      await AdminCredentials.create({
-        adminId: schoolId,
+      await UserCredentials.create({
+        userId: schoolId,
         email,
         password, // Store plain-text password
+        userType: 'admin',
         schoolName,
         createdBy: superAdminId,
       });
       console.log(`Credentials saved for admin: ${email}`);
     } catch (credError) {
-      // Roll back AdminInfo creation if credentials fail
       await AdminInfo.deleteOne({ schoolId });
       throw new Error(`Failed to save credentials: ${credError.message}`);
     }

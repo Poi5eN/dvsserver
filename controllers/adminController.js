@@ -6424,6 +6424,33 @@ exports.getStudentParent = async (req, res) => {
       });
     }
 
+    // Build a base query for counting images
+    const countQuery = { schoolId };
+    if (req.query.session) {
+      countQuery.$or = [
+        { session: req.query.session },
+        { sessionHistory: req.query.session },
+      ];
+    } else {
+      countQuery.session = session;
+    }
+
+    // Count students WITH an image URL
+    const countWithImage = await NewStudentModel.countDocuments({
+      ...countQuery,
+      "studentImage.url": { $ne: "" },
+    });
+
+    // Count students WITHOUT an image URL (empty or missing)
+    const countWithoutImage = await NewStudentModel.countDocuments({
+      ...countQuery,
+      $or: [
+        { "studentImage.url": "" },
+        { "studentImage.url": { $exists: false } },
+      ],
+    });
+
+    // Now build the detailed queries for students and parents
     const {
       studentId,
       parentId,
@@ -6462,7 +6489,7 @@ exports.getStudentParent = async (req, res) => {
     let studentQuery = { schoolId };
     let parentQuery = { schoolId };
 
-    // Adjust session filtering
+    // Session filtering
     if (req.query.session) {
       studentQuery.$or = [
         { session: req.query.session },
@@ -6477,7 +6504,7 @@ exports.getStudentParent = async (req, res) => {
       parentQuery.session = session;
     }
 
-    // Enhanced Student Query
+    // Apply all other student filters...
     if (studentId) studentQuery.studentId = studentId;
     if (admissionNumber) studentQuery.admissionNumber = admissionNumber;
     if (email) studentQuery.email = email;
@@ -6515,7 +6542,7 @@ exports.getStudentParent = async (req, res) => {
       studentQuery.isNewAdmission = true;
     }
 
-    // Enhanced Parent Query
+    // Apply parent filters
     if (parentId) parentQuery.parentId = parentId;
     if (parentAdmissionNumber)
       parentQuery.admissionNumber = parentAdmissionNumber;
@@ -6524,8 +6551,15 @@ exports.getStudentParent = async (req, res) => {
     const skip = (page - 1) * (limit || 0);
     const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-    let responseData = {};
+    // Start building the response payload, including the new image counts
+    let responseData = {
+      imageCounts: {
+        withImage: countWithImage,
+        withoutImage: countWithoutImage,
+      },
+    };
 
+    // Now handle all the different fetch modes...
     if (studentId) {
       const student = await NewStudentModel.findOne(studentQuery).lean();
       if (!student)
@@ -6541,6 +6575,7 @@ exports.getStudentParent = async (req, res) => {
           }).lean()
         : null;
       responseData.student = { ...student, parentDetails: parentData };
+
     } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
       if (!parent)
@@ -6559,6 +6594,7 @@ exports.getStudentParent = async (req, res) => {
         hasMultipleChildren: students.length > 1,
         totalChildren: students.length,
       };
+
     } else if (fetchParentsWithMultipleChildren === "true") {
       const parents = await ParentModel.find(parentQuery).sort(sort).lean();
       const parentsWithMultipleChildren = [];
@@ -6584,9 +6620,12 @@ exports.getStudentParent = async (req, res) => {
           total: totalParentsWithMultiple,
           page: parseInt(page),
           limit: limit ? parseInt(limit) : null,
-          totalPages: limit ? Math.ceil(totalParentsWithMultiple / limit) : 1,
+          totalPages: limit
+            ? Math.ceil(totalParentsWithMultiple / limit)
+            : 1,
         },
       };
+
     } else if (fetchAllStudents === "true") {
       const students = await NewStudentModel.find(studentQuery)
         .sort(sort)
@@ -6603,13 +6642,16 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
         },
       };
+
     } else if (fetchNewAdmissions === "true") {
       const newStudents = await NewStudentModel.find(studentQuery)
         .sort(sort)
         .skip(skip)
         .limit(limit ? parseInt(limit) : undefined)
         .lean();
-      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
+      const totalNewStudents = await NewStudentModel.countDocuments(
+        studentQuery
+      );
       responseData.newAdmissions = {
         data: newStudents,
         pagination: {
@@ -6619,6 +6661,7 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalNewStudents / limit) : 1,
         },
       };
+
     } else if (fetchAllParents === "true") {
       const parents = await ParentModel.find(parentQuery)
         .sort(sort)
@@ -6635,6 +6678,7 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalParents / limit) : 1,
         },
       };
+
     } else if (
       Object.keys(studentQuery).length > 2 ||
       Object.keys(parentQuery).length > 2
@@ -6670,7 +6714,9 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalParents / limit) : 1,
         },
       };
+
     } else {
+      // default: all students + parents
       const students = await NewStudentModel.find({ schoolId, session })
         .sort(sort)
         .lean();
@@ -6684,19 +6730,20 @@ exports.getStudentParent = async (req, res) => {
       responseData.parents = { data: parents, total: totalParents };
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Data retrieved successfully.",
       ...responseData,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error retrieving student and parent data.",
       error: error.message,
     });
   }
 };
+
 
 exports.getStudentAndParent = async (req, res) => {
   try {

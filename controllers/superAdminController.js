@@ -134,13 +134,13 @@ exports.createAdmin = async (req, res) => {
       });
     }
 
-    // Check for existing credentials to avoid unique constraint errors
-    const schoolId = uuidv4(); // Generate schoolId early to check UserCredentials
-    const existingCredentials = await UserCredentials.findOne({ $or: [{ email }, { adminId: schoolId }] });
+    // Check for existing credentials
+    const schoolId = uuidv4();
+    const existingCredentials = await UserCredentials.findOne({ $or: [{ email }, { userId: schoolId }] });
     if (existingCredentials) {
       return res.status(409).json({
         success: false,
-        message: `Credentials with this ${existingCredentials.email === email ? 'email' : 'adminId'} already exist`,
+        message: `Credentials with this ${existingCredentials.email === email ? 'email' : 'userId'} already exist`,
       });
     }
 
@@ -173,15 +173,15 @@ exports.createAdmin = async (req, res) => {
     // Save credentials in UserCredentials model
     try {
       await UserCredentials.create({
-        adminId: schoolId,
+        userId: schoolId,
         email,
         password, // Store plain-text password
+        userType: 'admin',
         schoolName,
         createdBy: superAdminId,
       });
       console.log(`Credentials saved for admin: ${email}`);
     } catch (credError) {
-      // Roll back AdminInfo creation if credentials fail
       await AdminInfo.deleteOne({ schoolId });
       throw new Error(`Failed to save credentials: ${credError.message}`);
     }
@@ -198,7 +198,6 @@ exports.createAdmin = async (req, res) => {
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
               <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
@@ -206,7 +205,6 @@ exports.createAdmin = async (req, res) => {
               <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Your School Portal</p>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
               <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, School Admin!</h2>
@@ -221,7 +219,6 @@ exports.createAdmin = async (req, res) => {
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to manage your school’s operations with ease!</p>
             </td>
           </tr>
-          <!-- Footer -->
           <tr>
             <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
               <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
@@ -253,28 +250,25 @@ exports.createAdmin = async (req, res) => {
 exports.getAdminsBySuperAdmin = async (req, res) => {
   try {
     const { superAdminId } = req.params;
-    // Fetch admins created by the super admin
     const admins = await AdminInfo.find({ createdBy: superAdminId });
     
-    // Fetch corresponding credentials
     const adminIds = admins.map(admin => admin.schoolId);
     const credentials = await UserCredentials.find({
-      adminId: { $in: adminIds },
+      userId: { $in: adminIds },
       createdBy: superAdminId,
+      userType: 'admin',
     }).select('+password');
 
-    // Log missing credentials for debugging
-    const missingCredentials = adminIds.filter(id => !credentials.some(cred => cred.adminId === id));
+    const missingCredentials = adminIds.filter(id => !credentials.some(cred => cred.userId === id));
     if (missingCredentials.length > 0) {
       console.warn(`No credentials found for adminIds: ${missingCredentials.join(', ')}`);
     }
 
-    // Map admins with their credentials
     const responseAdmins = admins.map(admin => {
-      const credential = credentials.find(cred => cred.adminId === admin.schoolId);
+      const credential = credentials.find(cred => cred.userId === admin.schoolId);
       return {
         ...admin._doc,
-        password: credential ? credential.password : null, // Include plain-text password or null
+        password: credential ? credential.password : null,
       };
     });
 

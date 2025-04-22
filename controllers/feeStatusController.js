@@ -441,32 +441,38 @@ async function processFeePayment(
     }
   });
 
-  // Apply concessions
+  // Apply concessions - THIS IS THE FIXED PART
   const allDuesToApplyConcession = [
     ...updatedRegular
       .filter((r) => r.dueAmount > 0)
-      .map((r) => ({ type: "regular", item: r, dueAmount: r.dueAmount })),
+      .map((r) => ({ type: "regular", item: r })),
     ...updatedAdditional
       .filter((a) => a.dueAmount > 0)
-      .map((a) => ({ type: "additional", item: a, dueAmount: a.dueAmount })),
+      .map((a) => ({ type: "additional", item: a })),
   ].sort((a, b) =>
     a.item.status === "Partial" && b.item.status !== "Partial" ? -1 : 0
   );
 
-  if (remainingConcession > 0) {
-    for (const dueItem of allDuesToApplyConcession) {
-      if (dueItem.dueAmount > 0) {
-        const concessionToApply = Math.min(
-          remainingConcession,
-          dueItem.dueAmount
-        );
-        dueItem.item.dueAmount -= concessionToApply;
-        dueItem.item.concessionApplied =
-          (dueItem.item.concessionApplied || 0) + concessionToApply;
-        if (dueItem.item.dueAmount === 0) dueItem.item.status = "Paid";
-        remainingConcession -= concessionToApply;
-        if (remainingConcession <= 0) break;
+  for (const dueItem of allDuesToApplyConcession) {
+    if (remainingConcession > 0 && dueItem.item.dueAmount > 0) {
+      const concessionToApply = Math.min(
+        remainingConcession,
+        dueItem.item.dueAmount
+      );
+      
+      // Apply concession to due amount
+      dueItem.item.dueAmount -= concessionToApply;
+      
+      // Track concession applied
+      dueItem.item.concessionApplied = 
+        (dueItem.item.concessionApplied || 0) + concessionToApply;
+      
+      // Update status if fully paid
+      if (dueItem.item.dueAmount === 0) {
+        dueItem.item.status = "Paid";
       }
+      
+      remainingConcession -= concessionToApply;
     }
   }
 
@@ -490,7 +496,7 @@ async function processFeePayment(
     feeStatus.monthlyDues.additionalDues.reduce((sum, d) => sum + d.dueAmount, 0) +
     feeStatus.pastDues;
 
-  // Prepare payment message
+  // Prepare concession details message
   const concessionDetails = allDuesToApplyConcession
     .filter((item) => item.item.concessionApplied > 0)
     .map((item) =>
@@ -567,6 +573,7 @@ async function processFeePayment(
       paidAmount: fee.paidAmount,
       dueAmount: fee.dueAmount,
       status: fee.status,
+      concessionApplied: fee.concessionApplied || 0,
     })),
     additionalFees: updatedAdditional.map((fee) => ({
       name: fee.name,
@@ -574,6 +581,7 @@ async function processFeePayment(
       paidAmount: fee.paidAmount,
       dueAmount: fee.dueAmount,
       status: fee.status,
+      concessionApplied: fee.concessionApplied || 0,
     })),
     lateFines: [],
     transactionId: transactionId || "N/A",
@@ -584,11 +592,11 @@ async function processFeePayment(
     remark: remark || "",
     totalAmountPaid: parseFloat(totalAmount),
     totalDues: feeStatus.dues,
-    concessionFee: 0,
+    concessionFee: roundedConcession,
     lateFinesPaid: 0,
     concessionApplied: roundedConcession,
     paymentMessage,
-    paidAfterConcession: 0,
+    paidAfterConcession: parseFloat(totalAmount),
     newPaidAmount: parseFloat(totalAmount),
   };
 

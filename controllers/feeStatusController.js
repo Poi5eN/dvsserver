@@ -1483,172 +1483,6 @@ exports.getFeeStatus = async (req, res) => {
   }
 };
 
-
-// Get fee information for student
-exports.getStudentFeeInfo = async (req, res) => {
-  try {
-    const {
-      studentId,
-      session,
-      className,
-      parentId,
-      includeFeeHistory = true,
-      includeMonthlyDues = true,
-      includeStudentDetails = true,
-      includeParentDetails = true,
-    } = req.query;
-    const schoolId = req.user.schoolId;
-
-    if (!studentId || !session) {
-      return res.status(400).json({
-        success: false,
-        message: "Student ID and session are required.",
-      });
-    }
-
-    let student;
-    if (includeStudentDetails) {
-      student = await NewStudentModel.findOne({ schoolId, studentId }).lean();
-      if (!student) {
-        return res.status(404).json({
-          success: false,
-          message: "Student not found.",
-        });
-      }
-    }
-
-    let parent;
-    if (includeParentDetails && student?.parentId) {
-      parent = await ParentModel.findOne({
-        schoolId,
-        parentId: student.parentId,
-      }).lean();
-    }
-
-    const fees = await getAllApplicableFees(
-      schoolId,
-      student?.class || className,
-      studentId
-    );
-
-    const regularFees = fees.filter((f) => !f.additional);
-    const additionalFees = fees.filter(
-      (f) => f.additional && f.feeType !== "LateFine"
-    );
-    const lateFineConfig = fees.find((f) => f.feeType === "LateFine");
-
-    let feeStatus = await FeeStatus.findOne({
-      schoolId,
-      studentId,
-      session,
-    }).lean();
-    if (!feeStatus) {
-      feeStatus = {
-        schoolId,
-        studentId,
-        session,
-        year: session.split("-")[0],
-        monthlyDues: { regularDues: [], additionalDues: [] },
-        pastDues: 0,
-        dues: 0,
-        totalLateFines: 0,
-        feeHistory: [],
-      };
-    }
-
-    const months = [
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-      "January",
-      "February",
-      "March",
-    ];
-
-    const monthlyStatus = months.map((month) => {
-      const regularDue =
-        feeStatus?.monthlyDues.regularDues.find((d) => d.month === month) || null;
-      const additionalDues =
-        feeStatus?.monthlyDues.additionalDues.filter((d) => d.month === month) || [];
-
-      return {
-        month,
-        regularFee: {
-          amount: regularFees[0]?.amount || 0,
-          paid: regularDue?.paidAmount || 0,
-          due: regularDue?.dueAmount || regularFees[0]?.amount || 0,
-          status: regularDue?.status || "Unpaid",
-        },
-        additionalFees: additionalFees
-          .filter((fee) => fee.frequency === "monthly")
-          .map((fee) => {
-            const addDue = additionalDues.find((d) => d.name === fee.name);
-            return {
-              name: fee.name,
-              amount: fee.amount,
-              paid: addDue?.paidAmount || 0,
-              due: addDue?.dueAmount || fee.amount,
-              status: addDue?.status || "Unpaid",
-              feeType: fee.feeType,
-              frequency: fee.frequency,
-            };
-          })
-          .filter((af) => af.due > 0),
-      };
-    });
-
-    const oneTimeAdditionalDues = feeStatus.monthlyDues.additionalDues
-      .filter((d) => !d.month && d.dueAmount > 0)
-      .map((d) => ({
-        name: d.name,
-        dueAmount: d.dueAmount,
-        paidAmount: d.paidAmount,
-        status: d.status,
-        amount: additionalFees.find((f) => f.name === d.name)?.amount || d.dueAmount,
-      }));
-
-    const responseData = {
-      success: true,
-      message: "Fee information retrieved successfully",
-      data: {
-        ...(includeStudentDetails && { student }),
-        ...(includeParentDetails && { parent }),
-        feeStructure: {
-          regularFees,
-          additionalFees,
-          lateFine: lateFineConfig,
-        },
-        feeStatus: {
-          ...feeStatus,
-          totalLateFines: feeStatus.totalLateFines || 0,
-        },
-        ...(includeMonthlyDues && { monthlyStatus }),
-        oneTimeAdditionalDues,
-        pendingMonths: monthlyStatus
-          .filter(
-            (m) =>
-              m.regularFee.due > 0 || m.additionalFees.some((af) => af.due > 0)
-          )
-          .map((m) => m.month),
-      },
-    };
-
-    res.status(200).json(responseData);
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Failed to retrieve fee information",
-      error: error.message,
-    });
-  }
-};
-
 // Get monthly dues
 exports.getMonthlyDues = async (req, res) => {
   try {
@@ -2111,6 +1945,170 @@ exports.getStudentFeeHistory = async (req, res) => {
   }
 };
 
+// Get fee information for student
+exports.getStudentFeeInfo = async (req, res) => {
+  try {
+    const {
+      studentId,
+      session,
+      className,
+      parentId,
+      includeFeeHistory = true,
+      includeMonthlyDues = true,
+      includeStudentDetails = true,
+      includeParentDetails = true,
+    } = req.query;
+    const schoolId = req.user.schoolId;
+
+    if (!studentId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and session are required.",
+      });
+    }
+
+    let student;
+    if (includeStudentDetails) {
+      student = await NewStudentModel.findOne({ schoolId, studentId }).lean();
+      if (!student) {
+        return res.status(404).json({
+          success: false,
+          message: "Student not found.",
+        });
+      }
+    }
+
+    let parent;
+    if (includeParentDetails && student?.parentId) {
+      parent = await ParentModel.findOne({
+        schoolId,
+        parentId: student.parentId,
+      }).lean();
+    }
+
+    const fees = await getAllApplicableFees(
+      schoolId,
+      student?.class || className,
+      studentId
+    );
+
+    const regularFees = fees.filter((f) => !f.additional);
+    const additionalFees = fees.filter(
+      (f) => f.additional && f.feeType !== "LateFine"
+    );
+    const lateFineConfig = fees.find((f) => f.feeType === "LateFine");
+
+    let feeStatus = await FeeStatus.findOne({
+      schoolId,
+      studentId,
+      session,
+    }).lean();
+    if (!feeStatus) {
+      feeStatus = {
+        schoolId,
+        studentId,
+        session,
+        year: session.split("-")[0],
+        monthlyDues: { regularDues: [], additionalDues: [] },
+        pastDues: 0,
+        dues: 0,
+        totalLateFines: 0,
+        feeHistory: [],
+      };
+    }
+
+    const months = [
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+      "January",
+      "February",
+      "March",
+    ];
+
+    const monthlyStatus = months.map((month) => {
+      const regularDue =
+        feeStatus?.monthlyDues.regularDues.find((d) => d.month === month) || null;
+      const additionalDues =
+        feeStatus?.monthlyDues.additionalDues.filter((d) => d.month === month) || [];
+
+      return {
+        month,
+        regularFee: {
+          amount: regularFees[0]?.amount || 0,
+          paid: regularDue?.paidAmount || 0,
+          due: regularDue?.dueAmount || regularFees[0]?.amount || 0,
+          status: regularDue?.status || "Unpaid",
+        },
+        additionalFees: additionalFees
+          .filter((fee) => fee.frequency === "monthly")
+          .map((fee) => {
+            const addDue = additionalDues.find((d) => d.name === fee.name);
+            return {
+              name: fee.name,
+              amount: fee.amount,
+              paid: addDue?.paidAmount || 0,
+              due: addDue?.dueAmount || fee.amount,
+              status: addDue?.status || "Unpaid",
+              feeType: fee.feeType,
+              frequency: fee.frequency,
+            };
+          })
+          .filter((af) => af.due > 0),
+      };
+    });
+
+    const oneTimeAdditionalDues = feeStatus.monthlyDues.additionalDues
+      .filter((d) => !d.month && d.dueAmount > 0)
+      .map((d) => ({
+        name: d.name,
+        dueAmount: d.dueAmount,
+        paidAmount: d.paidAmount,
+        status: d.status,
+        amount: additionalFees.find((f) => f.name === d.name)?.amount || d.dueAmount,
+      }));
+
+    const responseData = {
+      success: true,
+      message: "Fee information retrieved successfully",
+      data: {
+        ...(includeStudentDetails && { student }),
+        ...(includeParentDetails && { parent }),
+        feeStructure: {
+          regularFees,
+          additionalFees,
+          lateFine: lateFineConfig,
+        },
+        feeStatus: {
+          ...feeStatus,
+          totalLateFines: feeStatus.totalLateFines || 0,
+        },
+        ...(includeMonthlyDues && { monthlyStatus }),
+        oneTimeAdditionalDues,
+        pendingMonths: monthlyStatus
+          .filter(
+            (m) =>
+              m.regularFee.due > 0 || m.additionalFees.some((af) => af.due > 0)
+          )
+          .map((m) => m.month),
+      },
+    };
+
+    res.status(200).json(responseData);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve fee information",
+      error: error.message,
+    });
+  }
+};
 
 // Get fee history and dues
 exports.getFeeHistoryAndDues = async (req, res) => {

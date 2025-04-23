@@ -380,7 +380,8 @@ exports.getStudentsUnified = async (req, res) => {
     const {
       schoolId, studentId, studentName, class: studentClass, section, admissionNumber, email,
       parentId, parentAdmissionNumber, approvalStatus, isNewAdmission, assignedThirdParty,
-      page = 1, limit = 0, sortBy = 'createdAt', sortOrder = -1
+      page = 1, limit = 0, sortBy = 'createdAt', sortOrder = -1,
+      status // <-- Add this line
     } = req.query;
 
     const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
@@ -398,8 +399,9 @@ exports.getStudentsUnified = async (req, res) => {
 
     const query = {
       schoolId: { $in: filterSchoolIds },
+      status: status || 'active',
     };
-
+    
     if (studentId) query.studentId = studentId;
     if (studentName) query.studentName = { $regex: studentName.trim(), $options: 'i' };
     if (studentClass) query.class = studentClass;
@@ -419,6 +421,7 @@ exports.getStudentsUnified = async (req, res) => {
       }
       query.assignedThirdParty = assignedThirdParty;
     }
+    
 
     const parsedPage = parseInt(page) || 1;
     const parsedLimit = parseInt(limit) || 10;

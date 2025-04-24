@@ -128,9 +128,12 @@ exports.createAdmission = async (req, res) => {
     const finalClass = studentClass || photoData?.class || studentUdiseClass || "Unknown";
     const finalSection = studentSection || photoData?.section || studentUdiseSection || null;
 
+    // Generate student UUID
+    const studentUUID = uuidv4();
+    
     // Match NewStudentModel schema
     const studentData = await NewStudentModel.create({
-      studentId: uuidv4(),
+      studentId: studentUUID,
       schoolId,
       session,
       studentName: finalStudentName,
@@ -231,10 +234,14 @@ exports.createAdmission = async (req, res) => {
     });
 
     let parentData = null;
+    // Generate parent UUID
+    const parentUUID = uuidv4();
+    
     if (parentAdmissionNumber) {
+      // Find parent by admission number and update with student's UUID, not ObjectId
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId },
-        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: finalStudentName } },
+        { $push: { studentIds: studentUUID }, $addToSet: { studentNames: finalStudentName } },
         { new: true }
       );
       if (!parentData) {
@@ -243,6 +250,12 @@ exports.createAdmission = async (req, res) => {
           message: "Parent with provided admission number does not exist.",
         });
       }
+      
+      // Update student with parent's UUID
+      await NewStudentModel.findByIdAndUpdate(
+        studentData._id,
+        { parentId: parentData.parentId }
+      );
     } else {
       const parentFile = files.find(f => f.fieldname === "parentImage");
       let parentImageResult = {};
@@ -255,10 +268,10 @@ exports.createAdmission = async (req, res) => {
 
       const parentAdmissionNumberGenerated = await generateAdmissionNumber(schoolId, ParentModel);
       parentData = await ParentModel.create({
-        parentId: uuidv4(),
+        parentId: parentUUID,
         schoolId,
         session,
-        studentIds: [studentData._id],
+        studentIds: [studentUUID], // Store student UUID instead of ObjectId
         studentNames: [finalStudentName],
         fatherName,
         motherName,
@@ -281,7 +294,8 @@ exports.createAdmission = async (req, res) => {
     }
 
     if (parentData) {
-      studentData.parentId = parentData._id.toString();
+      // Update student with parent's UUID instead of ObjectId
+      studentData.parentId = parentData.parentId;
       studentData.parentAdmissionNumber = parentData.admissionNumber;
       await studentData.save();
 
@@ -314,7 +328,7 @@ exports.createAdmission = async (req, res) => {
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
               <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${finalStudentName}!</h2>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been submitted and is awaiting approval.</p>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We're thrilled to welcome you to ${schoolName}! Your admission has been submitted and is awaiting approval.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${finalStudentName}</p>
@@ -322,7 +336,7 @@ exports.createAdmission = async (req, res) => {
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Pending Approval</span></p>
               </div>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Hang tight! We’re reviewing your details and will notify you once approved. Your journey starts on ${studentJoiningDate}.</p>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Hang tight! We're reviewing your details and will notify you once approved. Your journey starts on ${studentJoiningDate}.</p>
             </td>
           </tr>
           <tr>
@@ -344,9 +358,9 @@ exports.createAdmission = async (req, res) => {
     await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
 
     // Delete photo record if used
-    if (photoId && photoData) {
-      await PhotoModel.deleteOne({ photoId });
-    }
+    // if (photoId && photoData) {
+    //   await PhotoModel.deleteOne({ photoId });
+    // }
 
     return res.status(201).json({
       success: true,
@@ -363,6 +377,7 @@ exports.createAdmission = async (req, res) => {
     });
   }
 };
+
 
 
 /**

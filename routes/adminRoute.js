@@ -14,6 +14,24 @@ router.put('/admin', verifyToken, uploads, admin.updateAdmin);
 
 
 
+// DESIGN RELATED ROUTES FLOW
+// Create a new design format
+router.post("/design", verifyToken, admin.createDesignFormat);
+// Get all design formats (with optional type filter via query param)
+router.get("/design", verifyToken, admin.getAllDesignFormats);
+// Get a specific design format by ID
+router.get("/design:formatId", verifyToken, admin.getDesignFormatById);
+// Get default design format by type
+router.get("/design/default/:type", verifyToken, admin.getDefaultDesignFormat);
+// Update a design format
+router.put("/design/:formatId", verifyToken, admin.updateDesignFormat);
+// Delete a design format
+router.delete("/design/:formatId", verifyToken, admin.deleteDesignFormat);
+// Set a design format as default
+router.patch("/design/:formatId/set-default", verifyToken, admin.setDefaultDesignFormat);
+
+
+
 
 // CLASS RELATED ROUTES FLOW
 router.post('/class', verifyToken, admin.createClass);

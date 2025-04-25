@@ -42,6 +42,10 @@ const Mark = require("../models/mark");
 const Exam = require("../models/exam");
 const { generateStructuredNumber } = require("../utils/numberGenerator");
 
+// controllers/designFormatController.js
+const DesignFormat = require("../models/designFormatModel");
+// const { v4: uuidv4 } = require("uuid");
+
 // SCHOOL RELATED CONTROLLER FLOW
 
 // Update Admin Controller
@@ -282,6 +286,326 @@ function generateEmployeeId() {
 
   return employeeId;
 }
+
+
+
+
+
+// Create a new design format
+exports.createDesignFormat = async (req, res) => {
+  try {
+    const { name, type, content, description, isDefault } = req.body;
+
+    // Validate required fields
+    if (!name || !type || !content) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, type, and content are required fields"
+      });
+    }
+
+    // Validate type
+    const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid type. Must be one of: ${validTypes.join(', ')}`
+      });
+    }
+
+    // Check if a default format of this type already exists for this school
+    if (isDefault) {
+      const existingDefault = await DesignFormat.findOne({
+        schoolId: req.user.schoolId,
+        type,
+        isDefault: true
+      });
+
+      if (existingDefault) {
+        // Update the existing default to non-default
+        await DesignFormat.findByIdAndUpdate(existingDefault._id, { isDefault: false });
+      }
+    }
+
+    // Create the new design format
+    const designFormat = await DesignFormat.create({
+      formatId: uuidv4(),
+      schoolId: req.user.schoolId,
+      name: name.trim(),
+      type,
+      content,
+      description: description ? description.trim() : "",
+      isDefault: isDefault || false
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Design format created successfully",
+      designFormat
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error creating design format",
+      error: error.message
+    });
+  }
+};
+
+// Get all design formats for a school (with optional type filter)
+exports.getAllDesignFormats = async (req, res) => {
+  try {
+    const { type } = req.query;
+    
+    const query = { schoolId: req.user.schoolId };
+    
+    // Add type filter if provided
+    if (type) {
+      const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid type. Must be one of: ${validTypes.join(', ')}`
+        });
+      }
+      query.type = type;
+    }
+
+    const designFormats = await DesignFormat.find(query)
+      .select('-content') // Exclude content field to reduce response size
+      .sort({ type: 1, isDefault: -1, updatedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Design formats fetched successfully",
+      count: designFormats.length,
+      designFormats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching design formats",
+      error: error.message
+    });
+  }
+};
+
+// Get a specific design format by ID
+exports.getDesignFormatById = async (req, res) => {
+  try {
+    const { formatId } = req.params;
+    
+    const designFormat = await DesignFormat.findOne({
+      formatId,
+      schoolId: req.user.schoolId
+    });
+
+    if (!designFormat) {
+      return res.status(404).json({
+        success: false,
+        message: "Design format not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Design format fetched successfully",
+      designFormat
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching design format",
+      error: error.message
+    });
+  }
+};
+
+// Get default design format by type
+exports.getDefaultDesignFormat = async (req, res) => {
+  try {
+    const { type } = req.params;
+    
+    // Validate type
+    const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
+    if (!validTypes.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid type. Must be one of: ${validTypes.join(', ')}`
+      });
+    }
+
+    const designFormat = await DesignFormat.findOne({
+      schoolId: req.user.schoolId,
+      type,
+      isDefault: true
+    });
+
+    if (!designFormat) {
+      return res.status(404).json({
+        success: false,
+        message: `No default ${type} format found`
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Default design format fetched successfully",
+      designFormat
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching default design format",
+      error: error.message
+    });
+  }
+};
+
+// Update a design format
+exports.updateDesignFormat = async (req, res) => {
+  try {
+    const { formatId } = req.params;
+    const { name, content, description, isDefault } = req.body;
+
+    // Find the design format to update
+    const designFormat = await DesignFormat.findOne({
+      formatId,
+      schoolId: req.user.schoolId
+    });
+
+    if (!designFormat) {
+      return res.status(404).json({
+        success: false,
+        message: "Design format not found"
+      });
+    }
+
+    // Update fields if provided
+    if (name) designFormat.name = name.trim();
+    if (content) designFormat.content = content;
+    if (description !== undefined) designFormat.description = description ? description.trim() : "";
+
+    // Handle making this format the default
+    if (isDefault && !designFormat.isDefault) {
+      // Find and update the current default format of this type
+      await DesignFormat.findOneAndUpdate(
+        {
+          schoolId: req.user.schoolId,
+          type: designFormat.type,
+          isDefault: true,
+          formatId: { $ne: formatId }
+        },
+        { isDefault: false }
+      );
+      
+      designFormat.isDefault = true;
+    }
+
+    // Save the updated design format
+    await designFormat.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Design format updated successfully",
+      designFormat
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating design format",
+      error: error.message
+    });
+  }
+};
+
+// Delete a design format
+exports.deleteDesignFormat = async (req, res) => {
+  try {
+    const { formatId } = req.params;
+
+    const designFormat = await DesignFormat.findOne({
+      formatId,
+      schoolId: req.user.schoolId
+    });
+
+    if (!designFormat) {
+      return res.status(404).json({
+        success: false,
+        message: "Design format not found"
+      });
+    }
+
+    // Check if this is a default format
+    if (designFormat.isDefault) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete the default format. Please set another format as default first."
+      });
+    }
+
+    // Delete the design format
+    await DesignFormat.findByIdAndDelete(designFormat._id);
+
+    res.status(200).json({
+      success: true,
+      message: "Design format deleted successfully"
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error deleting design format",
+      error: error.message
+    });
+  }
+};
+
+// Set a design format as default
+exports.setDefaultDesignFormat = async (req, res) => {
+  try {
+    const { formatId } = req.params;
+
+    // Find the design format
+    const designFormat = await DesignFormat.findOne({
+      formatId,
+      schoolId: req.user.schoolId
+    });
+
+    if (!designFormat) {
+      return res.status(404).json({
+        success: false,
+        message: "Design format not found"
+      });
+    }
+
+    // Update the current default format of this type
+    await DesignFormat.findOneAndUpdate(
+      {
+        schoolId: req.user.schoolId,
+        type: designFormat.type,
+        isDefault: true,
+        formatId: { $ne: formatId }
+      },
+      { isDefault: false }
+    );
+
+    // Set this format as default
+    designFormat.isDefault = true;
+    await designFormat.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Design format set as default successfully",
+      designFormat
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error setting default design format",
+      error: error.message
+    });
+  }
+};
 
 // Create a new teacher
 exports.createTeacher = async (req, res) => {

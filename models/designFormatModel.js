@@ -38,6 +38,16 @@ const designFormatSchema = mongoose.Schema({
     trim: true,
     default: ""
   },
+  backgroundImage: {
+    public_id: {
+      type: String,
+      default: ""
+    },
+    url: {
+      type: String,
+      default: ""
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now

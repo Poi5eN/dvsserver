@@ -44,7 +44,7 @@ const { generateStructuredNumber } = require("../utils/numberGenerator");
 
 // controllers/designFormatController.js
 const DesignFormat = require("../models/designFormatModel");
-// const { v4: uuidv4 } = require("uuid");
+const { v4: uuidv4 } = require("uuid");
 
 // SCHOOL RELATED CONTROLLER FLOW
 
@@ -327,6 +327,25 @@ exports.createDesignFormat = async (req, res) => {
       }
     }
 
+    // Handle background image upload if present
+    let backgroundImageResult = {};
+    const files = req.files || [];
+    const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
+
+    if (backgroundImageFile) {
+      const fileKey = `designFormats/${type}/${Date.now()}-${backgroundImageFile.originalname}`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: backgroundImageFile.buffer,
+        ContentType: backgroundImageFile.mimetype,
+        ACL: "public-read"
+      };
+      
+      const minioData = await s3.upload(params).promise();
+      backgroundImageResult = { public_id: fileKey, url: minioData.Location };
+    }
+
     // Create the new design format
     const designFormat = await DesignFormat.create({
       formatId: uuidv4(),
@@ -335,7 +354,8 @@ exports.createDesignFormat = async (req, res) => {
       type,
       content,
       description: description ? description.trim() : "",
-      isDefault: isDefault || false
+      isDefault: isDefault || false,
+      backgroundImage: backgroundImageResult.url ? backgroundImageResult : undefined
     });
 
     res.status(201).json({
@@ -486,6 +506,38 @@ exports.updateDesignFormat = async (req, res) => {
     if (content) designFormat.content = content;
     if (description !== undefined) designFormat.description = description ? description.trim() : "";
 
+    // Handle background image update if present
+    const files = req.files || [];
+    const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
+
+    if (backgroundImageFile) {
+      // Delete old image from MinIO if exists and has public_id
+      if (designFormat.backgroundImage && designFormat.backgroundImage.public_id) {
+        try {
+          await s3.deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: designFormat.backgroundImage.public_id
+          }).promise();
+        } catch (deleteError) {
+          console.error("Error deleting old background image:", deleteError);
+          // Continue with update even if delete fails
+        }
+      }
+
+      // Upload new image
+      const fileKey = `designFormats/${designFormat.type}/${Date.now()}-${backgroundImageFile.originalname}`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: backgroundImageFile.buffer,
+        ContentType: backgroundImageFile.mimetype,
+        ACL: "public-read"
+      };
+      
+      const minioData = await s3.upload(params).promise();
+      designFormat.backgroundImage = { public_id: fileKey, url: minioData.Location };
+    }
+
     // Handle making this format the default
     if (isDefault && !designFormat.isDefault) {
       // Find and update the current default format of this type
@@ -542,6 +594,19 @@ exports.deleteDesignFormat = async (req, res) => {
         success: false,
         message: "Cannot delete the default format. Please set another format as default first."
       });
+    }
+
+    // Delete background image if exists
+    if (designFormat.backgroundImage && designFormat.backgroundImage.public_id) {
+      try {
+        await s3.deleteObject({
+          Bucket: process.env.MINIO_BUCKET,
+          Key: designFormat.backgroundImage.public_id
+        }).promise();
+      } catch (deleteError) {
+        console.error("Error deleting background image:", deleteError);
+        // Continue with delete even if image delete fails
+      }
     }
 
     // Delete the design format

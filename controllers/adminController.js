@@ -978,16 +978,17 @@ exports.getAllTeachers = async (req, res) => {
 
 // --------------------------------Fee Controller--------------------------------------\\
 
+// Important utility function needed by both controllers
 const getFrequencyFromFeeType = (feeType) => {
   switch (feeType.toLowerCase()) {
     case "one time":
       return "one-time";
     case "monthly":
-      return "monthly";
+      return "monthly"; 
     case "annual":
       return "annual";
     case "latefine":
-      return "monthly"; // Late fines are typically monthly
+      return "monthly"; // Assuming late fines are monthly by default
     default:
       return "monthly"; // fallback
   }
@@ -1654,14 +1655,14 @@ exports.bulkCreateFees = async (req, res) => {
         continue;
       }
 
-      // derive frequency using the helper function
+      // Get frequency based on feeType
       const frequency = getFrequencyFromFeeType(feeType);
 
       const base = {
         schoolId,
         session,
         feeType,
-        frequency, // Add frequency to base object
+        frequency,  // Now correctly determined from feeType
         amount,
         additional: !!name,
         updatedBy,
@@ -1674,24 +1675,6 @@ exports.bulkCreateFees = async (req, res) => {
           continue;
         }
         
-        // Check if student-specific fee already exists
-        const exists = await FeeStructure.findOne({
-          schoolId,
-          session,
-          studentId,
-          feeType,
-          additional: !!name,
-          ...(name && { name }),
-        });
-        
-        if (exists) {
-          errors.push({ 
-            fee: f, 
-            message: `Student‐specific fee for ${feeType}${name ? ` (${name})` : ""} already exists.` 
-          });
-          continue;
-        }
-
         const doc = new FeeStructure({
           ...base,
           className: student.class,
@@ -1705,65 +1688,6 @@ exports.bulkCreateFees = async (req, res) => {
         if (!className) {
           errors.push({ fee: f, message: "className is required." });
           continue;
-        }
-        
-        // Check for existing fee structure based on type
-        if (feeType === "LateFine") {
-          if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
-            errors.push({ fee: f, message: "Late-fine due day must be between 1 and 31." });
-            continue;
-          }
-          
-          const exists = await FeeStructure.findOne({
-            schoolId,
-            session,
-            className,
-            feeType: "LateFine",
-            additional: true,
-          });
-          
-          if (exists) {
-            errors.push({ 
-              fee: f, 
-              message: `Late-fine already exists for class ${className}.` 
-            });
-            continue;
-          }
-        } else if (name) {
-          // Additional fee check
-          const exists = await FeeStructure.findOne({
-            schoolId,
-            session,
-            className,
-            name,
-            feeType,
-            additional: true,
-          });
-          
-          if (exists) {
-            errors.push({ 
-              fee: f, 
-              message: `Additional fee ${name} for ${feeType} already exists on class ${className}.` 
-            });
-            continue;
-          }
-        } else {
-          // Regular fee check
-          const exists = await FeeStructure.findOne({ 
-            schoolId, 
-            session, 
-            className, 
-            feeType, 
-            additional: false 
-          });
-          
-          if (exists) {
-            errors.push({ 
-              fee: f, 
-              message: `Regular fee for ${feeType} already exists on class ${className}.` 
-            });
-            continue;
-          }
         }
         
         const doc = new FeeStructure({
@@ -1850,7 +1774,7 @@ exports.bulkEditFees = async (req, res) => {
       if (amount !== undefined) updateData.amount = amount;
       if (lateFineDueDay !== undefined) updateData.lateFineDueDay = lateFineDueDay;
       
-      // Update frequency if feeType is being changed
+      // Update frequency if feeType is changed
       if (feeType !== undefined && feeType !== existingFee.feeType) {
         updateData.feeType = feeType;
         updateData.frequency = getFrequencyFromFeeType(feeType);
@@ -1883,6 +1807,7 @@ exports.bulkEditFees = async (req, res) => {
     });
   }
 };
+
 
 // --------------------------------Book Controller
 

@@ -277,13 +277,15 @@ async function processFeePayment(
     computedPastDues;
 
   // Validate total amount
+  // Replace the existing validation block starting with "if (regularFees.length === 0..." with:
   if (
     regularFees.length === 0 &&
     additionalFees.length === 0 &&
-    pastDuesPaid === 0
+    pastDuesPaid === 0 &&
+    parseFloat(exemption) <= 0
   ) {
     throw new Error(
-      "No fees selected for payment. Please select regular, additional fees, or past dues."
+      "No fees selected for payment. Please select regular, additional fees, past dues, or apply an exemption."
     );
   }
 

@@ -6,6 +6,7 @@ const regularFeeHistorySchema = new mongoose.Schema({
   dueAmount: { type: Number, required: true },
   status: { type: String, required: true },
   concessionApplied: { type: Number, default: 0 }, // Add this
+  exemptionApplied: { type: Number, default: 0 }, // New field
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
@@ -19,6 +20,7 @@ const additionalFeeHistorySchema = new mongoose.Schema({
   paidAmount: { type: Number, required: true },
   dueAmount: { type: Number, required: true },
   concessionApplied: { type: Number, default: 0 }, // Add this
+  exemptionApplied: { type: Number, default: 0 }, // New field
   status: { type: String, required: true },
   frequency: {
     type: String,
@@ -74,6 +76,7 @@ const monthlyRegularDuesSchema = new mongoose.Schema({
   paidAmount: { type: Number, default: 0 },
   dueAmount: { type: Number, required: true },
   status: { type: String, required: true },
+  exemptionApplied: { type: Number, default: 0 }, // New field
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
@@ -87,6 +90,7 @@ const monthlyAdditionalDuesSchema = new mongoose.Schema({
   paidAmount: { type: Number, default: 0 },
   dueAmount: { type: Number, required: true },
   status: { type: String, required: true },
+  exemptionApplied: { type: Number, default: 0 }, // New field
   frequency: {
     type: String,
     enum: ["monthly", "one-time", "annual"],
@@ -110,6 +114,7 @@ const feeStatusSchema = new mongoose.Schema({
   overallAmountPaid: { type: Number, default: 0 },
   unifiedReceiptNumber: String,
   overallConcessionApplied: { type: Number, default: 0 },
+  overallExemptionApplied: { type: Number, default: 0 }, // New field
   createdAt: { type: Date, default: Date.now },
   feeHistory: [feeHistorySchema],
   monthlyDues: monthlyDuesSchema,

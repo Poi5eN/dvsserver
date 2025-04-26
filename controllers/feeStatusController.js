@@ -204,6 +204,7 @@ async function processFeePayment(
     additionalFees = [],
     pastDuesPaid = 0,
     concession = 0,
+    exemption = 0, // New field
     totalAmount,
     paymentMode,
     transactionId,
@@ -343,7 +344,9 @@ async function processFeePayment(
   const previousDuesValue = feeStatus.dues || totalFeeAmount;
 
   const roundedConcession = Math.round(concession);
+  const roundedExemption = Math.round(exemption); // New
   let remainingConcession = roundedConcession;
+  let remainingExemption = roundedExemption; // New
   let remaining = parseFloat(totalAmount);
 
   // Process past dues
@@ -379,7 +382,7 @@ async function processFeePayment(
     remaining -= payment;
   }
 
-  // Process selected fees
+  // Process selected fees with exemption
   const updatedRegular = [];
   regularFees.forEach((r) => {
     let due = feeStatus.monthlyDues.regularDues.find(
@@ -391,6 +394,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: regularFeeMap.Monthly,
         status: "Unpaid",
+        exemptionApplied: 0, // Initialize
       };
       feeStatus.monthlyDues.regularDues.push(due);
     }
@@ -400,6 +404,7 @@ async function processFeePayment(
       dueAmount: due.dueAmount,
       status: due.status,
       concessionApplied: due.concessionApplied || 0,
+      exemptionApplied: due.exemptionApplied || 0, // New
     };
     if (remaining > 0) {
       const maxPayment = Math.min(remaining, due.dueAmount);
@@ -424,6 +429,7 @@ async function processFeePayment(
         paidAmount: 0,
         dueAmount: additionalFeeMap[a.name].amount,
         status: "Unpaid",
+        exemptionApplied: 0, // Initialize
       };
       feeStatus.monthlyDues.additionalDues.push(due);
     }
@@ -434,6 +440,7 @@ async function processFeePayment(
       dueAmount: due.dueAmount,
       status: due.status,
       concessionApplied: due.concessionApplied || 0,
+      exemptionApplied: due.exemptionApplied || 0, // New
     };
     if (due && remaining > 0) {
       const maxPayment = Math.min(remaining, due.dueAmount);
@@ -445,7 +452,7 @@ async function processFeePayment(
     updatedAdditional.push(updatedDue);
   });
 
-  // Apply concessions
+  // Apply concessions and exemptions
   const allDuesToApplyConcession = [
     ...updatedRegular
       .filter((r) => r.dueAmount > 0)
@@ -457,6 +464,24 @@ async function processFeePayment(
     a.item.status === "Partial" && b.item.status !== "Partial" ? -1 : 0
   );
 
+  // Apply exemptions first
+  for (const dueItem of allDuesToApplyConcession) {
+    if (remainingExemption > 0 && dueItem.item.dueAmount > 0) {
+      const exemptionToApply = Math.min(
+        remainingExemption,
+        dueItem.item.dueAmount
+      );
+      dueItem.item.dueAmount -= exemptionToApply;
+      dueItem.item.exemptionApplied =
+        (dueItem.item.exemptionApplied || 0) + exemptionToApply;
+      if (dueItem.item.dueAmount === 0) {
+        dueItem.item.status = "Exempt"; // Mark as Exempt
+      }
+      remainingExemption -= exemptionToApply;
+    }
+  }
+
+  // Apply concessions
   for (const dueItem of allDuesToApplyConcession) {
     if (remainingConcession > 0 && dueItem.item.dueAmount > 0) {
       const concessionToApply = Math.min(
@@ -473,7 +498,7 @@ async function processFeePayment(
     }
   }
 
-  // Update feeStatus.monthlyDues with fresh objects (omit _id to avoid conflicts)
+  // Update feeStatus.monthlyDues
   feeStatus.monthlyDues.regularDues = [
     ...feeStatus.monthlyDues.regularDues
       .filter((due) => !regularFees.some((r) => r.month === due.month))
@@ -483,6 +508,7 @@ async function processFeePayment(
         dueAmount: due.dueAmount,
         status: due.status,
         concessionApplied: due.concessionApplied || 0,
+        exemptionApplied: due.exemptionApplied || 0, // New
       })),
     ...updatedRegular.map((due) => ({
       month: due.month,
@@ -490,6 +516,7 @@ async function processFeePayment(
       dueAmount: due.dueAmount,
       status: due.status,
       concessionApplied: due.concessionApplied || 0,
+      exemptionApplied: due.exemptionApplied || 0, // New
     })),
   ];
 
@@ -510,6 +537,7 @@ async function processFeePayment(
         dueAmount: due.dueAmount,
         status: due.status,
         concessionApplied: due.concessionApplied || 0,
+        exemptionApplied: due.exemptionApplied || 0, // New
       })),
     ...updatedAdditional.map((due) => ({
       name: due.name,
@@ -518,6 +546,7 @@ async function processFeePayment(
       dueAmount: due.dueAmount,
       status: due.status,
       concessionApplied: due.concessionApplied || 0,
+      exemptionApplied: due.exemptionApplied || 0, // New
     })),
   ];
 
@@ -528,7 +557,18 @@ async function processFeePayment(
     feeStatus.monthlyDues.additionalDues.reduce((sum, d) => sum + d.dueAmount, 0) +
     feeStatus.pastDues;
 
-  // Prepare concession details message
+  // Update exemption details in payment message
+  const exemptionDetails = allDuesToApplyConcession
+    .filter((item) => item.item.exemptionApplied > 0)
+    .map((item) =>
+      item.type === "regular"
+        ? `Regular Fee (${item.item.month}): ${item.item.exemptionApplied}`
+        : `${item.item.name} (${item.item.month || "N/A"}): ${
+            item.item.exemptionApplied
+          }`
+    )
+    .join(", ");
+
   const concessionDetails = allDuesToApplyConcession
     .filter((item) => item.item.concessionApplied > 0)
     .map((item) =>
@@ -559,9 +599,12 @@ async function processFeePayment(
     `Concession: ${roundedConcession}${
       concessionDetails ? ` (${concessionDetails})` : ""
     }, ` +
+    `Exemption: ${roundedExemption}${
+      exemptionDetails ? ` (${exemptionDetails})` : ""
+    }, ` +
     `Remaining Dues: ${feeStatus.dues}`;
 
-  // Create fee history entry
+  // Update fee history entry
   const feeHistoryEntry = {
     date: paymentDate,
     status: "active",
@@ -570,6 +613,7 @@ async function processFeePayment(
     lateFines: [],
     pastDuesPaid,
     concessionApplied: roundedConcession,
+    exemptionApplied: roundedExemption, // New
     paymentMode: paymentMode || "Cash",
     transactionId: transactionId || "N/A",
     totalFeeAmount,
@@ -587,6 +631,8 @@ async function processFeePayment(
     (feeStatus.overallAmountPaid || 0) + parseFloat(totalAmount);
   feeStatus.overallConcessionApplied =
     (feeStatus.overallConcessionApplied || 0) + roundedConcession;
+  feeStatus.overallExemptionApplied =
+    (feeStatus.overallExemptionApplied || 0) + roundedExemption; // New
 
   const feeReceipt = {
     studentId: student.studentId,
@@ -627,6 +673,7 @@ async function processFeePayment(
     concessionFee: roundedConcession,
     lateFinesPaid: 0,
     concessionApplied: roundedConcession,
+    exemptionApplied: roundedExemption, // New
     paymentMessage,
     paidAfterConcession: parseFloat(totalAmount),
     newPaidAmount: parseFloat(totalAmount),

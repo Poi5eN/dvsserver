@@ -695,10 +695,17 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     const { studentId, session, paymentDetails } = req.body;
     const schoolId = req.user.schoolId;
 
-    if (!studentId || !session || !paymentDetails || !paymentDetails.totalAmount) {
+    if (!studentId || !session || !paymentDetails) {
       return res.status(400).json({
         success: false,
-        message: "Student ID, session, and paymentDetails with totalAmount are required.",
+        message: "Student ID, session, and paymentDetails are required.",
+      });
+    }
+
+    if (!paymentDetails.isExempt && (!paymentDetails.totalAmount || parseFloat(paymentDetails.totalAmount) <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "totalAmount is required and must be greater than 0 unless exempt.",
       });
     }
 

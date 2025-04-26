@@ -22,7 +22,8 @@ const feeStructureSchema = new mongoose.Schema({
   },
   name: {
     type: String,
-  },
+    set: v => v.toUpperCase()
+  },  
   feeType: {
     type: String,
     required: true,

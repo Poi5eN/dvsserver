@@ -198,6 +198,7 @@ async function processFeePayment(
       feeHistory: [],
       overallAmountPaid: 0,
       overallConcessionApplied: 0,
+      overallExemptionApplied: 0,
     });
   }
 
@@ -206,7 +207,7 @@ async function processFeePayment(
     additionalFees = [],
     pastDuesPaid = 0,
     concession = 0,
-    exemption = 0, // New field
+    exemption = 0,
     totalAmount,
     paymentMode,
     transactionId,
@@ -276,16 +277,16 @@ async function processFeePayment(
     computedFullAdditionalFeeTotal +
     computedPastDues;
 
-  // Validate total amount
-  // Replace the existing validation block starting with "if (regularFees.length === 0..." with:
+  // Validate total amount and exemption
   if (
     regularFees.length === 0 &&
     additionalFees.length === 0 &&
     pastDuesPaid === 0 &&
-    parseFloat(exemption) <= 0
+    parseFloat(exemption) <= 0 &&
+    parseFloat(totalAmount) <= 0
   ) {
     throw new Error(
-      "No fees selected for payment. Please select regular, additional fees, past dues, or apply an exemption."
+      "No fees selected for payment and no exemption applied. Please select fees, past dues, or apply an exemption."
     );
   }
 
@@ -487,12 +488,15 @@ async function processFeePayment(
         (dueItem.item.exemptionApplied || 0) + exemptionToApply;
       if (dueItem.item.dueAmount === 0) {
         dueItem.item.status = "Exempt"; // Mark as Exempt
+        dueItem.item.paidAmount = 0; // Ensure paidAmount is 0 for fully exempted fees
+      } else {
+        dueItem.item.status = "Partial"; // Partial exemption
       }
       remainingExemption -= exemptionToApply;
     }
   }
 
-  // Apply concessions
+  // Apply concessions after exemptions
   for (const dueItem of allDuesToApplyConcession) {
     if (remainingConcession > 0 && dueItem.item.dueAmount > 0) {
       const concessionToApply = Math.min(
@@ -503,7 +507,8 @@ async function processFeePayment(
       dueItem.item.concessionApplied =
         (dueItem.item.concessionApplied || 0) + concessionToApply;
       if (dueItem.item.dueAmount === 0) {
-        dueItem.item.status = "Paid";
+        dueItem.item.status =
+          dueItem.item.exemptionApplied > 0 ? "Exempt" : "Paid";
       }
       remainingConcession -= concessionToApply;
     }
@@ -709,7 +714,6 @@ exports.createOrUpdateFeePayment = async (req, res) => {
     const { studentId, session, paymentDetails } = req.body;
     const schoolId = req.user.schoolId;
 
-    // Replace the existing validation block with this:
     if (!studentId || !session || !paymentDetails) {
       return res.status(400).json({
         success: false,

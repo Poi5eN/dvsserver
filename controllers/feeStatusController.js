@@ -394,19 +394,21 @@ async function processFeePayment(
       };
       feeStatus.monthlyDues.regularDues.push(due);
     }
+    const updatedDue = {
+      month: r.month,
+      paidAmount: due.paidAmount,
+      dueAmount: due.dueAmount,
+      status: due.status,
+      concessionApplied: due.concessionApplied || 0,
+    };
     if (remaining > 0) {
       const maxPayment = Math.min(remaining, due.dueAmount);
-      const updatedDue = {
-        month: r.month,
-        paidAmount: due.paidAmount + maxPayment,
-        dueAmount: Math.max(0, due.dueAmount - maxPayment),
-        status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
-      };
-      updatedRegular.push(updatedDue);
+      updatedDue.paidAmount += maxPayment;
+      updatedDue.dueAmount = Math.max(0, due.dueAmount - maxPayment);
+      updatedDue.status = updatedDue.dueAmount === 0 ? "Paid" : "Partial";
       remaining -= maxPayment;
-    } else {
-      updatedRegular.push({ ...due });
     }
+    updatedRegular.push(updatedDue);
   });
 
   const updatedAdditional = [];
@@ -425,23 +427,25 @@ async function processFeePayment(
       };
       feeStatus.monthlyDues.additionalDues.push(due);
     }
+    const updatedDue = {
+      name: a.name,
+      month: a.month || undefined,
+      paidAmount: due.paidAmount,
+      dueAmount: due.dueAmount,
+      status: due.status,
+      concessionApplied: due.concessionApplied || 0,
+    };
     if (due && remaining > 0) {
       const maxPayment = Math.min(remaining, due.dueAmount);
-      const updatedDue = {
-        name: a.name,
-        month: a.month || undefined,
-        paidAmount: due.paidAmount + maxPayment,
-        dueAmount: Math.max(0, due.dueAmount - maxPayment),
-        status: due.dueAmount - maxPayment === 0 ? "Paid" : "Partial",
-      };
-      updatedAdditional.push(updatedDue);
+      updatedDue.paidAmount += maxPayment;
+      updatedDue.dueAmount = Math.max(0, due.dueAmount - maxPayment);
+      updatedDue.status = updatedDue.dueAmount === 0 ? "Paid" : "Partial";
       remaining -= maxPayment;
-    } else if (due) {
-      updatedAdditional.push({ ...due });
     }
+    updatedAdditional.push(updatedDue);
   });
 
-  // Apply concessions - THIS IS THE FIXED PART
+  // Apply concessions
   const allDuesToApplyConcession = [
     ...updatedRegular
       .filter((r) => r.dueAmount > 0)
@@ -459,37 +463,65 @@ async function processFeePayment(
         remainingConcession,
         dueItem.item.dueAmount
       );
-      
-      // Apply concession to due amount
       dueItem.item.dueAmount -= concessionToApply;
-      
-      // Track concession applied
-      dueItem.item.concessionApplied = 
+      dueItem.item.concessionApplied =
         (dueItem.item.concessionApplied || 0) + concessionToApply;
-      
-      // Update status if fully paid
       if (dueItem.item.dueAmount === 0) {
         dueItem.item.status = "Paid";
       }
-      
       remainingConcession -= concessionToApply;
     }
   }
 
-  // Update feeStatus
-  const otherRegularDues = feeStatus.monthlyDues.regularDues.filter(
-    (due) => !regularFees.some((r) => r.month === due.month)
-  );
-  const otherAdditionalDues = feeStatus.monthlyDues.additionalDues.filter(
-    (due) =>
-      !additionalFees.some(
-        (a) =>
-          a.name === due.name && (a.month === due.month || (!a.month && !due.month))
-      )
-  );
+  // Update feeStatus.monthlyDues with fresh objects (omit _id to avoid conflicts)
+  feeStatus.monthlyDues.regularDues = [
+    ...feeStatus.monthlyDues.regularDues
+      .filter((due) => !regularFees.some((r) => r.month === due.month))
+      .map((due) => ({
+        month: due.month,
+        paidAmount: due.paidAmount,
+        dueAmount: due.dueAmount,
+        status: due.status,
+        concessionApplied: due.concessionApplied || 0,
+      })),
+    ...updatedRegular.map((due) => ({
+      month: due.month,
+      paidAmount: due.paidAmount,
+      dueAmount: due.dueAmount,
+      status: due.status,
+      concessionApplied: due.concessionApplied || 0,
+    })),
+  ];
 
-  feeStatus.monthlyDues.regularDues = [...otherRegularDues, ...updatedRegular];
-  feeStatus.monthlyDues.additionalDues = [...otherAdditionalDues, ...updatedAdditional];
+  feeStatus.monthlyDues.additionalDues = [
+    ...feeStatus.monthlyDues.additionalDues
+      .filter(
+        (due) =>
+          !additionalFees.some(
+            (a) =>
+              a.name === due.name &&
+              (a.month === due.month || (!a.month && !due.month))
+          )
+      )
+      .map((due) => ({
+        name: due.name,
+        month: due.month || undefined,
+        paidAmount: due.paidAmount,
+        dueAmount: due.dueAmount,
+        status: due.status,
+        concessionApplied: due.concessionApplied || 0,
+      })),
+    ...updatedAdditional.map((due) => ({
+      name: due.name,
+      month: due.month || undefined,
+      paidAmount: due.paidAmount,
+      dueAmount: due.dueAmount,
+      status: due.status,
+      concessionApplied: due.concessionApplied || 0,
+    })),
+  ];
+
+  // Recalculate total dues
   feeStatus.pastDues = Math.max(0, totalPastDues - paidPastDues);
   feeStatus.dues =
     feeStatus.monthlyDues.regularDues.reduce((sum, d) => sum + d.dueAmount, 0) +

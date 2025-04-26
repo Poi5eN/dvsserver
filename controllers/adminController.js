@@ -986,6 +986,8 @@ const getFrequencyFromFeeType = (feeType) => {
       return "monthly";
     case "annual":
       return "annual";
+    case "latefine":
+      return "monthly"; // Late fines are typically monthly
     default:
       return "monthly"; // fallback
   }
@@ -1652,29 +1654,44 @@ exports.bulkCreateFees = async (req, res) => {
         continue;
       }
 
-      // derive frequency
+      // derive frequency using the helper function
       const frequency = getFrequencyFromFeeType(feeType);
 
-      // …then in each branch when creating,
-      // pass `frequency` into the new FeeStructure:
       const base = {
         schoolId,
         session,
         feeType,
-        frequency,
+        frequency, // Add frequency to base object
         amount,
         additional: !!name,
         updatedBy,
       };
 
-      // [student-specific vs. class-wise logic is unchanged, just add frequency:]
       if (studentId) {
         const student = await NewStudentModel.findOne({ studentId, schoolId, session });
         if (!student) {
           errors.push({ fee: f, message: `Student ${studentId} not found.` });
           continue;
         }
-        // …checks …
+        
+        // Check if student-specific fee already exists
+        const exists = await FeeStructure.findOne({
+          schoolId,
+          session,
+          studentId,
+          feeType,
+          additional: !!name,
+          ...(name && { name }),
+        });
+        
+        if (exists) {
+          errors.push({ 
+            fee: f, 
+            message: `Student‐specific fee for ${feeType}${name ? ` (${name})` : ""} already exists.` 
+          });
+          continue;
+        }
+
         const doc = new FeeStructure({
           ...base,
           className: student.class,
@@ -1689,7 +1706,66 @@ exports.bulkCreateFees = async (req, res) => {
           errors.push({ fee: f, message: "className is required." });
           continue;
         }
-        // [additional & lateFine validation…]
+        
+        // Check for existing fee structure based on type
+        if (feeType === "LateFine") {
+          if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
+            errors.push({ fee: f, message: "Late-fine due day must be between 1 and 31." });
+            continue;
+          }
+          
+          const exists = await FeeStructure.findOne({
+            schoolId,
+            session,
+            className,
+            feeType: "LateFine",
+            additional: true,
+          });
+          
+          if (exists) {
+            errors.push({ 
+              fee: f, 
+              message: `Late-fine already exists for class ${className}.` 
+            });
+            continue;
+          }
+        } else if (name) {
+          // Additional fee check
+          const exists = await FeeStructure.findOne({
+            schoolId,
+            session,
+            className,
+            name,
+            feeType,
+            additional: true,
+          });
+          
+          if (exists) {
+            errors.push({ 
+              fee: f, 
+              message: `Additional fee ${name} for ${feeType} already exists on class ${className}.` 
+            });
+            continue;
+          }
+        } else {
+          // Regular fee check
+          const exists = await FeeStructure.findOne({ 
+            schoolId, 
+            session, 
+            className, 
+            feeType, 
+            additional: false 
+          });
+          
+          if (exists) {
+            errors.push({ 
+              fee: f, 
+              message: `Regular fee for ${feeType} already exists on class ${className}.` 
+            });
+            continue;
+          }
+        }
+        
         const doc = new FeeStructure({
           ...base,
           className,
@@ -1739,7 +1815,7 @@ exports.bulkEditFees = async (req, res) => {
     const errors = [];
 
     for (const fee of fees) {
-      const { feeStructureId, amount, lateFineDueDay } = fee;
+      const { feeStructureId, feeType, amount, lateFineDueDay } = fee;
 
       if (!feeStructureId) {
         errors.push({ fee, message: "Fee structure ID is required." });
@@ -1773,6 +1849,13 @@ exports.bulkEditFees = async (req, res) => {
       const updateData = {};
       if (amount !== undefined) updateData.amount = amount;
       if (lateFineDueDay !== undefined) updateData.lateFineDueDay = lateFineDueDay;
+      
+      // Update frequency if feeType is being changed
+      if (feeType !== undefined && feeType !== existingFee.feeType) {
+        updateData.feeType = feeType;
+        updateData.frequency = getFrequencyFromFeeType(feeType);
+      }
+      
       updateData.updatedBy = updatedBy;
       updateData.updatedAt = new Date();
 

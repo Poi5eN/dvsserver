@@ -283,33 +283,16 @@ async function processFeePayment(
     additionalFees.length === 0 &&
     pastDuesPaid === 0 &&
     parseFloat(exemption) <= 0 &&
-    parseFloat(totalAmount) <= 0 &&
-    parseFloat(concession) <= 0
+    parseFloat(totalAmount) <= 0
   ) {
     throw new Error(
-      "No fees selected for payment, no exemption applied, and no concession applied. Please select fees, past dues, apply an exemption, or apply a concession."
+      "No fees selected for payment and no exemption applied. Please select fees, past dues, or apply an exemption."
     );
   }
 
-  // Ensure total amount does not exceed outstanding amount when positive
   if (parseFloat(totalAmount) > totalFeeAmount && totalFeeAmount > 0) {
     throw new Error(
       `Total amount (₹${totalAmount}) exceeds outstanding amount (₹${totalFeeAmount}).`
-    );
-  }
-
-  // Ensure concession is not negative
-  if (parseFloat(concession) < 0) {
-    throw new Error("Concession amount cannot be negative.");
-  }
-
-  // Ensure total amount plus concession does not exceed total fee amount
-  if (
-    parseFloat(totalAmount) + parseFloat(concession) > totalFeeAmount &&
-    totalFeeAmount > 0
-  ) {
-    throw new Error(
-      `Total amount (₹${totalAmount}) plus concession (₹${concession}) exceeds outstanding amount (₹${totalFeeAmount}).`
     );
   }
 
@@ -481,17 +464,21 @@ async function processFeePayment(
     updatedAdditional.push(updatedDue);
   });
 
-  // Apply concessions and exemptions
-  const allDuesToApplyConcession = [
-    ...updatedRegular
-      .filter((r) => r.dueAmount > 0)
-      .map((r) => ({ type: "regular", item: r })),
-    ...updatedAdditional
-      .filter((a) => a.dueAmount > 0)
-      .map((a) => ({ type: "additional", item: a })),
+   // include _all_ unpaid dues (existing + newly-added) so concession can hit any due item
+   const allDuesToApplyConcession = [
+    // all unpaid regular dues
+    ...feeStatus.monthlyDues.regularDues
+      .filter((d) => d.dueAmount > 0)
+      .map((d) => ({ type: "regular", item: d })),
+    // all unpaid additional dues
+    ...feeStatus.monthlyDues.additionalDues
+      .filter((d) => d.dueAmount > 0)
+      .map((d) => ({ type: "additional", item: d })),
   ].sort((a, b) =>
+    // keep partials first if you like
     a.item.status === "Partial" && b.item.status !== "Partial" ? -1 : 0
   );
+
 
   // Apply exemptions first
   for (const dueItem of allDuesToApplyConcession) {
@@ -2980,231 +2967,216 @@ exports.allotAdditionalFees = async (req, res) => {
   }
 };
 
+
+
+
 // @desc    Apply bulk fee exemption for a class or section
 // @route   POST /api/v1/fees/bulk-exemption
 // @access  Private (Admin)
-exports.applyBulkExemption = asyncHandler(async (req, res) => {
-  const {
-    className,
-    section,
-    session,
-    regularFeesMonths,
-    additionalFeesExemptions,
-  } = req.body;
+// exports.applyBulkExemption = asyncHandler(async (req, res) => {
+//   const { className, section, session, regularFeesMonths, additionalFeesExemptions } = req.body;
 
-  // Validate required fields
-  if (!className || !session) {
-    return res.status(400).json({
-      success: false,
-      message: "Class name and session are required.",
-    });
-  }
+//   // Validate required fields
+//   if (!className || !session) {
+//     return res.status(400).json({
+//       success: false,
+//       message: 'Class name and session are required.',
+//     });
+//   }
 
-  // Validate session format (e.g., "2025-2026")
-  if (!/^\d{4}-\d{4}$/.test(session)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid session format. Use YYYY-YYYY (e.g., 2025-2026).",
-    });
-  }
+//   // Validate session format (e.g., "2025-2026")
+//   if (!/^\d{4}-\d{4}$/.test(session)) {
+//     return res.status(400).json({
+//       success: false,
+//       message: 'Invalid session format. Use YYYY-YYYY (e.g., 2025-2026).',
+//     });
+//   }
 
-  // Build student query
-  const query = { class: className, session };
-  if (section) {
-    query.section = section;
-  }
+//   // Build student query
+//   const query = { class: className, session };
+//   if (section) {
+//     query.section = section;
+//   }
 
-  // Fetch students
-  const students = await Student.find(query).select("_id");
-  if (!students || students.length === 0) {
-    return res.status(404).json({
-      success: false,
-      message: `No students found for class ${className}${
-        section ? `, section ${section}` : ""
-      } in session ${session}.`,
-    });
-  }
+//   // Fetch students
+//   const students = await Student.find(query).select('_id');
+//   if (!students || students.length === 0) {
+//     return res.status(404).json({
+//       success: false,
+//       message: `No students found for class ${className}${section ? `, section ${section}` : ''} in session ${session}.`,
+//     });
+//   }
 
-  const studentIds = students.map((student) => student._id);
+//   const studentIds = students.map(student => student._id);
 
-  // Fetch applicable fees for the class
-  const fees = await Fee.find({ className, session }).lean();
-  if (!fees || fees.length === 0) {
-    return res.status(404).json({
-      success: false,
-      message: `No fee structure found for class ${className} in session ${session}.`,
-    });
-  }
+//   // Fetch applicable fees for the class
+//   const fees = await Fee.find({ className, session }).lean();
+//   if (!fees || fees.length === 0) {
+//     return res.status(404).json({
+//       success: false,
+//       message: `No fee structure found for class ${className} in session ${session}.`,
+//     });
+//   }
 
-  // Start MongoDB transaction
-  const dbSession = await mongoose.startSession();
-  dbSession.startTransaction();
+//   // Start MongoDB transaction
+//   const dbSession = await mongoose.startSession();
+//   dbSession.startTransaction();
 
-  try {
-    // Process each student
-    for (const studentId of studentIds) {
-      // Find or create FeeStatus for the student
-      let feeStatus = await FeeStatus.findOne({
-        student: studentId,
-        session,
-        className,
-      }).session(dbSession);
+//   try {
+//     // Process each student
+//     for (const studentId of studentIds) {
+//       // Find or create FeeStatus for the student
+//       let feeStatus = await FeeStatus.findOne({
+//         student: studentId,
+//         session,
+//         className,
+//       }).session(dbSession);
 
-      if (!feeStatus) {
-        feeStatus = new FeeStatus({
-          student: studentId,
-          session,
-          className,
-          section: section || "",
-          monthlyFees: {},
-          additionalFees: {},
-          overallDue: 0,
-          overallPaid: 0,
-          overallExemptionApplied: 0,
-        });
-      }
+//       if (!feeStatus) {
+//         feeStatus = new FeeStatus({
+//           student: studentId,
+//           session,
+//           className,
+//           section: section || '',
+//           monthlyFees: {},
+//           additionalFees: {},
+//           overallDue: 0,
+//           overallPaid: 0,
+//           overallExemptionApplied: 0,
+//         });
+//       }
 
-      // Initialize monthlyFees if not present
-      if (!feeStatus.monthlyFees) {
-        feeStatus.monthlyFees = {};
-      }
+//       // Initialize monthlyFees if not present
+//       if (!feeStatus.monthlyFees) {
+//         feeStatus.monthlyFees = {};
+//       }
 
-      // Apply regular fee exemptions for specified months
-      if (regularFeesMonths && regularFeesMonths.length > 0) {
-        const regularFee = fees.find(
-          (fee) => fee.feeType === "regular" && fee.frequency === "monthly"
-        );
-        if (regularFee) {
-          for (const month of regularFeesMonths) {
-            if (!feeStatus.monthlyFees[month]) {
-              feeStatus.monthlyFees[month] = {
-                dueAmount: regularFee.amount,
-                paidAmount: 0,
-                status: "Pending",
-                exemptionApplied: 0,
-              };
-            }
+//       // Apply regular fee exemptions for specified months
+//       if (regularFeesMonths && regularFeesMonths.length > 0) {
+//         const regularFee = fees.find(fee => fee.feeType === 'regular' && fee.frequency === 'monthly');
+//         if (regularFee) {
+//           for (const month of regularFeesMonths) {
+//             if (!feeStatus.monthlyFees[month]) {
+//               feeStatus.monthlyFees[month] = {
+//                 dueAmount: regularFee.amount,
+//                 paidAmount: 0,
+//                 status: 'Pending',
+//                 exemptionApplied: 0,
+//               };
+//             }
 
-            const monthFee = feeStatus.monthlyFees[month];
-            if (monthFee.status !== "Paid") {
-              const exemptionAmount = monthFee.dueAmount - monthFee.paidAmount;
-              if (exemptionAmount > 0) {
-                monthFee.exemptionApplied += exemptionAmount;
-                feeStatus.overallExemptionApplied += exemptionAmount;
-                monthFee.dueAmount = 0;
-                monthFee.status = "Exempt";
-              }
-            }
-          }
-        }
-      }
+//             const monthFee = feeStatus.monthlyFees[month];
+//             if (monthFee.status !== 'Paid') {
+//               const exemptionAmount = monthFee.dueAmount - monthFee.paidAmount;
+//               if (exemptionAmount > 0) {
+//                 monthFee.exemptionApplied += exemptionAmount;
+//                 feeStatus.overallExemptionApplied += exemptionAmount;
+//                 monthFee.dueAmount = 0;
+//                 monthFee.status = 'Exempt';
+//               }
+//             }
+//           }
+//         }
+//       }
 
-      // Apply additional fees exemptions
-      if (additionalFeesExemptions && additionalFeesExemptions.length > 0) {
-        for (const exemption of additionalFeesExemptions) {
-          const { name, months } = exemption;
-          const fee = fees.find(
-            (f) => f.name === name && f.className === className
-          );
-          if (!fee) continue;
+//       // Apply additional fees exemptions
+//       if (additionalFeesExemptions && additionalFeesExemptions.length > 0) {
+//         for (const exemption of additionalFeesExemptions) {
+//           const { name, months } = exemption;
+//           const fee = fees.find(f => f.name === name && f.className === className);
+//           if (!fee) continue;
 
-          if (!feeStatus.additionalFees[name]) {
-            feeStatus.additionalFees[name] = {
-              dueAmount: fee.amount,
-              paidAmount: 0,
-              status: "Pending",
-              exemptionApplied: 0,
-              frequency: fee.frequency,
-              months: fee.frequency === "monthly" ? {} : undefined,
-            };
-          }
+//           if (!feeStatus.additionalFees[name]) {
+//             feeStatus.additionalFees[name] = {
+//               dueAmount: fee.amount,
+//               paidAmount: 0,
+//               status: 'Pending',
+//               exemptionApplied: 0,
+//               frequency: fee.frequency,
+//               months: fee.frequency === 'monthly' ? {} : undefined,
+//             };
+//           }
 
-          const additionalFee = feeStatus.additionalFees[name];
+//           const additionalFee = feeStatus.additionalFees[name];
 
-          if (fee.frequency === "monthly" && months && months.length > 0) {
-            // Monthly additional fee: exempt specific months
-            if (!additionalFee.months) {
-              additionalFee.months = {};
-            }
+//           if (fee.frequency === 'monthly' && months && months.length > 0) {
+//             // Monthly additional fee: exempt specific months
+//             if (!additionalFee.months) {
+//               additionalFee.months = {};
+//             }
 
-            for (const month of months) {
-              if (!additionalFee.months[month]) {
-                additionalFee.months[month] = {
-                  dueAmount: fee.amount,
-                  paidAmount: 0,
-                  status: "Pending",
-                  exemptionApplied: 0,
-                };
-              }
+//             for (const month of months) {
+//               if (!additionalFee.months[month]) {
+//                 additionalFee.months[month] = {
+//                   dueAmount: fee.amount,
+//                   paidAmount: 0,
+//                   status: 'Pending',
+//                   exemptionApplied: 0,
+//                 };
+//               }
 
-              const monthFee = additionalFee.months[month];
-              if (monthFee.status !== "Paid") {
-                const exemptionAmount =
-                  monthFee.dueAmount - monthFee.paidAmount;
-                if (exemptionAmount > 0) {
-                  monthFee.exemptionApplied += exemptionAmount;
-                  additionalFee.exemptionApplied += exemptionAmount;
-                  feeStatus.overallExemptionApplied += exemptionAmount;
-                  monthFee.dueAmount = 0;
-                  monthFee.status = "Exempt";
-                }
-              }
-            }
-          } else if (["one-time", "annual"].includes(fee.frequency)) {
-            // One-time or annual fee: exempt entirely
-            if (additionalFee.status !== "Paid") {
-              const exemptionAmount =
-                additionalFee.dueAmount - additionalFee.paidAmount;
-              if (exemptionAmount > 0) {
-                additionalFee.exemptionApplied += exemptionAmount;
-                feeStatus.overallExemptionApplied += exemptionAmount;
-                additionalFee.dueAmount = 0;
-                additionalFee.status = "Exempt";
-              }
-            }
-          }
-        }
-      }
+//               const monthFee = additionalFee.months[month];
+//               if (monthFee.status !== 'Paid') {
+//                 const exemptionAmount = monthFee.dueAmount - monthFee.paidAmount;
+//                 if (exemptionAmount > 0) {
+//                   monthFee.exemptionApplied += exemptionAmount;
+//                   additionalFee.exemptionApplied += exemptionAmount;
+//                   feeStatus.overallExemptionApplied += exemptionAmount;
+//                   monthFee.dueAmount = 0;
+//                   monthFee.status = 'Exempt';
+//                 }
+//               }
+//             }
+//           } else if (['one-time', 'annual'].includes(fee.frequency)) {
+//             // One-time or annual fee: exempt entirely
+//             if (additionalFee.status !== 'Paid') {
+//               const exemptionAmount = additionalFee.dueAmount - additionalFee.paidAmount;
+//               if (exemptionAmount > 0) {
+//                 additionalFee.exemptionApplied += exemptionAmount;
+//                 feeStatus.overallExemptionApplied += exemptionAmount;
+//                 additionalFee.dueAmount = 0;
+//                 additionalFee.status = 'Exempt';
+//               }
+//             }
+//           }
+//         }
+//       }
 
-      // Recalculate overallDue
-      feeStatus.overallDue = 0;
-      for (const month in feeStatus.monthlyFees) {
-        feeStatus.overallDue += feeStatus.monthlyFees[month].dueAmount;
-      }
-      for (const feeName in feeStatus.additionalFees) {
-        const fee = feeStatus.additionalFees[feeName];
-        if (fee.frequency === "monthly" && fee.months) {
-          for (const month in fee.months) {
-            feeStatus.overallDue += fee.months[month].dueAmount;
-          }
-        } else {
-          feeStatus.overallDue += fee.dueAmount;
-        }
-      }
+//       // Recalculate overallDue
+//       feeStatus.overallDue = 0;
+//       for (const month in feeStatus.monthlyFees) {
+//         feeStatus.overallDue += feeStatus.monthlyFees[month].dueAmount;
+//       }
+//       for (const feeName in feeStatus.additionalFees) {
+//         const fee = feeStatus.additionalFees[feeName];
+//         if (fee.frequency === 'monthly' && fee.months) {
+//           for (const month in fee.months) {
+//             feeStatus.overallDue += fee.months[month].dueAmount;
+//           }
+//         } else {
+//           feeStatus.overallDue += fee.dueAmount;
+//         }
+//       }
 
-      // Save FeeStatus
-      await feeStatus.save({ session: dbSession });
-    }
+//       // Save FeeStatus
+//       await feeStatus.save({ session: dbSession });
+//     }
 
-    // Commit transaction
-    await dbSession.commitTransaction();
-    return res.status(200).json({
-      success: true,
-      message: `Bulk exemption applied successfully to ${
-        studentIds.length
-      } students in class ${className}${
-        section ? `, section ${section}` : ""
-      }.`,
-    });
-  } catch (error) {
-    // Abort transaction on error
-    await dbSession.abortTransaction();
-    console.error("Bulk exemption error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to apply bulk exemption: " + error.message,
-    });
-  } finally {
-    dbSession.endSession();
-  }
-});
+//     // Commit transaction
+//     await dbSession.commitTransaction();
+//     return res.status(200).json({
+//       success: true,
+//       message: `Bulk exemption applied successfully to ${studentIds.length} students in class ${className}${section ? `, section ${section}` : ''}.`,
+//     });
+//   } catch (error) {
+//     // Abort transaction on error
+//     await dbSession.abortTransaction();
+//     console.error('Bulk exemption error:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Failed to apply bulk exemption: ' + error.message,
+//     });
+//   } finally {
+//     dbSession.endSession();
+//   }
+// });

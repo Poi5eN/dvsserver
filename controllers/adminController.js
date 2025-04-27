@@ -287,26 +287,43 @@ function generateEmployeeId() {
   return employeeId;
 }
 
-
-
-
-
 // Create a new design format
 exports.createDesignFormat = async (req, res) => {
   try {
-    const { name, type, content, description, isDefault } = req.body;
+    // Log received data for debugging
+    console.log("Received req.body:", req.body);
+    console.log("Received req.files:", req.files);
+    console.log("User:", req.user);
 
-    // Validate required fields
-    if (!name || !type || !content) {
+    const { name, type, content, description, isDefault, isPublic } = req.body;
+
+    // Validate required fields with explicit checks
+    if (!name || name.trim() === "") {
+      console.log("Validation failed: Missing or empty name");
       return res.status(400).json({
         success: false,
-        message: "Name, type, and content are required fields"
+        message: "Name is required and cannot be empty"
+      });
+    }
+    if (!type || type.trim() === "") {
+      console.log("Validation failed: Missing or empty type");
+      return res.status(400).json({
+        success: false,
+        message: "Type is required and cannot be empty"
+      });
+    }
+    if (!content || content.trim() === "") {
+      console.log("Validation failed: Missing or empty content");
+      return res.status(400).json({
+        success: false,
+        message: "Content is required and cannot be empty"
       });
     }
 
     // Validate type
     const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
     if (!validTypes.includes(type)) {
+      console.log("Validation failed: Invalid type", type);
       return res.status(400).json({
         success: false,
         message: `Invalid type. Must be one of: ${validTypes.join(', ')}`
@@ -314,7 +331,7 @@ exports.createDesignFormat = async (req, res) => {
     }
 
     // Check if a default format of this type already exists for this school
-    if (isDefault) {
+    if (isDefault === "true" || isDefault === true) {
       const existingDefault = await DesignFormat.findOne({
         schoolId: req.user.schoolId,
         type,
@@ -322,7 +339,7 @@ exports.createDesignFormat = async (req, res) => {
       });
 
       if (existingDefault) {
-        // Update the existing default to non-default
+        console.log("Unsetting existing default format:", existingDefault._id);
         await DesignFormat.findByIdAndUpdate(existingDefault._id, { isDefault: false });
       }
     }
@@ -333,6 +350,7 @@ exports.createDesignFormat = async (req, res) => {
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
 
     if (backgroundImageFile) {
+      console.log("Uploading background image:", backgroundImageFile.originalname);
       const fileKey = `designFormats/${type}/${Date.now()}-${backgroundImageFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
@@ -347,6 +365,7 @@ exports.createDesignFormat = async (req, res) => {
     }
 
     // Create the new design format
+    console.log("Creating new design format for school:", req.user.schoolId);
     const designFormat = await DesignFormat.create({
       formatId: uuidv4(),
       schoolId: req.user.schoolId,
@@ -354,7 +373,8 @@ exports.createDesignFormat = async (req, res) => {
       type,
       content,
       description: description ? description.trim() : "",
-      isDefault: isDefault || false,
+      isDefault: isDefault === "true" || isDefault === true,
+      isPublic: isPublic === "true" || isPublic === true,
       backgroundImage: backgroundImageResult.url ? backgroundImageResult : undefined
     });
 
@@ -364,6 +384,7 @@ exports.createDesignFormat = async (req, res) => {
       designFormat
     });
   } catch (error) {
+    console.error("Error in createDesignFormat:", error);
     res.status(500).json({
       success: false,
       message: "Error creating design format",
@@ -372,14 +393,14 @@ exports.createDesignFormat = async (req, res) => {
   }
 };
 
-// Get all design formats for a school (with optional type filter)
-exports.getAllDesignFormats = async (req, res) => {
+// Consolidated GET API for design formats
+exports.getDesignFormats = async (req, res) => {
   try {
-    const { type } = req.query;
-    
-    const query = { schoolId: req.user.schoolId };
-    
-    // Add type filter if provided
+    const { type, formatId, isDefault, includePublic, schoolId } = req.query;
+    const userSchoolId = req.user.schoolId;
+    let query = {};
+
+    // Validate type if provided
     if (type) {
       const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
       if (!validTypes.includes(type)) {
@@ -391,9 +412,45 @@ exports.getAllDesignFormats = async (req, res) => {
       query.type = type;
     }
 
+    // Handle specific formatId
+    if (formatId) {
+      query.formatId = formatId;
+    }
+
+    // Handle default filter
+    if (isDefault === "true") {
+      query.isDefault = true;
+    }
+
+    // Build school access logic
+    if (includePublic === "true") {
+      // Include both user's school designs and public designs from other schools
+      query = {
+        $or: [
+          { schoolId: userSchoolId, ...query },
+          { isPublic: true, ...query }
+        ]
+      };
+    } else {
+      // Only user's school designs
+      query.schoolId = userSchoolId;
+    }
+
+    // If specific schoolId is provided (for admin use or specific access)
+    if (schoolId) {
+      query.schoolId = schoolId;
+    }
+
     const designFormats = await DesignFormat.find(query)
-      .select('-content') // Exclude content field to reduce response size
+      .select(formatId ? '' : '-content') // Include content only for specific formatId
       .sort({ type: 1, isDefault: -1, updatedAt: -1 });
+
+    if (formatId && designFormats.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Design format not found"
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -410,83 +467,11 @@ exports.getAllDesignFormats = async (req, res) => {
   }
 };
 
-// Get a specific design format by ID
-exports.getDesignFormatById = async (req, res) => {
-  try {
-    const { formatId } = req.params;
-    
-    const designFormat = await DesignFormat.findOne({
-      formatId,
-      schoolId: req.user.schoolId
-    });
-
-    if (!designFormat) {
-      return res.status(404).json({
-        success: false,
-        message: "Design format not found"
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Design format fetched successfully",
-      designFormat
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching design format",
-      error: error.message
-    });
-  }
-};
-
-// Get default design format by type
-exports.getDefaultDesignFormat = async (req, res) => {
-  try {
-    const { type } = req.params;
-    
-    // Validate type
-    const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
-    if (!validTypes.includes(type)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid type. Must be one of: ${validTypes.join(', ')}`
-      });
-    }
-
-    const designFormat = await DesignFormat.findOne({
-      schoolId: req.user.schoolId,
-      type,
-      isDefault: true
-    });
-
-    if (!designFormat) {
-      return res.status(404).json({
-        success: false,
-        message: `No default ${type} format found`
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Default design format fetched successfully",
-      designFormat
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching default design format",
-      error: error.message
-    });
-  }
-};
-
 // Update a design format
 exports.updateDesignFormat = async (req, res) => {
   try {
     const { formatId } = req.params;
-    const { name, content, description, isDefault } = req.body;
+    const { name, content, description, isDefault, isPublic } = req.body;
 
     // Find the design format to update
     const designFormat = await DesignFormat.findOne({
@@ -505,14 +490,15 @@ exports.updateDesignFormat = async (req, res) => {
     if (name) designFormat.name = name.trim();
     if (content) designFormat.content = content;
     if (description !== undefined) designFormat.description = description ? description.trim() : "";
+    if (isPublic !== undefined) designFormat.isPublic = isPublic;
 
     // Handle background image update if present
     const files = req.files || [];
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
 
     if (backgroundImageFile) {
-      // Delete old image from MinIO if exists and has public_id
-      if (designFormat.backgroundImage && designFormat.backgroundImage.public_id) {
+      // Delete old image from MinIO if exists
+      if (designFormat.backgroundImage?.public_id) {
         try {
           await s3.deleteObject({
             Bucket: process.env.MINIO_BUCKET,
@@ -520,7 +506,6 @@ exports.updateDesignFormat = async (req, res) => {
           }).promise();
         } catch (deleteError) {
           console.error("Error deleting old background image:", deleteError);
-          // Continue with update even if delete fails
         }
       }
 
@@ -540,7 +525,6 @@ exports.updateDesignFormat = async (req, res) => {
 
     // Handle making this format the default
     if (isDefault && !designFormat.isDefault) {
-      // Find and update the current default format of this type
       await DesignFormat.findOneAndUpdate(
         {
           schoolId: req.user.schoolId,
@@ -554,7 +538,6 @@ exports.updateDesignFormat = async (req, res) => {
       designFormat.isDefault = true;
     }
 
-    // Save the updated design format
     await designFormat.save();
 
     res.status(200).json({
@@ -588,7 +571,6 @@ exports.deleteDesignFormat = async (req, res) => {
       });
     }
 
-    // Check if this is a default format
     if (designFormat.isDefault) {
       return res.status(400).json({
         success: false,
@@ -597,7 +579,7 @@ exports.deleteDesignFormat = async (req, res) => {
     }
 
     // Delete background image if exists
-    if (designFormat.backgroundImage && designFormat.backgroundImage.public_id) {
+    if (designFormat.backgroundImage?.public_id) {
       try {
         await s3.deleteObject({
           Bucket: process.env.MINIO_BUCKET,
@@ -605,11 +587,9 @@ exports.deleteDesignFormat = async (req, res) => {
         }).promise();
       } catch (deleteError) {
         console.error("Error deleting background image:", deleteError);
-        // Continue with delete even if image delete fails
       }
     }
 
-    // Delete the design format
     await DesignFormat.findByIdAndDelete(designFormat._id);
 
     res.status(200).json({
@@ -625,7 +605,7 @@ exports.deleteDesignFormat = async (req, res) => {
   }
 };
 
-// Set a design format as default
+// Toggle a design format as default
 exports.setDefaultDesignFormat = async (req, res) => {
   try {
     const { formatId } = req.params;
@@ -643,30 +623,35 @@ exports.setDefaultDesignFormat = async (req, res) => {
       });
     }
 
-    // Update the current default format of this type
-    await DesignFormat.findOneAndUpdate(
-      {
-        schoolId: req.user.schoolId,
-        type: designFormat.type,
-        isDefault: true,
-        formatId: { $ne: formatId }
-      },
-      { isDefault: false }
-    );
+    // Toggle the isDefault status
+    if (designFormat.isDefault) {
+      // If already default, unset it
+      designFormat.isDefault = false;
+    } else {
+      // If not default, set it as default and unset any existing default
+      await DesignFormat.findOneAndUpdate(
+        {
+          schoolId: req.user.schoolId,
+          type: designFormat.type,
+          isDefault: true,
+          formatId: { $ne: formatId }
+        },
+        { isDefault: false }
+      );
+      designFormat.isDefault = true;
+    }
 
-    // Set this format as default
-    designFormat.isDefault = true;
     await designFormat.save();
 
     res.status(200).json({
       success: true,
-      message: "Design format set as default successfully",
+      message: `Design format ${designFormat.isDefault ? 'set as' : 'unset from'} default successfully`,
       designFormat
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error setting default design format",
+      message: "Error toggling default design format",
       error: error.message
     });
   }
@@ -984,7 +969,7 @@ const getFrequencyFromFeeType = (feeType) => {
     case "one time":
       return "one-time";
     case "monthly":
-      return "monthly"; 
+      return "monthly";
     case "annual":
       return "annual";
     case "latefine":
@@ -1003,21 +988,35 @@ exports.createStudentSpecificFee = async (req, res) => {
     const updatedBy = req.user._id;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "School ID and session required." });
     }
     if (!studentId) {
-      return res.status(400).json({ success: false, message: "Student ID is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Student ID is required." });
     }
     if (!feeType) {
-      return res.status(400).json({ success: false, message: "Fee type is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Fee type is required." });
     }
     if (!amount || amount <= 0) {
-      return res.status(400).json({ success: false, message: "Valid fee amount is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Valid fee amount is required." });
     }
 
-    const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+    const student = await NewStudentModel.findOne({
+      studentId,
+      schoolId,
+      session,
+    });
     if (!student) {
-      return res.status(404).json({ success: false, message: `Student ${studentId} not found.` });
+      return res
+        .status(404)
+        .json({ success: false, message: `Student ${studentId} not found.` });
     }
 
     const exists = await FeeStructure.findOne({
@@ -1031,7 +1030,9 @@ exports.createStudentSpecificFee = async (req, res) => {
     if (exists) {
       return res.status(400).json({
         success: false,
-        message: `Student‐specific fee for ${feeType}${name ? ` (${name})` : ""} already exists.`,
+        message: `Student‐specific fee for ${feeType}${
+          name ? ` (${name})` : ""
+        } already exists.`,
       });
     }
 
@@ -1069,16 +1070,31 @@ exports.createFeeStructure = async (req, res) => {
     const updatedBy = req.user._id;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "School ID and session required." });
     }
     if (!className) {
-      return res.status(400).json({ success: false, message: "Class name is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Class name is required." });
     }
     if (!feeType || !amount || amount <= 0) {
-      return res.status(400).json({ success: false, message: "Fee type and valid amount required." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Fee type and valid amount required.",
+        });
     }
 
-    const exists = await FeeStructure.findOne({ schoolId, session, className, feeType, additional: false });
+    const exists = await FeeStructure.findOne({
+      schoolId,
+      session,
+      className,
+      feeType,
+      additional: false,
+    });
     if (exists) {
       return res.status(400).json({
         success: false,
@@ -1118,12 +1134,15 @@ exports.createAdditionalFee = async (req, res) => {
     const updatedBy = req.user._id;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "School ID and session required." });
     }
     if (!className || !name || !feeType || !amount || amount <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Class name, fee name, fee type, and valid amount are required.",
+        message:
+          "Class name, fee name, fee type, and valid amount are required.",
       });
     }
 
@@ -1175,16 +1194,24 @@ exports.createLateFineFee = async (req, res) => {
     const updatedBy = req.user._id;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "School ID and session required." });
     }
     if (!className) {
-      return res.status(400).json({ success: false, message: "Class name is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Class name is required." });
     }
     if (!amount || amount <= 0) {
-      return res.status(400).json({ success: false, message: "Valid amount is required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Valid amount is required." });
     }
     if (!lateFineDueDay || lateFineDueDay < 1 || lateFineDueDay > 31) {
-      return res.status(400).json({ success: false, message: "Late-fine due day must be 1–31." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Late-fine due day must be 1–31." });
     }
 
     const exists = await FeeStructure.findOne({
@@ -1628,8 +1655,6 @@ exports.editLateFineFee = async (req, res) => {
   }
 };
 
-
-
 // Bulk create fee structures (Regular, Additional, Student-Specific)
 exports.bulkCreateFees = async (req, res) => {
   try {
@@ -1639,10 +1664,14 @@ exports.bulkCreateFees = async (req, res) => {
     const updatedBy = req.user._id;
 
     if (!schoolId || !session) {
-      return res.status(400).json({ success: false, message: "School ID and session required." });
+      return res
+        .status(400)
+        .json({ success: false, message: "School ID and session required." });
     }
     if (!Array.isArray(fees) || !fees.length) {
-      return res.status(400).json({ success: false, message: "Fees array cannot be empty." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Fees array cannot be empty." });
     }
 
     const created = [];
@@ -1662,19 +1691,23 @@ exports.bulkCreateFees = async (req, res) => {
         schoolId,
         session,
         feeType,
-        frequency,  // Now correctly determined from feeType
+        frequency, // Now correctly determined from feeType
         amount,
         additional: !!name,
         updatedBy,
       };
 
       if (studentId) {
-        const student = await NewStudentModel.findOne({ studentId, schoolId, session });
+        const student = await NewStudentModel.findOne({
+          studentId,
+          schoolId,
+          session,
+        });
         if (!student) {
           errors.push({ fee: f, message: `Student ${studentId} not found.` });
           continue;
         }
-        
+
         const doc = new FeeStructure({
           ...base,
           className: student.class,
@@ -1683,13 +1716,12 @@ exports.bulkCreateFees = async (req, res) => {
         });
         await doc.save();
         created.push(doc);
-
       } else {
         if (!className) {
           errors.push({ fee: f, message: "className is required." });
           continue;
         }
-        
+
         const doc = new FeeStructure({
           ...base,
           className,
@@ -1753,7 +1785,10 @@ exports.bulkEditFees = async (req, res) => {
       });
 
       if (!existingFee) {
-        errors.push({ fee, message: `Fee structure with ID ${feeStructureId} not found.` });
+        errors.push({
+          fee,
+          message: `Fee structure with ID ${feeStructureId} not found.`,
+        });
         continue;
       }
 
@@ -1765,21 +1800,25 @@ exports.bulkEditFees = async (req, res) => {
 
       if (existingFee.feeType === "LateFine" && lateFineDueDay !== undefined) {
         if (lateFineDueDay < 1 || lateFineDueDay > 31) {
-          errors.push({ fee, message: "Late fine due day must be between 1 and 31." });
+          errors.push({
+            fee,
+            message: "Late fine due day must be between 1 and 31.",
+          });
           continue;
         }
       }
 
       const updateData = {};
       if (amount !== undefined) updateData.amount = amount;
-      if (lateFineDueDay !== undefined) updateData.lateFineDueDay = lateFineDueDay;
-      
+      if (lateFineDueDay !== undefined)
+        updateData.lateFineDueDay = lateFineDueDay;
+
       // Update frequency if feeType is changed
       if (feeType !== undefined && feeType !== existingFee.feeType) {
         updateData.feeType = feeType;
         updateData.frequency = getFrequencyFromFeeType(feeType);
       }
-      
+
       updateData.updatedBy = updatedBy;
       updateData.updatedAt = new Date();
 
@@ -1807,7 +1846,6 @@ exports.bulkEditFees = async (req, res) => {
     });
   }
 };
-
 
 // --------------------------------Book Controller
 
@@ -2487,12 +2525,10 @@ exports.createItem = async (req, res) => {
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID and session are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
     if (!itemName || !category || !quantity || !price)
       return res
         .status(400)
@@ -2526,13 +2562,11 @@ exports.createItem = async (req, res) => {
       .status(201)
       .json({ success: true, message: "Item created", data: item });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error creating item",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error creating item",
+      error: error.message,
+    });
   }
 };
 
@@ -2542,12 +2576,10 @@ exports.createPurchaseOrder = async (req, res) => {
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID and session are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
     if (!items || !supplier)
       return res
         .status(400)
@@ -2581,21 +2613,17 @@ exports.createPurchaseOrder = async (req, res) => {
     });
     await purchaseOrder.save();
 
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Purchase order created",
-        data: purchaseOrder,
-      });
+    res.status(201).json({
+      success: true,
+      message: "Purchase order created",
+      data: purchaseOrder,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error creating purchase order",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error creating purchase order",
+      error: error.message,
+    });
   }
 };
 
@@ -2611,12 +2639,10 @@ exports.receivePurchaseOrder = async (req, res) => {
       status: "ordered",
     });
     if (!order)
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Order not found or already received.",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or already received.",
+      });
 
     for (let item of order.items) {
       await ItemModel.findOneAndUpdate(
@@ -2642,13 +2668,11 @@ exports.receivePurchaseOrder = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Order received", data: order });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error receiving order",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error receiving order",
+      error: error.message,
+    });
   }
 };
 
@@ -2677,7 +2701,9 @@ exports.createSale = async (req, res) => {
       }
     );
     if (!studentResponse.data.success)
-      return res.status(404).json({ success: false, message: "Student not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found." });
 
     let totalAmount = 0;
     for (let item of items) {
@@ -2687,7 +2713,9 @@ exports.createSale = async (req, res) => {
         session,
       });
       if (!inventoryItem)
-        return res.status(404).json({ success: false, message: `Item ${item.itemId} not found.` });
+        return res
+          .status(404)
+          .json({ success: false, message: `Item ${item.itemId} not found.` });
       if (inventoryItem.quantity < item.quantity)
         return res.status(400).json({
           success: false,
@@ -2702,7 +2730,8 @@ exports.createSale = async (req, res) => {
       totalAmount += item.total;
     }
 
-    const dueAmount = paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
+    const dueAmount =
+      paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
     if (paymentStatus === "paid" && paidAmount < totalAmount)
       return res.status(400).json({
         success: false,
@@ -2745,13 +2774,18 @@ exports.createSale = async (req, res) => {
         `https://dvsserver.onrender.com/api/v1/adminRoute/receipts/${sale.saleId}`,
         {
           withCredentials: true,
-          headers: { Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}` },
+          headers: {
+            Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+          },
         }
       );
       if (receiptResponse.data.success) {
         receipt = receiptResponse.data.receipt;
       } else {
-        console.warn("Receipt generation failed:", receiptResponse.data.message);
+        console.warn(
+          "Receipt generation failed:",
+          receiptResponse.data.message
+        );
       }
     } catch (receiptError) {
       console.error("Error generating receipt:", receiptError.message);
@@ -2760,7 +2794,9 @@ exports.createSale = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Sale created" + (receipt ? " and receipt generated" : ", receipt generation failed"),
+      message:
+        "Sale created" +
+        (receipt ? " and receipt generated" : ", receipt generation failed"),
       data: { sale },
       receipt, // Include receipt if successful, null otherwise
     });
@@ -2779,12 +2815,10 @@ exports.processReturn = async (req, res) => {
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID and session are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
     if (!saleId || !items)
       return res
         .status(400)
@@ -2800,12 +2834,10 @@ exports.processReturn = async (req, res) => {
     for (let item of items) {
       const saleItem = sale.items.find((i) => i.itemId === item.itemId);
       if (!saleItem || saleItem.quantity < item.quantity)
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: `Invalid return quantity for ${item.itemId}.`,
-          });
+        return res.status(400).json({
+          success: false,
+          message: `Invalid return quantity for ${item.itemId}.`,
+        });
       item.itemName = saleItem.itemName;
       item.category = saleItem.category;
       item.price = saleItem.price;
@@ -2848,13 +2880,11 @@ exports.processReturn = async (req, res) => {
       .status(201)
       .json({ success: true, message: "Return processed", data: returnRecord });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error processing return",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error processing return",
+      error: error.message,
+    });
   }
 };
 
@@ -2876,7 +2906,10 @@ exports.getInventoryStats = async (req, res) => {
     else if (period === "month") dateFilter.$gte = new Date(now.setDate(1));
     else if (period === "year") dateFilter.$gte = new Date(now.setMonth(0, 1));
 
-    const totalQuantity = await ItemModel.aggregate([{ $match: match }, { $group: { _id: null, total: { $sum: "$quantity" } } }]);
+    const totalQuantity = await ItemModel.aggregate([
+      { $match: match },
+      { $group: { _id: null, total: { $sum: "$quantity" } } },
+    ]);
     const totalItemsSold = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $unwind: "$items" },
@@ -2899,12 +2932,33 @@ exports.getInventoryStats = async (req, res) => {
     const topSellingItems = await Sale.aggregate([
       { $match: { ...match, date: dateFilter } },
       { $unwind: "$items" },
-      { $group: { _id: "$items.itemId", totalSold: { $sum: "$items.quantity" } } },
+      {
+        $group: {
+          _id: "$items.itemId",
+          totalSold: { $sum: "$items.quantity" },
+        },
+      },
       { $sort: { totalSold: -1 } },
       { $limit: 3 },
-      { $lookup: { from: "itemmodels", localField: "_id", foreignField: "itemId", as: "itemDetails" } },
+      {
+        $lookup: {
+          from: "itemmodels",
+          localField: "_id",
+          foreignField: "itemId",
+          as: "itemDetails",
+        },
+      },
       { $unwind: "$itemDetails" },
-      { $project: { itemId: "$_id", itemName: "$itemDetails.itemName", category: "$itemDetails.category", totalSold: 1, icon: "$itemDetails.icon", color: "$itemDetails.color" } },
+      {
+        $project: {
+          itemId: "$_id",
+          itemName: "$itemDetails.itemName",
+          category: "$itemDetails.category",
+          totalSold: 1,
+          icon: "$itemDetails.icon",
+          color: "$itemDetails.color",
+        },
+      },
     ]);
 
     res.status(200).json({
@@ -2943,12 +2997,10 @@ exports.getAllSales = async (req, res) => {
     } = req.query;
 
     if (!schoolId || !session)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "School ID and session are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
 
     const query = { schoolId, session };
     if (dateStart || dateEnd) {
@@ -2977,16 +3029,13 @@ exports.getAllSales = async (req, res) => {
       },
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching sales",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Error fetching sales",
+      error: error.message,
+    });
   }
 };
-
 
 // CONTROLLER FOR RECEIPT
 exports.generateReceipt = async (req, res) => {
@@ -3011,7 +3060,8 @@ exports.generateReceipt = async (req, res) => {
     if (!sale) {
       return res.status(404).json({
         success: false,
-        message: "Sale not found or does not belong to this school and session.",
+        message:
+          "Sale not found or does not belong to this school and session.",
       });
     }
 
@@ -3026,9 +3076,13 @@ exports.generateReceipt = async (req, res) => {
         }
       );
       if (studentResponse.data && studentResponse.data.success) {
-        studentName = studentResponse.data.students?.data[0]?.studentName || "Unknown";
+        studentName =
+          studentResponse.data.students?.data[0]?.studentName || "Unknown";
       } else {
-        console.warn("Student API response invalid or failed:", studentResponse.data);
+        console.warn(
+          "Student API response invalid or failed:",
+          studentResponse.data
+        );
       }
     } catch (studentError) {
       console.error("Error fetching student data:", studentError.message);
@@ -3686,7 +3740,9 @@ exports.getRegistrations = async (req, res) => {
       success: true,
       data: registrations.map((reg) => ({
         ...reg,
-        displayClass: reg.section ? `${reg.registerClass}-${reg.section}` : reg.registerClass,
+        displayClass: reg.section
+          ? `${reg.registerClass}-${reg.section}`
+          : reg.registerClass,
       })),
       pagination: {
         total,
@@ -4745,7 +4801,6 @@ const generateUniqueEmail = async (base, schoolId, model, suffix) => {
   return email;
 };
 
-
 // Utility functions to avoid obfuscation issues
 const cleanString = (str) => {
   if (typeof str !== "string") return "";
@@ -5640,7 +5695,6 @@ exports.createStudentParent = async (req, res) => {
 //   }
 // };
 
-
 exports.createBulkStudentParent = async (req, res) => {
   try {
     // Utility to normalize various date formats into DD/MM/YYYY
@@ -5725,8 +5779,15 @@ exports.createBulkStudentParent = async (req, res) => {
           parentAdmissionNumber,
         } = student;
 
-        if (!studentFullName || !fatherName || !studentJoiningDate || !studentClass) {
-          throw new Error("Required fields (studentFullName, fatherName, joiningDate, class) are missing.");
+        if (
+          !studentFullName ||
+          !fatherName ||
+          !studentJoiningDate ||
+          !studentClass
+        ) {
+          throw new Error(
+            "Required fields (studentFullName, fatherName, joiningDate, class) are missing."
+          );
         }
 
         finalStudentEmail = student.studentEmail;
@@ -5735,7 +5796,10 @@ exports.createBulkStudentParent = async (req, res) => {
           let uniqueNumber = Math.floor(100 + Math.random() * 900);
           finalStudentEmail = `${baseName}${uniqueNumber}@dvs.com`;
           while (
-            await NewStudentModel.findOne({ email: finalStudentEmail, schoolId })
+            await NewStudentModel.findOne({
+              email: finalStudentEmail,
+              schoolId,
+            })
           ) {
             uniqueNumber = Math.floor(100 + Math.random() * 900);
             finalStudentEmail = `${baseName}${uniqueNumber}@dvs.com`;
@@ -5747,38 +5811,59 @@ exports.createBulkStudentParent = async (req, res) => {
           schoolId,
         });
         if (studentExist) {
-          throw new Error(`Student with email ${finalStudentEmail} already exists in this school.`);
+          throw new Error(
+            `Student with email ${finalStudentEmail} already exists in this school.`
+          );
         }
 
         // Parse and normalize dates
         let parsedJoiningDate;
         if (typeof studentJoiningDate === "number") {
           const excelEpoch = new Date(1899, 11, 30);
-          parsedJoiningDate = new Date(excelEpoch.getTime() + studentJoiningDate * 86400000);
+          parsedJoiningDate = new Date(
+            excelEpoch.getTime() + studentJoiningDate * 86400000
+          );
           if (isNaN(parsedJoiningDate.getTime())) {
-            throw new Error(`Invalid joiningDate serial number: ${studentJoiningDate}`);
+            throw new Error(
+              `Invalid joiningDate serial number: ${studentJoiningDate}`
+            );
           }
           const day = String(parsedJoiningDate.getDate()).padStart(2, "0");
-          const month = String(parsedJoiningDate.getMonth() + 1).padStart(2, "0");
+          const month = String(parsedJoiningDate.getMonth() + 1).padStart(
+            2,
+            "0"
+          );
           const year = parsedJoiningDate.getFullYear();
           parsedJoiningDate = `${day}/${month}/${year}`;
         } else {
           const formatted = normalizeDateFormat(studentJoiningDate);
-          if (!formatted) throw new Error(`Invalid joiningDate format: ${studentJoiningDate}`);
+          if (!formatted)
+            throw new Error(
+              `Invalid joiningDate format: ${studentJoiningDate}`
+            );
           parsedJoiningDate = formatted;
         }
 
         let parsedDateOfBirth;
         if (typeof studentDateOfBirth === "number") {
           const excelEpoch = new Date(1899, 11, 30);
-          parsedDateOfBirth = new Date(excelEpoch.getTime() + studentDateOfBirth * 86400000);
+          parsedDateOfBirth = new Date(
+            excelEpoch.getTime() + studentDateOfBirth * 86400000
+          );
           if (isNaN(parsedDateOfBirth.getTime())) {
-            throw new Error(`Invalid dateOfBirth serial number: ${studentDateOfBirth}`);
+            throw new Error(
+              `Invalid dateOfBirth serial number: ${studentDateOfBirth}`
+            );
           }
         } else if (studentDateOfBirth) {
           const formatted = normalizeDateFormat(studentDateOfBirth);
-          if (!formatted) throw new Error(`Invalid dateOfBirth format: ${studentDateOfBirth}`);
-          parsedDateOfBirth = new Date(formatted.split("/").reverse().join("-") + "T00:00:00Z");
+          if (!formatted)
+            throw new Error(
+              `Invalid dateOfBirth format: ${studentDateOfBirth}`
+            );
+          parsedDateOfBirth = new Date(
+            formatted.split("/").reverse().join("-") + "T00:00:00Z"
+          );
         } else {
           parsedDateOfBirth = null;
         }
@@ -5794,10 +5879,15 @@ exports.createBulkStudentParent = async (req, res) => {
             schoolId,
           });
           if (existingStudent) {
-            throw new Error(`Admission number ${studentAdmissionNumberToUse} is already in use.`);
+            throw new Error(
+              `Admission number ${studentAdmissionNumberToUse} is already in use.`
+            );
           }
         } else {
-          studentAdmissionNumberToUse = await generateAdmissionNumber(schoolId, NewStudentModel);
+          studentAdmissionNumberToUse = await generateAdmissionNumber(
+            schoolId,
+            NewStudentModel
+          );
         }
 
         const studentData = await NewStudentModel.create({
@@ -5808,7 +5898,11 @@ exports.createBulkStudentParent = async (req, res) => {
           password: studentHashPassword,
           dateOfBirth: parsedDateOfBirth,
           rollNo: (
-            (await NewStudentModel.countDocuments({ schoolId, class: studentClass, section: studentSection || "A" })) + 1
+            (await NewStudentModel.countDocuments({
+              schoolId,
+              class: studentClass,
+              section: studentSection || "A",
+            })) + 1
           ).toString(),
           gender: studentGender,
           joiningDate: parsedJoiningDate,
@@ -5846,7 +5940,9 @@ exports.createBulkStudentParent = async (req, res) => {
             session,
           });
           if (!parentData) {
-            throw new Error(`Parent with admission number ${parentAdmissionNumber} does not exist.`);
+            throw new Error(
+              `Parent with admission number ${parentAdmissionNumber} does not exist.`
+            );
           }
           await ParentModel.updateOne(
             { _id: parentData._id },
@@ -5859,11 +5955,18 @@ exports.createBulkStudentParent = async (req, res) => {
           finalParentEmail = student.parentEmail;
           if (!finalParentEmail) {
             const baseName = fatherName.toLowerCase().replace(/\s+/g, "");
-            const contact = parentContact || Math.floor(1000000000 + Math.random() * 9000000000).toString();
+            const contact =
+              parentContact ||
+              Math.floor(1000000000 + Math.random() * 9000000000).toString();
             finalParentEmail = `${baseName}${contact}@dvs.com`;
             let suffix = "";
             let attempt = 0;
-            while (await ParentModel.findOne({ email: `${finalParentEmail}${suffix}`, schoolId })) {
+            while (
+              await ParentModel.findOne({
+                email: `${finalParentEmail}${suffix}`,
+                schoolId,
+              })
+            ) {
               attempt++;
               suffix = attempt.toString();
             }
@@ -5899,7 +6002,10 @@ exports.createBulkStudentParent = async (req, res) => {
               email: finalParentEmail,
               password: parentHashPassword,
               contact: parentContact || "",
-              admissionNumber: await generateAdmissionNumber(schoolId, ParentModel),
+              admissionNumber: await generateAdmissionNumber(
+                schoolId,
+                ParentModel
+              ),
               createdBy,
             });
 
@@ -5921,7 +6027,9 @@ exports.createBulkStudentParent = async (req, res) => {
           );
         }
 
-        const schoolDetails = await AdminInfo.findOne({ schoolId }).select("schoolName image.url");
+        const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+          "schoolName image.url"
+        );
         const schoolName = schoolDetails?.schoolName || "Your School";
 
         await sendEmail(
@@ -5941,7 +6049,8 @@ exports.createBulkStudentParent = async (req, res) => {
         });
       } catch (error) {
         errors.push({
-          studentEmail: finalStudentEmail || student.studentFullName || "unknown",
+          studentEmail:
+            finalStudentEmail || student.studentFullName || "unknown",
           error: error.message,
         });
       }
@@ -5962,7 +6071,6 @@ exports.createBulkStudentParent = async (req, res) => {
     });
   }
 };
-
 
 // Updated editStudentParent (Enhanced to support linking)
 exports.editStudentParent = async (req, res) => {
@@ -6849,7 +6957,6 @@ exports.getStudentParent = async (req, res) => {
           }).lean()
         : null;
       responseData.student = { ...student, parentDetails: parentData };
-
     } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
       if (!parent)
@@ -6868,7 +6975,6 @@ exports.getStudentParent = async (req, res) => {
         hasMultipleChildren: students.length > 1,
         totalChildren: students.length,
       };
-
     } else if (fetchParentsWithMultipleChildren === "true") {
       const parents = await ParentModel.find(parentQuery).sort(sort).lean();
       const parentsWithMultipleChildren = [];
@@ -6894,12 +7000,9 @@ exports.getStudentParent = async (req, res) => {
           total: totalParentsWithMultiple,
           page: parseInt(page),
           limit: limit ? parseInt(limit) : null,
-          totalPages: limit
-            ? Math.ceil(totalParentsWithMultiple / limit)
-            : 1,
+          totalPages: limit ? Math.ceil(totalParentsWithMultiple / limit) : 1,
         },
       };
-
     } else if (fetchAllStudents === "true") {
       const students = await NewStudentModel.find(studentQuery)
         .sort(sort)
@@ -6916,7 +7019,6 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalStudents / limit) : 1,
         },
       };
-
     } else if (fetchNewAdmissions === "true") {
       const newStudents = await NewStudentModel.find(studentQuery)
         .sort(sort)
@@ -6935,7 +7037,6 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalNewStudents / limit) : 1,
         },
       };
-
     } else if (fetchAllParents === "true") {
       const parents = await ParentModel.find(parentQuery)
         .sort(sort)
@@ -6952,7 +7053,6 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalParents / limit) : 1,
         },
       };
-
     } else if (
       Object.keys(studentQuery).length > 2 ||
       Object.keys(parentQuery).length > 2
@@ -6988,7 +7088,6 @@ exports.getStudentParent = async (req, res) => {
           totalPages: limit ? Math.ceil(totalParents / limit) : 1,
         },
       };
-
     } else {
       // default: all students + parents
       const students = await NewStudentModel.find({ schoolId, session })
@@ -7017,7 +7116,6 @@ exports.getStudentParent = async (req, res) => {
     });
   }
 };
-
 
 exports.getStudentAndParent = async (req, res) => {
   try {
@@ -7070,7 +7168,6 @@ exports.getStudentAndParent = async (req, res) => {
   }
 };
 
-
 // POST /api/students/toggle-printed
 exports.toggleIsPrinted = async (req, res) => {
   try {
@@ -7081,7 +7178,8 @@ exports.toggleIsPrinted = async (req, res) => {
     if (!Array.isArray(studentIds) || typeof isPrinted !== "boolean") {
       return res.status(400).json({
         success: false,
-        message: "Invalid payload. 'studentIds' must be an array and 'isPrinted' a boolean.",
+        message:
+          "Invalid payload. 'studentIds' must be an array and 'isPrinted' a boolean.",
       });
     }
 
@@ -7106,7 +7204,6 @@ exports.toggleIsPrinted = async (req, res) => {
     });
   }
 };
-
 
 exports.toggleAdmissionStatus = async (req, res) => {
   try {
@@ -7586,32 +7683,32 @@ exports.linkStudentToParent = async (req, res) => {
       studentId,
       studentAdmissionNumber,
       parentId,
-      parentAdmissionNumber
+      parentAdmissionNumber,
     } = req.body;
 
-    const schoolId  = req.user.schoolId;
-    const session   = req.user.session;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
     const updatedBy = req.user._id;
 
     // 1. Basic validation
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required from authenticated admin."
+        message: "School ID and session are required from authenticated admin.",
       });
     }
     if (!(studentId || studentAdmissionNumber)) {
       return res.status(400).json({
         success: false,
         message:
-          "Please provide either studentId or studentAdmissionNumber in the body."
+          "Please provide either studentId or studentAdmissionNumber in the body.",
       });
     }
     if (!(parentId || parentAdmissionNumber)) {
       return res.status(400).json({
         success: false,
         message:
-          "Please provide either parentId or parentAdmissionNumber in the body."
+          "Please provide either parentId or parentAdmissionNumber in the body.",
       });
     }
 
@@ -7619,17 +7716,18 @@ exports.linkStudentToParent = async (req, res) => {
     const studentFilter = {
       schoolId,
       session,
-      $or: []
+      $or: [],
     };
-    if (studentId)              studentFilter.$or.push({ studentId });
-    if (studentAdmissionNumber) studentFilter.$or.push({ admissionNumber: studentAdmissionNumber });
+    if (studentId) studentFilter.$or.push({ studentId });
+    if (studentAdmissionNumber)
+      studentFilter.$or.push({ admissionNumber: studentAdmissionNumber });
 
     const student = await NewStudentModel.findOne(studentFilter);
     if (!student) {
       return res.status(404).json({
         success: false,
         message:
-          "Student not found with given identifier(s) in this school and session."
+          "Student not found with given identifier(s) in this school and session.",
       });
     }
 
@@ -7637,28 +7735,26 @@ exports.linkStudentToParent = async (req, res) => {
     const parentFilter = {
       schoolId,
       session,
-      $or: []
+      $or: [],
     };
-    if (parentId)              parentFilter.$or.push({ parentId });
-    if (parentAdmissionNumber) parentFilter.$or.push({ admissionNumber: parentAdmissionNumber });
+    if (parentId) parentFilter.$or.push({ parentId });
+    if (parentAdmissionNumber)
+      parentFilter.$or.push({ admissionNumber: parentAdmissionNumber });
 
     const newParent = await ParentModel.findOne(parentFilter);
     if (!newParent) {
       return res.status(404).json({
         success: false,
         message:
-          "Parent not found with given identifier(s) in this school and session."
+          "Parent not found with given identifier(s) in this school and session.",
       });
     }
 
     // 4. Already linked?
-    if (
-      student.parentId &&
-      student.parentId === newParent.parentId
-    ) {
+    if (student.parentId && student.parentId === newParent.parentId) {
       return res.status(400).json({
         success: false,
-        message: "Student is already linked to this parent."
+        message: "Student is already linked to this parent.",
       });
     }
 
@@ -7667,14 +7763,14 @@ exports.linkStudentToParent = async (req, res) => {
       const oldParent = await ParentModel.findOne({
         parentId: student.parentId,
         schoolId,
-        session
+        session,
       });
       if (oldParent) {
         oldParent.studentIds = oldParent.studentIds.filter(
-          id => id !== student.studentId
+          (id) => id !== student.studentId
         );
         oldParent.studentNames = oldParent.studentNames.filter(
-          name => name !== student.studentName
+          (name) => name !== student.studentName
         );
         await oldParent.save();
       }
@@ -7692,10 +7788,10 @@ exports.linkStudentToParent = async (req, res) => {
     await newParent.save();
 
     // 7. Update student record
-    student.parentId              = newParent.parentId;
+    student.parentId = newParent.parentId;
     student.parentAdmissionNumber = newParent.admissionNumber;
-    student.updatedBy             = updatedBy;
-    student.updatedAt             = new Date();
+    student.updatedBy = updatedBy;
+    student.updatedAt = new Date();
     await student.save();
 
     // 8. Return the linked records
@@ -7703,34 +7799,33 @@ exports.linkStudentToParent = async (req, res) => {
       success: true,
       message: "Student successfully linked to parent.",
       student: {
-        studentId:               student.studentId,
-        studentName:             student.studentName,
-        admissionNumber:         student.admissionNumber,
-        parentId:                student.parentId,
-        parentAdmissionNumber:   student.parentAdmissionNumber,
-        updatedBy:               student.updatedBy,
-        updatedAt:               student.updatedAt
+        studentId: student.studentId,
+        studentName: student.studentName,
+        admissionNumber: student.admissionNumber,
+        parentId: student.parentId,
+        parentAdmissionNumber: student.parentAdmissionNumber,
+        updatedBy: student.updatedBy,
+        updatedAt: student.updatedAt,
       },
       parent: {
-        parentId:           newParent.parentId,
-        fatherName:         newParent.fatherName,
-        admissionNumber:    newParent.admissionNumber,
-        studentIds:         newParent.studentIds,
-        studentNames:       newParent.studentNames,
-        updatedBy:          newParent.updatedBy,
-        updatedAt:          newParent.updatedAt
-      }
+        parentId: newParent.parentId,
+        fatherName: newParent.fatherName,
+        admissionNumber: newParent.admissionNumber,
+        studentIds: newParent.studentIds,
+        studentNames: newParent.studentNames,
+        updatedBy: newParent.updatedBy,
+        updatedAt: newParent.updatedAt,
+      },
     });
   } catch (error) {
     console.error("Error in linkStudentToParent:", error);
     res.status(500).json({
       success: false,
       message: "Error linking student to parent.",
-      error:   error.message
+      error: error.message,
     });
   }
 };
-
 
 exports.bulkEditStudents = async (req, res) => {
   try {
@@ -8165,7 +8260,6 @@ exports.getParentWithChildren = async (req, res) => {
   }
 };
 
-
 exports.parentsWithChildren = async (req, res) => {
   try {
     const { studentId, admissionNumber, class: className, section } = req.query;
@@ -8191,66 +8285,80 @@ exports.parentsWithChildren = async (req, res) => {
     const students = await NewStudentModel.find(studentFilter);
 
     // Get unique parentIds from the filtered students
-    const parentIds = [...new Set(students.map(s => s.parentId))];
+    const parentIds = [...new Set(students.map((s) => s.parentId))];
 
     if (parentIds.length === 0) {
-      return res.status(404).json({ success: false, message: "No parents found for the given filters." });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "No parents found for the given filters.",
+        });
     }
 
     // Fetch all matching parents
-    const parents = await ParentModel.find({ parentId: { $in: parentIds }, schoolId, session });
+    const parents = await ParentModel.find({
+      parentId: { $in: parentIds },
+      schoolId,
+      session,
+    });
 
     // For each parent, get their children and dues
-    const results = await Promise.all(parents.map(async (parent) => {
-      const children = students.filter(child => child.parentId === parent.parentId);
+    const results = await Promise.all(
+      parents.map(async (parent) => {
+        const children = students.filter(
+          (child) => child.parentId === parent.parentId
+        );
 
-      const childrenWithDues = await Promise.all(children.map(async (student) => {
-        const feeStatus = await FeeStatus.findOne({
-          schoolId: student.schoolId,
-          studentId: student.studentId,
-        });
-        const totalDues = feeStatus ? feeStatus.dues : 0;
+        const childrenWithDues = await Promise.all(
+          children.map(async (student) => {
+            const feeStatus = await FeeStatus.findOne({
+              schoolId: student.schoolId,
+              studentId: student.studentId,
+            });
+            const totalDues = feeStatus ? feeStatus.dues : 0;
 
+            return {
+              ...student.toObject(),
+              dues: totalDues,
+            };
+          })
+        );
+
+        // ✅ Return parent with children inside it
         return {
-          ...student.toObject(),
-          dues: totalDues,
+          parent: {
+            parentId: parent.parentId,
+            schoolId: parent.schoolId,
+            session: parent.session,
+            studentIds: parent.studentIds,
+            studentNames: parent.studentNames,
+            fatherName: parent.fatherName,
+            motherName: parent.motherName,
+            email: parent.email,
+            contact: parent.contact,
+            admissionNumber: parent.admissionNumber,
+            income: parent.income,
+            qualification: parent.qualification,
+            parentImage: parent.parentImage,
+            fatherImage: parent.fatherImage,
+            motherImage: parent.motherImage,
+            guardianImage: parent.guardianImage,
+            base64: parent.base64,
+            createdBy: parent.createdBy,
+            createdAt: parent.createdAt,
+            status: parent.status,
+            role: parent.role,
+            children: childrenWithDues, // 👈 children are now nested here
+          },
         };
-      }));
-
-      // ✅ Return parent with children inside it
-      return {
-        parent: {
-          parentId: parent.parentId,
-          schoolId: parent.schoolId,
-          session: parent.session,
-          studentIds: parent.studentIds,
-          studentNames: parent.studentNames,
-          fatherName: parent.fatherName,
-          motherName: parent.motherName,
-          email: parent.email,
-          contact: parent.contact,
-          admissionNumber: parent.admissionNumber,
-          income: parent.income,
-          qualification: parent.qualification,
-          parentImage: parent.parentImage,
-          fatherImage: parent.fatherImage,
-          motherImage: parent.motherImage,
-          guardianImage: parent.guardianImage,
-          base64: parent.base64,
-          createdBy: parent.createdBy,
-          createdAt: parent.createdAt,
-          status: parent.status,
-          role: parent.role,
-          children: childrenWithDues, // 👈 children are now nested here
-        }
-      };
-    }));
+      })
+    );
 
     res.status(200).json({
       success: true,
       data: results,
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -8259,8 +8367,6 @@ exports.parentsWithChildren = async (req, res) => {
     });
   }
 };
-
-
 
 exports.getAllParentsWithChildren = async (req, res) => {
   try {

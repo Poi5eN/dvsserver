@@ -1,4 +1,3 @@
-// models/designFormatModel.js
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
@@ -29,8 +28,12 @@ const designFormatSchema = mongoose.Schema({
     type: Boolean,
     default: false
   },
+  isPublic: {
+    type: Boolean,
+    default: false // Controls if other schools can view this design
+  },
   content: {
-    type: String,  // Will store base64 encoded HTML content
+    type: String, // Stores base64 encoded HTML content
     required: true
   },
   description: {

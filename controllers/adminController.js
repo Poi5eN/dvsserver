@@ -532,7 +532,6 @@ exports.getDesignFormats = async (req, res) => {
     if (schoolId) query.schoolId = schoolId;
 
     const designFormats = await DesignFormat.find(query)
-      .select(formatId ? '' : '-content')
       .sort({ type: 1, isDefault: -1, updatedAt: -1 });
 
     if (formatId && designFormats.length === 0) {
@@ -549,6 +548,7 @@ exports.getDesignFormats = async (req, res) => {
       designFormats
     });
   } catch (error) {
+    console.error("Error in getDesignFormats:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching design formats",
@@ -559,6 +559,10 @@ exports.getDesignFormats = async (req, res) => {
 
 exports.updateDesignFormat = async (req, res) => {
   try {
+    console.log("Received req.body:", req.body);
+    console.log("Received req.files:", req.files);
+    console.log("Content-Type:", req.headers['content-type']);
+
     const { formatId } = req.params;
     const { name, content, description, isDefault, isPublic } = req.body;
 
@@ -581,34 +585,59 @@ exports.updateDesignFormat = async (req, res) => {
     if (content !== undefined) {
       let contentArray = [];
       if (typeof content === "string" && content.trim()) {
-        contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
-      } else if (content) {
-        let parsedContent;
-        try {
-          parsedContent = typeof content === "string" ? JSON.parse(content) : content;
-          if (!Array.isArray(parsedContent)) {
-            throw new Error("Content must be an array");
+        // Try parsing as JSON array first
+        if (content.trim().startsWith('[')) {
+          try {
+            const parsedContent = JSON.parse(content);
+            if (!Array.isArray(parsedContent)) {
+              throw new Error("Content must be an array");
+            }
+            // Validate each content entry
+            for (const entry of parsedContent) {
+              if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
+                console.log("Validation failed: Missing or invalid content data", entry);
+                return res.status(400).json({
+                  success: false,
+                  message: "Each content entry must have non-empty data"
+                });
+              }
+              contentArray.push({
+                id: uuidv4(), // Auto-generate ID
+                data: entry.data.trim(),
+                name: entry.name ? String(entry.name).trim() : ""
+              });
+            }
+          } catch (error) {
+            console.log("Failed to parse content as JSON array:", error.message, content);
+            // Fall back to single-string content
+            contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
           }
-        } catch (error) {
-          return res.status(400).json({
-            success: false,
-            message: "Content must be a valid JSON array or string"
-          });
+        } else {
+          // Treat as single-string content
+          contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
         }
-
-        for (const entry of parsedContent) {
+      } else if (Array.isArray(content)) {
+        // Direct array input
+        for (const entry of content) {
           if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
+            console.log("Validation failed: Missing or invalid content data", entry);
             return res.status(400).json({
               success: false,
-              message: "Each content entry must have valid base64-encoded data"
+              message: "Each content entry must have non-empty data"
             });
           }
           contentArray.push({
-            id: uuidv4(), // Always auto-generate ID
+            id: uuidv4(), // Auto-generate ID
             data: entry.data.trim(),
             name: entry.name ? String(entry.name).trim() : ""
           });
         }
+      } else if (content !== "") {
+        console.log("Validation failed: Invalid content format", content);
+        return res.status(400).json({
+          success: false,
+          message: "Content must be a string or array"
+        });
       }
 
       if (contentArray.length === 0 && content !== "") {

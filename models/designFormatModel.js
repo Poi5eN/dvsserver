@@ -40,13 +40,23 @@ const designFormatSchema = mongoose.Schema({
         default: () => uuidv4()
       },
       data: {
-        type: String, // Base64-encoded HTML content
+        type: String, // Encoded content (e.g., base64 HTML)
         required: true
       },
       name: {
         type: String,
         trim: true,
         default: ""
+      },
+      image: {
+        public_id: {
+          type: String,
+          default: ""
+        },
+        url: {
+          type: String,
+          default: ""
+        }
       }
     }
   ],

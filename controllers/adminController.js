@@ -328,10 +328,8 @@ function isValidBase64(str) {
 
 
 
-
 exports.createDesignFormat = async (req, res) => {
   try {
-    // Debug: Log request details
     console.log("Received req.body:", req.body);
     console.log("Received req.files:", req.files);
     console.log("Content-Type:", req.headers['content-type']);
@@ -374,17 +372,17 @@ exports.createDesignFormat = async (req, res) => {
       });
     }
 
+    const files = req.files || [];
     // Handle content
     if (typeof content === "string" && content.trim()) {
-      // Try parsing as JSON array first
       if (content.trim().startsWith('[')) {
         try {
           const parsedContent = JSON.parse(content);
           if (!Array.isArray(parsedContent)) {
             throw new Error("Content must be an array");
           }
-          // Validate each content entry
-          for (const entry of parsedContent) {
+          for (let i = 0; i < parsedContent.length; i++) {
+            const entry = parsedContent[i];
             if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
               console.log("Validation failed: Missing or invalid content data", entry);
               return res.status(400).json({
@@ -392,24 +390,37 @@ exports.createDesignFormat = async (req, res) => {
                 message: "Each content entry must have non-empty data"
               });
             }
-            contentArray.push({
-              id: uuidv4(), // Auto-generate ID
+            const contentEntry = {
+              id: uuidv4(),
               data: entry.data.trim(),
               name: entry.name ? String(entry.name).trim() : ""
-            });
+            };
+            // Handle image upload for this content entry
+            const imageFile = files.find(f => f.fieldname === `content[${i}][image]`);
+            if (imageFile) {
+              const fileKey = `designFormats/${type}/${Date.now()}-${imageFile.originalname}`;
+              const params = {
+                Bucket: process.env.MINIO_BUCKET,
+                Key: fileKey,
+                Body: imageFile.buffer,
+                ContentType: imageFile.mimetype,
+                ACL: "public-read"
+              };
+              const minioData = await s3.upload(params).promise();
+              contentEntry.image = { public_id: fileKey, url: minioData.Location };
+            }
+            contentArray.push(contentEntry);
           }
         } catch (error) {
           console.log("Failed to parse content as JSON array:", error.message, content);
-          // Fall back to single-string content
           contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
         }
       } else {
-        // Treat as single-string content
         contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
       }
     } else if (Array.isArray(content)) {
-      // Direct array input (unlikely in form-data, but supported)
-      for (const entry of content) {
+      for (let i = 0; i < content.length; i++) {
+        const entry = content[i];
         if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
           console.log("Validation failed: Missing or invalid content data", entry);
           return res.status(400).json({
@@ -417,11 +428,25 @@ exports.createDesignFormat = async (req, res) => {
             message: "Each content entry must have non-empty data"
           });
         }
-        contentArray.push({
-          id: uuidv4(), // Auto-generate ID
+        const contentEntry = {
+          id: uuidv4(),
           data: entry.data.trim(),
           name: entry.name ? String(entry.name).trim() : ""
-        });
+        };
+        const imageFile = files.find(f => f.fieldname === `content[${i}][image]`);
+        if (imageFile) {
+          const fileKey = `designFormats/${type}/${Date.now()}-${imageFile.originalname}`;
+          const params = {
+            Bucket: process.env.MINIO_BUCKET,
+            Key: fileKey,
+            Body: imageFile.buffer,
+            ContentType: imageFile.mimetype,
+            ACL: "public-read"
+          };
+          const minioData = await s3.upload(params).promise();
+          contentEntry.image = { public_id: fileKey, url: minioData.Location };
+        }
+        contentArray.push(contentEntry);
       }
     } else {
       console.log("Validation failed: Invalid content format", content);
@@ -454,7 +479,6 @@ exports.createDesignFormat = async (req, res) => {
 
     // Handle background image
     let backgroundImageResult = {};
-    const files = req.files || [];
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
     if (backgroundImageFile) {
       const fileKey = `designFormats/${type}/${Date.now()}-${backgroundImageFile.originalname}`;
@@ -496,7 +520,6 @@ exports.createDesignFormat = async (req, res) => {
     });
   }
 };
-
 
 exports.getDesignFormats = async (req, res) => {
   try {
@@ -541,11 +564,29 @@ exports.getDesignFormats = async (req, res) => {
       });
     }
 
+    // Transform response to desired format
+    const transformedDesignFormats = designFormats.map(df => ({
+      _id: df._id,
+      formatId: df.formatId,
+      schoolId: df.schoolId,
+      name: df.name,
+      type: df.type,
+      isDefault: df.isDefault,
+      isPublic: df.isPublic,
+      frontTemplate: df.content[0]?.data || "",
+      backTemplate: df.content[1]?.data || "",
+      frontImage: df.content[0]?.image || { public_id: "", url: "" },
+      backImage: df.content[1]?.image || { public_id: "", url: "" },
+      createdAt: df.createdAt,
+      updatedAt: df.updatedAt,
+      __v: df.__v
+    }));
+
     res.status(200).json({
       success: true,
       message: "Design formats fetched successfully",
-      count: designFormats.length,
-      designFormats
+      count: transformedDesignFormats.length,
+      designFormats: transformedDesignFormats
     });
   } catch (error) {
     console.error("Error in getDesignFormats:", error);
@@ -582,18 +623,18 @@ exports.updateDesignFormat = async (req, res) => {
     if (description !== undefined) designFormat.description = description ? description.trim() : "";
     if (isPublic !== undefined) designFormat.isPublic = isPublic;
 
+    const files = req.files || [];
     if (content !== undefined) {
       let contentArray = [];
       if (typeof content === "string" && content.trim()) {
-        // Try parsing as JSON array first
         if (content.trim().startsWith('[')) {
           try {
             const parsedContent = JSON.parse(content);
             if (!Array.isArray(parsedContent)) {
               throw new Error("Content must be an array");
             }
-            // Validate each content entry
-            for (const entry of parsedContent) {
+            for (let i = 0; i < parsedContent.length; i++) {
+              const entry = parsedContent[i];
               if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
                 console.log("Validation failed: Missing or invalid content data", entry);
                 return res.status(400).json({
@@ -601,24 +642,36 @@ exports.updateDesignFormat = async (req, res) => {
                   message: "Each content entry must have non-empty data"
                 });
               }
-              contentArray.push({
-                id: uuidv4(), // Auto-generate ID
+              const contentEntry = {
+                id: uuidv4(),
                 data: entry.data.trim(),
                 name: entry.name ? String(entry.name).trim() : ""
-              });
+              };
+              const imageFile = files.find(f => f.fieldname === `content[${i}][image]`);
+              if (imageFile) {
+                const fileKey = `designFormats/${designFormat.type}/${Date.now()}-${imageFile.originalname}`;
+                const params = {
+                  Bucket: process.env.MINIO_BUCKET,
+                  Key: fileKey,
+                  Body: imageFile.buffer,
+                  ContentType: imageFile.mimetype,
+                  ACL: "public-read"
+                };
+                const minioData = await s3.upload(params).promise();
+                contentEntry.image = { public_id: fileKey, url: minioData.Location };
+              }
+              contentArray.push(contentEntry);
             }
           } catch (error) {
             console.log("Failed to parse content as JSON array:", error.message, content);
-            // Fall back to single-string content
             contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
           }
         } else {
-          // Treat as single-string content
           contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
         }
       } else if (Array.isArray(content)) {
-        // Direct array input
-        for (const entry of content) {
+        for (let i = 0; i < content.length; i++) {
+          const entry = content[i];
           if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
             console.log("Validation failed: Missing or invalid content data", entry);
             return res.status(400).json({
@@ -626,11 +679,25 @@ exports.updateDesignFormat = async (req, res) => {
               message: "Each content entry must have non-empty data"
             });
           }
-          contentArray.push({
-            id: uuidv4(), // Auto-generate ID
+          const contentEntry = {
+            id: uuidv4(),
             data: entry.data.trim(),
             name: entry.name ? String(entry.name).trim() : ""
-          });
+          };
+          const imageFile = files.find(f => f.fieldname === `content[${i}][image]`);
+          if (imageFile) {
+            const fileKey = `designFormats/${designFormat.type}/${Date.now()}-${imageFile.originalname}`;
+            const params = {
+              Bucket: process.env.MINIO_BUCKET,
+              Key: fileKey,
+              Body: imageFile.buffer,
+              ContentType: imageFile.mimetype,
+              ACL: "public-read"
+            };
+            const minioData = await s3.upload(params).promise();
+            contentEntry.image = { public_id: fileKey, url: minioData.Location };
+          }
+          contentArray.push(contentEntry);
         }
       } else if (content !== "") {
         console.log("Validation failed: Invalid content format", content);
@@ -647,10 +714,23 @@ exports.updateDesignFormat = async (req, res) => {
         });
       }
 
+      // Delete old content images from MinIO
+      for (const oldContent of designFormat.content) {
+        if (oldContent.image?.public_id) {
+          try {
+            await s3.deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: oldContent.image.public_id
+            }).promise();
+          } catch (deleteError) {
+            console.error("Error deleting old content image:", deleteError);
+          }
+        }
+      }
+
       designFormat.content = contentArray;
     }
 
-    const files = req.files || [];
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
     if (backgroundImageFile) {
       if (designFormat.backgroundImage?.public_id) {
@@ -663,7 +743,6 @@ exports.updateDesignFormat = async (req, res) => {
           console.error("Error deleting old background image:", deleteError);
         }
       }
-
       const fileKey = `designFormats/${designFormat.type}/${Date.now()}-${backgroundImageFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
@@ -691,10 +770,28 @@ exports.updateDesignFormat = async (req, res) => {
 
     await designFormat.save();
 
+    // Transform response
+    const transformedDesignFormat = {
+      _id: designFormat._id,
+      formatId: designFormat.formatId,
+      schoolId: designFormat.schoolId,
+      name: designFormat.name,
+      type: designFormat.type,
+      isDefault: designFormat.isDefault,
+      isPublic: designFormat.isPublic,
+      frontTemplate: designFormat.content[0]?.data || "",
+      backTemplate: designFormat.content[1]?.data || "",
+      frontImage: designFormat.content[0]?.image || { public_id: "", url: "" },
+      backImage: designFormat.content[1]?.image || { public_id: "", url: "" },
+      createdAt: designFormat.createdAt,
+      updatedAt: designFormat.updatedAt,
+      __v: designFormat.__v
+    };
+
     res.status(200).json({
       success: true,
       message: "Design format updated successfully",
-      designFormat
+      designFormat: transformedDesignFormat
     });
   } catch (error) {
     console.error("Error in updateDesignFormat:", error);
@@ -729,6 +826,21 @@ exports.deleteDesignFormat = async (req, res) => {
       });
     }
 
+    // Delete content images
+    for (const content of designFormat.content) {
+      if (content.image?.public_id) {
+        try {
+          await s3.deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: content.image.public_id
+          }).promise();
+        } catch (deleteError) {
+          console.error("Error deleting content image:", deleteError);
+        }
+      }
+    }
+
+    // Delete background image
     if (designFormat.backgroundImage?.public_id) {
       try {
         await s3.deleteObject({
@@ -789,10 +901,28 @@ exports.setDefaultDesignFormat = async (req, res) => {
 
     await designFormat.save();
 
+    // Transform response
+    const transformedDesignFormat = {
+      _id: designFormat._id,
+      formatId: designFormat.formatId,
+      schoolId: designFormat.schoolId,
+      name: designFormat.name,
+      type: designFormat.type,
+      isDefault: designFormat.isDefault,
+      isPublic: designFormat.isPublic,
+      frontTemplate: designFormat.content[0]?.data || "",
+      backTemplate: designFormat.content[1]?.data || "",
+      frontImage: designFormat.content[0]?.image || { public_id: "", url: "" },
+      backImage: designFormat.content[1]?.image || { public_id: "", url: "" },
+      createdAt: designFormat.createdAt,
+      updatedAt: designFormat.updatedAt,
+      __v: designFormat.__v
+    };
+
     res.status(200).json({
       success: true,
       message: `Design format ${designFormat.isDefault ? 'set as' : 'unset from'} default successfully`,
-      designFormat
+      designFormat: transformedDesignFormat
     });
   } catch (error) {
     console.error("Error in setDefaultDesignFormat:", error);

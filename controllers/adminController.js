@@ -287,40 +287,74 @@ function generateEmployeeId() {
   return employeeId;
 }
 
-// Create a new design format
+
+
+
+// DESIGN RELATED CONTROLLER FLOW
+// Improved base64 validation
+function isValidBase64(str) {
+  try {
+    // Normalize input: remove whitespace, ensure proper padding
+    str = str.trim();
+    if (!str) return false;
+
+    // Add padding if needed
+    const paddingNeeded = str.length % 4;
+    if (paddingNeeded) {
+      str += '='.repeat(4 - paddingNeeded);
+    }
+
+    // Check if valid base64 characters
+    const base64Regex = /^[A-Za-z0-9+/=]+$/;
+    if (!base64Regex.test(str)) {
+      console.log("Base64 validation failed: Invalid characters", str);
+      return false;
+    }
+
+    // Verify decoding and re-encoding
+    const buffer = Buffer.from(str, 'base64');
+    const reEncoded = buffer.toString('base64');
+    const isValid = reEncoded === str || reEncoded === str.replace(/=+$/, '');
+    if (!isValid) {
+      console.log("Base64 validation failed: Decode/re-encode mismatch", { original: str, reEncoded });
+    }
+    return isValid;
+  } catch (error) {
+    console.log("Base64 validation error:", error.message, str);
+    return false;
+  }
+}
+
+
+
+
+
 exports.createDesignFormat = async (req, res) => {
   try {
-    // Log received data for debugging
+    // Debug: Log request details
     console.log("Received req.body:", req.body);
     console.log("Received req.files:", req.files);
-    console.log("User:", req.user);
+    console.log("Content-Type:", req.headers['content-type']);
 
     const { name, type, content, description, isDefault, isPublic } = req.body;
 
-    // Validate required fields with explicit checks
+    // Validate name
     if (!name || name.trim() === "") {
-      console.log("Validation failed: Missing or empty name");
+      console.log("Validation failed: Name is missing or empty");
       return res.status(400).json({
         success: false,
         message: "Name is required and cannot be empty"
       });
     }
+
+    // Validate type
     if (!type || type.trim() === "") {
-      console.log("Validation failed: Missing or empty type");
+      console.log("Validation failed: Type is missing or empty");
       return res.status(400).json({
         success: false,
         message: "Type is required and cannot be empty"
       });
     }
-    if (!content || content.trim() === "") {
-      console.log("Validation failed: Missing or empty content");
-      return res.status(400).json({
-        success: false,
-        message: "Content is required and cannot be empty"
-      });
-    }
-
-    // Validate type
     const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
     if (!validTypes.includes(type)) {
       console.log("Validation failed: Invalid type", type);
@@ -330,27 +364,99 @@ exports.createDesignFormat = async (req, res) => {
       });
     }
 
-    // Check if a default format of this type already exists for this school
+    // Validate content
+    let contentArray = [];
+    if (!content) {
+      console.log("Validation failed: Content is missing");
+      return res.status(400).json({
+        success: false,
+        message: "Content is required"
+      });
+    }
+
+    // Handle content
+    if (typeof content === "string" && content.trim()) {
+      // Try parsing as JSON array first
+      if (content.trim().startsWith('[')) {
+        try {
+          const parsedContent = JSON.parse(content);
+          if (!Array.isArray(parsedContent)) {
+            throw new Error("Content must be an array");
+          }
+          // Validate each content entry
+          for (const entry of parsedContent) {
+            if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
+              console.log("Validation failed: Missing or invalid content data", entry);
+              return res.status(400).json({
+                success: false,
+                message: "Each content entry must have non-empty data"
+              });
+            }
+            contentArray.push({
+              id: uuidv4(), // Auto-generate ID
+              data: entry.data.trim(),
+              name: entry.name ? String(entry.name).trim() : ""
+            });
+          }
+        } catch (error) {
+          console.log("Failed to parse content as JSON array:", error.message, content);
+          // Fall back to single-string content
+          contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
+        }
+      } else {
+        // Treat as single-string content
+        contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
+      }
+    } else if (Array.isArray(content)) {
+      // Direct array input (unlikely in form-data, but supported)
+      for (const entry of content) {
+        if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
+          console.log("Validation failed: Missing or invalid content data", entry);
+          return res.status(400).json({
+            success: false,
+            message: "Each content entry must have non-empty data"
+          });
+        }
+        contentArray.push({
+          id: uuidv4(), // Auto-generate ID
+          data: entry.data.trim(),
+          name: entry.name ? String(entry.name).trim() : ""
+        });
+      }
+    } else {
+      console.log("Validation failed: Invalid content format", content);
+      return res.status(400).json({
+        success: false,
+        message: "Content must be a string or array"
+      });
+    }
+
+    if (contentArray.length === 0) {
+      console.log("Validation failed: Content array is empty");
+      return res.status(400).json({
+        success: false,
+        message: "Content array cannot be empty"
+      });
+    }
+
+    // Check if a default format exists
     if (isDefault === "true" || isDefault === true) {
       const existingDefault = await DesignFormat.findOne({
         schoolId: req.user.schoolId,
         type,
         isDefault: true
       });
-
       if (existingDefault) {
-        console.log("Unsetting existing default format:", existingDefault._id);
+        console.log("Unsetting existing default:", existingDefault._id);
         await DesignFormat.findByIdAndUpdate(existingDefault._id, { isDefault: false });
       }
     }
 
-    // Handle background image upload if present
+    // Handle background image
     let backgroundImageResult = {};
     const files = req.files || [];
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
-
     if (backgroundImageFile) {
-      console.log("Uploading background image:", backgroundImageFile.originalname);
       const fileKey = `designFormats/${type}/${Date.now()}-${backgroundImageFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
@@ -359,19 +465,17 @@ exports.createDesignFormat = async (req, res) => {
         ContentType: backgroundImageFile.mimetype,
         ACL: "public-read"
       };
-      
       const minioData = await s3.upload(params).promise();
       backgroundImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    // Create the new design format
-    console.log("Creating new design format for school:", req.user.schoolId);
+    // Create design format
     const designFormat = await DesignFormat.create({
       formatId: uuidv4(),
       schoolId: req.user.schoolId,
       name: name.trim(),
       type,
-      content,
+      content: contentArray,
       description: description ? description.trim() : "",
       isDefault: isDefault === "true" || isDefault === true,
       isPublic: isPublic === "true" || isPublic === true,
@@ -393,14 +497,13 @@ exports.createDesignFormat = async (req, res) => {
   }
 };
 
-// Consolidated GET API for design formats
+
 exports.getDesignFormats = async (req, res) => {
   try {
     const { type, formatId, isDefault, includePublic, schoolId } = req.query;
     const userSchoolId = req.user.schoolId;
     let query = {};
 
-    // Validate type if provided
     if (type) {
       const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
       if (!validTypes.includes(type)) {
@@ -412,19 +515,10 @@ exports.getDesignFormats = async (req, res) => {
       query.type = type;
     }
 
-    // Handle specific formatId
-    if (formatId) {
-      query.formatId = formatId;
-    }
+    if (formatId) query.formatId = formatId;
+    if (isDefault === "true") query.isDefault = true;
 
-    // Handle default filter
-    if (isDefault === "true") {
-      query.isDefault = true;
-    }
-
-    // Build school access logic
     if (includePublic === "true") {
-      // Include both user's school designs and public designs from other schools
       query = {
         $or: [
           { schoolId: userSchoolId, ...query },
@@ -432,17 +526,13 @@ exports.getDesignFormats = async (req, res) => {
         ]
       };
     } else {
-      // Only user's school designs
       query.schoolId = userSchoolId;
     }
 
-    // If specific schoolId is provided (for admin use or specific access)
-    if (schoolId) {
-      query.schoolId = schoolId;
-    }
+    if (schoolId) query.schoolId = schoolId;
 
     const designFormats = await DesignFormat.find(query)
-      .select(formatId ? '' : '-content') // Include content only for specific formatId
+      .select(formatId ? '' : '-content')
       .sort({ type: 1, isDefault: -1, updatedAt: -1 });
 
     if (formatId && designFormats.length === 0) {
@@ -467,13 +557,11 @@ exports.getDesignFormats = async (req, res) => {
   }
 };
 
-// Update a design format
 exports.updateDesignFormat = async (req, res) => {
   try {
     const { formatId } = req.params;
     const { name, content, description, isDefault, isPublic } = req.body;
 
-    // Find the design format to update
     const designFormat = await DesignFormat.findOne({
       formatId,
       schoolId: req.user.schoolId
@@ -486,18 +574,56 @@ exports.updateDesignFormat = async (req, res) => {
       });
     }
 
-    // Update fields if provided
     if (name) designFormat.name = name.trim();
-    if (content) designFormat.content = content;
     if (description !== undefined) designFormat.description = description ? description.trim() : "";
     if (isPublic !== undefined) designFormat.isPublic = isPublic;
 
-    // Handle background image update if present
+    if (content !== undefined) {
+      let contentArray = [];
+      if (typeof content === "string" && content.trim()) {
+        contentArray = [{ id: uuidv4(), data: content.trim(), name: "" }];
+      } else if (content) {
+        let parsedContent;
+        try {
+          parsedContent = typeof content === "string" ? JSON.parse(content) : content;
+          if (!Array.isArray(parsedContent)) {
+            throw new Error("Content must be an array");
+          }
+        } catch (error) {
+          return res.status(400).json({
+            success: false,
+            message: "Content must be a valid JSON array or string"
+          });
+        }
+
+        for (const entry of parsedContent) {
+          if (!entry.data || typeof entry.data !== "string" || entry.data.trim() === "") {
+            return res.status(400).json({
+              success: false,
+              message: "Each content entry must have valid base64-encoded data"
+            });
+          }
+          contentArray.push({
+            id: uuidv4(), // Always auto-generate ID
+            data: entry.data.trim(),
+            name: entry.name ? String(entry.name).trim() : ""
+          });
+        }
+      }
+
+      if (contentArray.length === 0 && content !== "") {
+        return res.status(400).json({
+          success: false,
+          message: "Content array cannot be empty if provided"
+        });
+      }
+
+      designFormat.content = contentArray;
+    }
+
     const files = req.files || [];
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
-
     if (backgroundImageFile) {
-      // Delete old image from MinIO if exists
       if (designFormat.backgroundImage?.public_id) {
         try {
           await s3.deleteObject({
@@ -509,7 +635,6 @@ exports.updateDesignFormat = async (req, res) => {
         }
       }
 
-      // Upload new image
       const fileKey = `designFormats/${designFormat.type}/${Date.now()}-${backgroundImageFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
@@ -518,12 +643,10 @@ exports.updateDesignFormat = async (req, res) => {
         ContentType: backgroundImageFile.mimetype,
         ACL: "public-read"
       };
-      
       const minioData = await s3.upload(params).promise();
       designFormat.backgroundImage = { public_id: fileKey, url: minioData.Location };
     }
 
-    // Handle making this format the default
     if (isDefault && !designFormat.isDefault) {
       await DesignFormat.findOneAndUpdate(
         {
@@ -534,7 +657,6 @@ exports.updateDesignFormat = async (req, res) => {
         },
         { isDefault: false }
       );
-      
       designFormat.isDefault = true;
     }
 
@@ -546,6 +668,7 @@ exports.updateDesignFormat = async (req, res) => {
       designFormat
     });
   } catch (error) {
+    console.error("Error in updateDesignFormat:", error);
     res.status(500).json({
       success: false,
       message: "Error updating design format",
@@ -554,7 +677,6 @@ exports.updateDesignFormat = async (req, res) => {
   }
 };
 
-// Delete a design format
 exports.deleteDesignFormat = async (req, res) => {
   try {
     const { formatId } = req.params;
@@ -578,7 +700,6 @@ exports.deleteDesignFormat = async (req, res) => {
       });
     }
 
-    // Delete background image if exists
     if (designFormat.backgroundImage?.public_id) {
       try {
         await s3.deleteObject({
@@ -597,6 +718,7 @@ exports.deleteDesignFormat = async (req, res) => {
       message: "Design format deleted successfully"
     });
   } catch (error) {
+    console.error("Error in deleteDesignFormat:", error);
     res.status(500).json({
       success: false,
       message: "Error deleting design format",
@@ -605,12 +727,10 @@ exports.deleteDesignFormat = async (req, res) => {
   }
 };
 
-// Toggle a design format as default
 exports.setDefaultDesignFormat = async (req, res) => {
   try {
     const { formatId } = req.params;
 
-    // Find the design format
     const designFormat = await DesignFormat.findOne({
       formatId,
       schoolId: req.user.schoolId
@@ -623,12 +743,9 @@ exports.setDefaultDesignFormat = async (req, res) => {
       });
     }
 
-    // Toggle the isDefault status
     if (designFormat.isDefault) {
-      // If already default, unset it
       designFormat.isDefault = false;
     } else {
-      // If not default, set it as default and unset any existing default
       await DesignFormat.findOneAndUpdate(
         {
           schoolId: req.user.schoolId,
@@ -649,6 +766,7 @@ exports.setDefaultDesignFormat = async (req, res) => {
       designFormat
     });
   } catch (error) {
+    console.error("Error in setDefaultDesignFormat:", error);
     res.status(500).json({
       success: false,
       message: "Error toggling default design format",
@@ -656,6 +774,9 @@ exports.setDefaultDesignFormat = async (req, res) => {
     });
   }
 };
+
+
+
 
 // Create a new teacher
 exports.createTeacher = async (req, res) => {

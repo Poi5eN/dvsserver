@@ -30,12 +30,26 @@ const designFormatSchema = mongoose.Schema({
   },
   isPublic: {
     type: Boolean,
-    default: false // Controls if other schools can view this design
+    default: false
   },
-  content: {
-    type: String, // Stores base64 encoded HTML content
-    required: true
-  },
+  content: [
+    {
+      id: {
+        type: String,
+        required: true,
+        default: () => uuidv4()
+      },
+      data: {
+        type: String, // Base64-encoded HTML content
+        required: true
+      },
+      name: {
+        type: String,
+        trim: true,
+        default: ""
+      }
+    }
+  ],
   description: {
     type: String,
     trim: true,
@@ -61,7 +75,6 @@ const designFormatSchema = mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Compound index to ensure uniqueness of default format per type per school
 designFormatSchema.index({ schoolId: 1, type: 1, isDefault: 1 }, { 
   unique: true, 
   partialFilterExpression: { isDefault: true } 

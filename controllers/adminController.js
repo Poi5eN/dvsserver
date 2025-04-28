@@ -464,19 +464,6 @@ exports.createDesignFormat = async (req, res) => {
       });
     }
 
-    // Check if a default format exists
-    if (isDefault === "true" || isDefault === true) {
-      const existingDefault = await DesignFormat.findOne({
-        schoolId: req.user.schoolId,
-        type,
-        isDefault: true
-      });
-      if (existingDefault) {
-        console.log("Unsetting existing default:", existingDefault._id);
-        await DesignFormat.findByIdAndUpdate(existingDefault._id, { isDefault: false });
-      }
-    }
-
     // Handle background image
     let backgroundImageResult = {};
     const backgroundImageFile = files.find(f => f.fieldname === "backgroundImage");
@@ -493,29 +480,99 @@ exports.createDesignFormat = async (req, res) => {
       backgroundImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    // Create design format
-    const designFormat = await DesignFormat.create({
-      formatId: uuidv4(),
+    // Check if a design exists for this school and type
+    const existingDesign = await DesignFormat.findOne({
       schoolId: req.user.schoolId,
-      name: name.trim(),
-      type,
-      content: contentArray,
-      description: description ? description.trim() : "",
-      isDefault: isDefault === "true" || isDefault === true,
-      isPublic: isPublic === "true" || isPublic === true,
-      backgroundImage: backgroundImageResult.url ? backgroundImageResult : undefined
+      type
     });
+
+    let designFormat;
+    if (existingDesign) {
+      console.log("Existing design found, updating:", existingDesign._id);
+
+      // Delete old content images
+      for (const oldContent of existingDesign.content) {
+        if (oldContent.image?.public_id) {
+          try {
+            await s3.deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: oldContent.image.public_id
+            }).promise();
+          } catch (deleteError) {
+            console.error("Error deleting old content image:", deleteError);
+          }
+        }
+      }
+
+      // Delete old background image
+      if (existingDesign.backgroundImage?.public_id && backgroundImageFile) {
+        try {
+          await s3.deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: existingDesign.backgroundImage.public_id
+          }).promise();
+        } catch (deleteError) {
+          console.error("Error deleting old background image:", deleteError);
+        }
+      }
+
+      // Update existing design
+      existingDesign.name = name.trim();
+      existingDesign.content = contentArray;
+      existingDesign.description = description ? description.trim() : "";
+      existingDesign.isDefault = isDefault === "true" || isDefault === true;
+      existingDesign.isPublic = isPublic === "true" || isPublic === true;
+      if (backgroundImageFile) {
+        existingDesign.backgroundImage = backgroundImageResult.url ? backgroundImageResult : undefined;
+      }
+
+      await existingDesign.save();
+      designFormat = existingDesign;
+    } else {
+      console.log("No existing design, creating new");
+
+      // Create new design
+      designFormat = await DesignFormat.create({
+        formatId: uuidv4(),
+        schoolId: req.user.schoolId,
+        name: name.trim(),
+        type,
+        content: contentArray,
+        description: description ? description.trim() : "",
+        isDefault: isDefault === "true" || isDefault === true,
+        isPublic: isPublic === "true" || isPublic === true,
+        backgroundImage: backgroundImageResult.url ? backgroundImageResult : undefined
+      });
+    }
+
+    // Transform response
+    const transformedDesignFormat = {
+      _id: designFormat._id,
+      formatId: designFormat.formatId,
+      schoolId: designFormat.schoolId,
+      name: designFormat.name,
+      type: designFormat.type,
+      isDefault: designFormat.isDefault,
+      isPublic: designFormat.isPublic,
+      frontTemplate: designFormat.content[0]?.data || "",
+      backTemplate: designFormat.content[1]?.data || "",
+      frontImage: designFormat.content[0]?.image || { public_id: "", url: "" },
+      backImage: designFormat.content[1]?.image || { public_id: "", url: "" },
+      createdAt: designFormat.createdAt,
+      updatedAt: designFormat.updatedAt,
+      __v: designFormat.__v
+    };
 
     res.status(201).json({
       success: true,
-      message: "Design format created successfully",
-      designFormat
+      message: existingDesign ? "Design format updated successfully" : "Design format created successfully",
+      designFormat: transformedDesignFormat
     });
   } catch (error) {
     console.error("Error in createDesignFormat:", error);
     res.status(500).json({
       success: false,
-      message: "Error creating design format",
+      message: "Error processing design format",
       error: error.message
     });
   }

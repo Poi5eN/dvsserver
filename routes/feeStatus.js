@@ -1,5 +1,5 @@
 const express = require("express");
-const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt, createUnifiedFeePayment, generateFeeReceipt, getUnifiedReceipts, allocateAdditionalFees, allotAdditionalFees} = require("../controllers/feeStatusController");
+const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt, createUnifiedFeePayment, generateFeeReceipt, getUnifiedReceipts, allocateAdditionalFees, allotAdditionalFees, createClassExemption} = require("../controllers/feeStatusController");
 const { manageDuesPayment, createPayment } = require("../controllers/manageDuesPayment");
 const verifyToken = require("../middleware/auth");
 
@@ -28,6 +28,10 @@ router.get('/getMonthlyDues', verifyToken, getMonthlyDues);
 router.put('/editFeeStatus/:receiptNumber', verifyToken, editFeeStatus);
 router.delete('/deleteFeeStatus/:receiptNumber', verifyToken, deleteFeeStatus);
 router.post('/cancelFeePayment', verifyToken, cancelFeePayment);
+
+
+
+router.post("/exemption", verifyToken, createClassExemption);
 
 // router.post('/generateUnifiedReceipt', verifyToken, generateUnifiedFeeReceipt);
 // router.get("/formatted-receipt/:receiptNumber", verifyToken, generateFormattedFeeReceipt);

@@ -496,21 +496,67 @@ async function processFeePayment(
     }
   }
 
-  // Apply concessions after exemptions
-  for (const dueItem of allDuesToApplyConcession) {
-    if (remainingConcession > 0 && dueItem.item.dueAmount > 0) {
-      const concessionToApply = Math.min(
+  // Apply concessions proportionally instead of sequentially
+  if (remainingConcession > 0 && allDuesToApplyConcession.length > 0) {
+    // Calculate total remaining due amount across all items
+    const totalRemainingDue = allDuesToApplyConcession.reduce(
+      (sum, dueItem) => sum + dueItem.item.dueAmount,
+      0
+    );
+
+    // If there are dues to apply concession to
+    if (totalRemainingDue > 0) {
+      // If concession is greater than total dues, cap it
+      const appliedConcession = Math.min(
         remainingConcession,
-        dueItem.item.dueAmount
+        totalRemainingDue
       );
-      dueItem.item.dueAmount -= concessionToApply;
-      dueItem.item.concessionApplied =
-        (dueItem.item.concessionApplied || 0) + concessionToApply;
-      if (dueItem.item.dueAmount === 0) {
-        dueItem.item.status =
-          dueItem.item.exemptionApplied > 0 ? "Exempt" : "Paid";
+
+      // Distribute concession proportionally
+      let concessionDistributed = 0;
+
+      for (let i = 0; i < allDuesToApplyConcession.length; i++) {
+        const dueItem = allDuesToApplyConcession[i];
+
+        // For the last item, apply remaining concession to avoid rounding issues
+        if (i === allDuesToApplyConcession.length - 1) {
+          const remainingToApply = appliedConcession - concessionDistributed;
+          if (remainingToApply > 0 && dueItem.item.dueAmount > 0) {
+            const concessionToApply = Math.min(
+              remainingToApply,
+              dueItem.item.dueAmount
+            );
+            dueItem.item.dueAmount -= concessionToApply;
+            dueItem.item.concessionApplied =
+              (dueItem.item.concessionApplied || 0) + concessionToApply;
+            concessionDistributed += concessionToApply;
+
+            if (dueItem.item.dueAmount === 0) {
+              dueItem.item.status =
+                dueItem.item.exemptionApplied > 0 ? "Exempt" : "Paid";
+            }
+          }
+        } else if (dueItem.item.dueAmount > 0) {
+          // Calculate proportional concession for this item
+          const proportion = dueItem.item.dueAmount / totalRemainingDue;
+          const concessionToApply = Math.min(
+            Math.floor(appliedConcession * proportion),
+            dueItem.item.dueAmount
+          );
+
+          dueItem.item.dueAmount -= concessionToApply;
+          dueItem.item.concessionApplied =
+            (dueItem.item.concessionApplied || 0) + concessionToApply;
+          concessionDistributed += concessionToApply;
+
+          if (dueItem.item.dueAmount === 0) {
+            dueItem.item.status =
+              dueItem.item.exemptionApplied > 0 ? "Exempt" : "Paid";
+          }
+        }
       }
-      remainingConcession -= concessionToApply;
+
+      remainingConcession -= concessionDistributed;
     }
   }
 
@@ -1260,7 +1306,10 @@ exports.cancelFeePayment = async (req, res) => {
     }
 
     // Fetch student and fee structure for original amounts
-    const student = await NewStudentModel.findOne({ schoolId, studentId }).lean();
+    const student = await NewStudentModel.findOne({
+      schoolId,
+      studentId,
+    }).lean();
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -1302,28 +1351,34 @@ exports.cancelFeePayment = async (req, res) => {
     });
 
     // Revert monthlyDues by removing or resetting dues affected by this payment
-    feeStatus.monthlyDues.regularDues = feeStatus.monthlyDues.regularDues.filter(
-      (due) =>
-        !feeToCancel.regularFees.some((canceledFee) => canceledFee.month === due.month)
-    );
-    feeStatus.monthlyDues.additionalDues = feeStatus.monthlyDues.additionalDues.filter(
-      (due) =>
-        !feeToCancel.additionalFees.some(
-          (canceledFee) =>
-            canceledFee.name === due.name &&
-            (canceledFee.month === due.month ||
-              (!canceledFee.month && !due.month))
-        )
-    );
+    feeStatus.monthlyDues.regularDues =
+      feeStatus.monthlyDues.regularDues.filter(
+        (due) =>
+          !feeToCancel.regularFees.some(
+            (canceledFee) => canceledFee.month === due.month
+          )
+      );
+    feeStatus.monthlyDues.additionalDues =
+      feeStatus.monthlyDues.additionalDues.filter(
+        (due) =>
+          !feeToCancel.additionalFees.some(
+            (canceledFee) =>
+              canceledFee.name === due.name &&
+              (canceledFee.month === due.month ||
+                (!canceledFee.month && !due.month))
+          )
+      );
 
     // Restore past dues
-    feeStatus.pastDues = (feeStatus.pastDues || 0) + (feeToCancel.pastDuesPaid || 0);
+    feeStatus.pastDues =
+      (feeStatus.pastDues || 0) + (feeToCancel.pastDuesPaid || 0);
 
     // Recalculate overall totals
     feeStatus.overallAmountPaid = Math.max(
       0,
       feeStatus.feeHistory.reduce(
-        (sum, fh) => sum + (fh.status === "active" ? fh.totalAmountPaid || 0 : 0),
+        (sum, fh) =>
+          sum + (fh.status === "active" ? fh.totalAmountPaid || 0 : 0),
         0
       )
     );
@@ -1345,10 +1400,11 @@ exports.cancelFeePayment = async (req, res) => {
     );
 
     // Recalculate total dues based on remaining active fee history entries
-    feeStatus.dues = feeStatus.feeHistory.reduce(
-      (sum, fh) => sum + (fh.status === "active" ? fh.totalDues || 0 : 0),
-      0
-    ) + (feeStatus.pastDues || 0);
+    feeStatus.dues =
+      feeStatus.feeHistory.reduce(
+        (sum, fh) => sum + (fh.status === "active" ? fh.totalDues || 0 : 0),
+        0
+      ) + (feeStatus.pastDues || 0);
 
     // If no dues remain, reset dues to 0
     if (
@@ -1374,7 +1430,8 @@ exports.cancelFeePayment = async (req, res) => {
         const allCanceled = relatedFeeStatuses.every((fs) =>
           fs.feeHistory
             .filter(
-              (fh) => fh.unifiedReceiptNumber === feeToCancel.unifiedReceiptNumber
+              (fh) =>
+                fh.unifiedReceiptNumber === feeToCancel.unifiedReceiptNumber
             )
             .every((fh) => fh.status === "canceled")
         );

@@ -1063,6 +1063,7 @@ exports.generateFeeReceipt = async (req, res) => {
         ? unifiedReceipt.unifiedReceiptNumber
         : feeHistoryEntries[0].feeHistory.feeReceiptNumber,
       date: feeHistoryEntries[0].feeHistory.date,
+      status: feeHistoryEntries[0].feeHistory.status || "active", // Add status field
       schoolDetails: {
         name: req.user.schoolName,
         address: req.user.address,
@@ -2230,6 +2231,17 @@ exports.getStudentFeeInfo = async (req, res) => {
           additionalFees.find((f) => f.name === d.name)?.amount || d.dueAmount,
       }));
 
+    // Create receipts summary array with status
+    const receiptsSummary = feeStatus.feeHistory.map(receipt => ({
+      receiptNumber: receipt.feeReceiptNumber,
+      date: receipt.date,
+      status: receipt.status || "active", // Default to active if not specified
+      totalAmount: receipt.totalFeeAmount,
+      amountPaid: receipt.totalAmountPaid,
+      dueAmount: receipt.totalDues,
+      paymentMode: receipt.paymentMode
+    }));
+
     const responseData = {
       success: true,
       message: "Fee information retrieved successfully",
@@ -2253,8 +2265,14 @@ exports.getStudentFeeInfo = async (req, res) => {
               m.regularFee.due > 0 || m.additionalFees.some((af) => af.due > 0)
           )
           .map((m) => m.month),
+        receipts: receiptsSummary // Add receipts summary with status
       },
     };
+
+    // If includeFeeHistory is false, filter out the full feeHistory to reduce response size
+    if (!includeFeeHistory && responseData.data.feeStatus) {
+      delete responseData.data.feeStatus.feeHistory;
+    }
 
     res.status(200).json(responseData);
   } catch (error) {

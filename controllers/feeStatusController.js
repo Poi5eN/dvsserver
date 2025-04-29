@@ -1841,13 +1841,12 @@ exports.feeIncomeMonths = async (req, res) => {
   }
 };
 
-// Get fee history
 exports.getFeeHistory = async (req, res) => {
   try {
-    const { studentId } = req.query;
-    const session = req.user.session; // Assuming session is available in the token
+    const { studentId, page = 1, limit = 20, search = '' } = req.query;
+    const session = req.user.session;
 
-    // Validate session presence (optional, depending on your requirements)
+    // Validate session presence
     if (!session) {
       return res.status(400).json({
         success: false,
@@ -1855,19 +1854,61 @@ exports.getFeeHistory = async (req, res) => {
       });
     }
 
+    // Base filter
     let filter = {
       schoolId: req.user.schoolId,
-      session, // Add session to the filter
+      session,
       ...(studentId ? { studentId } : {}),
     };
 
+    // Fetch all student IDs for search query if search term is provided
+    let studentIds = [];
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      const students = await NewStudentModel.find(
+        {
+          schoolId: req.user.schoolId,
+          $or: [
+            { studentName: searchRegex },
+            { admissionNumber: searchRegex },
+          ],
+        },
+        'studentId'
+      ).exec();
+      studentIds = students.map(student => student.studentId);
+
+      // Include feeReceiptNumber search in feeHistory
+      const feeStatusWithReceipt = await FeeStatus.find({
+        schoolId: req.user.schoolId,
+        session,
+        'feeHistory.feeReceiptNumber': searchRegex,
+      }, 'studentId').exec();
+      studentIds = [...new Set([...studentIds, ...feeStatusWithReceipt.map(fee => fee.studentId)])];
+      
+      if (studentIds.length > 0) {
+        filter.studentId = { $in: studentIds };
+      } else {
+        // If no students match the search, return empty result
+        return res.status(200).json({
+          success: true,
+          message: "No matching fee history found",
+          data: [],
+          totalCount: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0,
+        });
+      }
+    }
+
+    // Fetch fee status data with pagination
     const feeStatusData = await FeeStatus.find(filter).exec();
     let feeHistory = [];
 
     for (const feeStatus of feeStatusData) {
       const studentData = await NewStudentModel.findOne(
         { studentId: feeStatus.studentId },
-        "studentName class studentId parentId admissionNumber fatherName" // Added admissionNumber and fatherName
+        "studentName class studentId parentId admissionNumber fatherName"
       ).exec();
       const parent = studentData?.parentId
         ? await ParentModel.findOne({
@@ -1883,10 +1924,11 @@ exports.getFeeHistory = async (req, res) => {
             studentName: studentData.studentName,
             studentClass: studentData.class,
             parentContact: parent?.contact || null,
-            admissionNumber: studentData.admissionNumber, // Added admissionNumber
-            fatherName: studentData.fatherName, // Added fatherName
+            admissionNumber: studentData.admissionNumber,
+            fatherName: studentData.fatherName,
             feeReceiptNumber: history.feeReceiptNumber,
             paymentMode: history.paymentMode,
+            status: history.status, // Added status field from feeHistory
             dues:
               history.regularFees.reduce((sum, fee) => sum + fee.dueAmount, 0) +
               history.additionalFees.reduce(
@@ -1899,12 +1941,23 @@ exports.getFeeHistory = async (req, res) => {
       }
     }
 
+    // Sort by date (latest first)
     feeHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Implement pagination
+    const totalCount = feeHistory.length;
+    const startIndex = (parseInt(page) - 1) * parseInt(limit);
+    const paginatedData = feeHistory.slice(startIndex, startIndex + parseInt(limit));
+    const totalPages = Math.ceil(totalCount / parseInt(limit));
 
     res.status(200).json({
       success: true,
       message: "Fee history retrieved successfully",
-      data: feeHistory,
+      data: paginatedData,
+      totalCount,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages,
     });
   } catch (error) {
     res.status(500).json({

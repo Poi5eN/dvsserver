@@ -138,6 +138,7 @@ router.put("/purchase-orders/:orderId/receive", verifyToken, admin.receivePurcha
 router.post("/sales", verifyToken, admin.createSale);
 router.post("/returns", verifyToken, admin.processReturn);
 router.get("/sales", verifyToken, admin.getAllSales);
+router.get("/duesandsales", verifyToken, admin.payDuesAndAddSale);
 router.get("/inventory/stats", verifyToken, admin.getInventoryStats);
 router.get("/items", verifyToken, admin.getAllItems); // Existing endpoint
 

@@ -480,6 +480,15 @@ exports.createDesignFormat = async (req, res) => {
       backgroundImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
+    // Unset isDefault on any existing design with isDefault: true for this schoolId and type
+    if (isDefault === "true" || isDefault === true) {
+      await DesignFormat.updateMany(
+        { schoolId: req.user.schoolId, type, isDefault: true },
+        { $set: { isDefault: false } }
+      );
+      console.log("Unset isDefault on existing designs for schoolId:", req.user.schoolId, "type:", type);
+    }
+
     // Check if a design exists for this school and type
     const existingDesign = await DesignFormat.findOne({
       schoolId: req.user.schoolId,
@@ -3141,6 +3150,203 @@ exports.createSale = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error creating sale",
+      error: error.message,
+    });
+  }
+};
+
+
+exports.payDuesAndAddSale = async (req, res) => {
+  try {
+    const { saleId, paymentAmount, newItems } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    // Validate required fields
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
+    }
+    if (!saleId || (!paymentAmount && (!newItems || newItems.length === 0))) {
+      return res.status(400).json({
+        success: false,
+        message: "Sale ID and either payment amount or new items are required.",
+      });
+    }
+
+    // Find the existing sale
+    const sale = await Sale.findOne({ saleId, schoolId, session });
+    if (!sale) {
+      return res.status(404).json({
+        success: false,
+        message: "Sale not found.",
+      });
+    }
+
+    // Validate student
+    let studentName = "Unknown";
+    try {
+      const studentResponse = await axios.get(
+        `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+          },
+        }
+      );
+      if (studentResponse.data.success) {
+        studentName =
+          studentResponse.data.students?.data[0]?.studentName || "Unknown";
+      } else {
+        console.warn(
+          "Student API response invalid or failed:",
+          studentResponse.data
+        );
+      }
+    } catch (studentError) {
+      console.error("Error fetching student data:", studentError.message);
+    }
+
+    let totalNewAmount = 0;
+    let updatedItems = [...sale.items]; // Copy existing items
+
+    // Handle new items (additional sales)
+    if (newItems && newItems.length > 0) {
+      for (let item of newItems) {
+        const inventoryItem = await ItemModel.findOne({
+          itemId: item.itemId,
+          schoolId,
+          session,
+        });
+        if (!inventoryItem) {
+          return res.status(404).json({
+            success: false,
+            message: `Item ${item.itemId} not found.`,
+          });
+        }
+        if (inventoryItem.quantity < item.quantity) {
+          return res.status(400).json({
+            success: false,
+            message: `Insufficient stock for ${inventoryItem.itemName}.`,
+          });
+        }
+        const itemTotal = item.quantity * inventoryItem.price;
+        updatedItems.push({
+          itemId: item.itemId,
+          itemName: inventoryItem.itemName,
+          category: inventoryItem.category,
+          quantity: item.quantity,
+          price: inventoryItem.price,
+          total: itemTotal,
+          icon: inventoryItem.icon,
+          color: inventoryItem.color,
+        });
+        totalNewAmount += itemTotal;
+
+        // Update inventory
+        await ItemModel.findOneAndUpdate(
+          { itemId: item.itemId, schoolId, session },
+          {
+            $inc: {
+              quantity: -item.quantity,
+              sellQuantity: item.quantity,
+              sellAmount: itemTotal,
+            },
+            updatedBy,
+            updatedAt: new Date(),
+          }
+        );
+      }
+    }
+
+    // Handle payment for dues
+    let updatedPaidAmount = sale.paidAmount;
+    let updatedDueAmount = sale.dueAmount;
+    let updatedTotalAmount = sale.totalAmount + totalNewAmount;
+    let updatedPaymentStatus = sale.paymentStatus;
+
+    if (paymentAmount) {
+      if (paymentAmount < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment amount cannot be negative.",
+        });
+      }
+      updatedPaidAmount += paymentAmount;
+      updatedDueAmount = updatedTotalAmount - updatedPaidAmount;
+      if (updatedDueAmount < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment amount exceeds total amount due.",
+        });
+      }
+      updatedPaymentStatus = updatedDueAmount === 0 ? "paid" : "pending";
+    }
+
+    // Update sale record
+    sale.items = updatedItems;
+    sale.totalAmount = updatedTotalAmount;
+    sale.paidAmount = updatedPaidAmount;
+    sale.dueAmount = updatedDueAmount;
+    sale.paymentStatus = updatedPaymentStatus;
+    sale.updatedBy = updatedBy;
+    sale.updatedAt = new Date();
+    await sale.save();
+
+    // Generate or update receipt
+    const receiptData = {
+      receiptId: sale.receiptId,
+      saleId: sale.saleId,
+      studentName,
+      date: sale.date,
+      items: sale.items.map((item) => ({
+        itemName: item.itemName,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.total,
+      })),
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount,
+      dueAmount: sale.dueAmount,
+      paymentStatus: sale.paymentStatus,
+      paymentHistory: [
+        ...(sale.paymentHistory || []),
+        paymentAmount
+          ? {
+              amount: paymentAmount,
+              date: new Date(),
+              updatedBy,
+            }
+          : null,
+      ].filter(Boolean),
+    };
+
+    await ReceiptModel.findOneAndUpdate(
+      { saleId: sale._id },
+      {
+        receiptId: receiptData.receiptId,
+        saleId: sale._id,
+        studentId: sale.studentId,
+        itemsSold: receiptData.items,
+        totalAmount: receiptData.totalAmount,
+        dueAmount: receiptData.dueAmount,
+        paymentStatus: receiptData.paymentStatus,
+        paymentHistory: receiptData.paymentHistory,
+      },
+      { upsert: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Dues paid and/or new sale added, receipt updated",
+      data: { sale },
+      receipt: receiptData,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error processing dues payment or new sale",
       error: error.message,
     });
   }

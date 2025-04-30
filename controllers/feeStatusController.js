@@ -1854,7 +1854,9 @@ exports.getFeeHistory = async (req, res) => {
       });
     }
 
-    // Validate date range
+    let fromDate, toDate;
+
+    // Validate and prepare date range
     if (from || to) {
       if (!from || !to) {
         return res.status(400).json({
@@ -1862,8 +1864,9 @@ exports.getFeeHistory = async (req, res) => {
           message: "Both 'from' and 'to' dates are required for date range filtering.",
         });
       }
-      const fromDate = new Date(from);
-      const toDate = new Date(to);
+
+      fromDate = new Date(from);
+      toDate = new Date(to);
       if (isNaN(fromDate) || isNaN(toDate)) {
         return res.status(400).json({
           success: false,
@@ -1876,6 +1879,9 @@ exports.getFeeHistory = async (req, res) => {
           message: "'From' date must be earlier than or equal to 'to' date.",
         });
       }
+
+      // Extend toDate to include entire day
+      toDate.setHours(23, 59, 59, 999);
     }
 
     // Base filter
@@ -1888,8 +1894,8 @@ exports.getFeeHistory = async (req, res) => {
     // Add date range filter for feeHistory
     if (from && to) {
       filter['feeHistory.date'] = {
-        $gte: new Date(from),
-        $lte: new Date(to),
+        $gte: fromDate,
+        $lte: toDate,
       };
     }
 
@@ -1914,10 +1920,10 @@ exports.getFeeHistory = async (req, res) => {
         schoolId: req.user.schoolId,
         session,
         'feeHistory.feeReceiptNumber': searchRegex,
-        ...(from && to ? { 'feeHistory.date': { $gte: new Date(from), $lte: new Date(to) } } : {}),
+        ...(from && to ? { 'feeHistory.date': { $gte: fromDate, $lte: toDate } } : {}),
       }, 'studentId').exec();
       studentIds = [...new Set([...studentIds, ...feeStatusWithReceipt.map(fee => fee.studentId)])];
-      
+
       if (studentIds.length > 0) {
         filter.studentId = { $in: studentIds };
       } else {
@@ -1954,13 +1960,10 @@ exports.getFeeHistory = async (req, res) => {
         feeStatus.feeHistory.forEach((history) => {
           // Apply date range filter in-memory for precise matching
           const historyDate = new Date(history.date);
-          if (from && to) {
-            const fromDate = new Date(from);
-            const toDate = new Date(to);
-            if (historyDate < fromDate || historyDate > toDate) {
-              return;
-            }
+          if (from && to && (historyDate < fromDate || historyDate > toDate)) {
+            return;
           }
+
           feeHistory.push({
             studentId: studentData.studentId,
             studentName: studentData.studentName,
@@ -2009,6 +2012,7 @@ exports.getFeeHistory = async (req, res) => {
     });
   }
 };
+
 
 // Edit fee status
 exports.editFeeStatus = async (req, res) => {

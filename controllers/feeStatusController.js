@@ -1843,7 +1843,7 @@ exports.feeIncomeMonths = async (req, res) => {
 
 exports.getFeeHistory = async (req, res) => {
   try {
-    const { studentId, page = 1, limit = 20, search = '' } = req.query;
+    const { studentId, page = 1, limit = 20, search = '', from, to } = req.query;
     const session = req.user.session;
 
     // Validate session presence
@@ -1854,12 +1854,44 @@ exports.getFeeHistory = async (req, res) => {
       });
     }
 
+    // Validate date range
+    if (from || to) {
+      if (!from || !to) {
+        return res.status(400).json({
+          success: false,
+          message: "Both 'from' and 'to' dates are required for date range filtering.",
+        });
+      }
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      if (isNaN(fromDate) || isNaN(toDate)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid 'from' or 'to' date format. Use YYYY-MM-DD.",
+        });
+      }
+      if (fromDate > toDate) {
+        return res.status(400).json({
+          success: false,
+          message: "'From' date must be earlier than or equal to 'to' date.",
+        });
+      }
+    }
+
     // Base filter
     let filter = {
       schoolId: req.user.schoolId,
       session,
       ...(studentId ? { studentId } : {}),
     };
+
+    // Add date range filter for feeHistory
+    if (from && to) {
+      filter['feeHistory.date'] = {
+        $gte: new Date(from),
+        $lte: new Date(to),
+      };
+    }
 
     // Fetch all student IDs for search query if search term is provided
     let studentIds = [];
@@ -1882,6 +1914,7 @@ exports.getFeeHistory = async (req, res) => {
         schoolId: req.user.schoolId,
         session,
         'feeHistory.feeReceiptNumber': searchRegex,
+        ...(from && to ? { 'feeHistory.date': { $gte: new Date(from), $lte: new Date(to) } } : {}),
       }, 'studentId').exec();
       studentIds = [...new Set([...studentIds, ...feeStatusWithReceipt.map(fee => fee.studentId)])];
       
@@ -1919,6 +1952,15 @@ exports.getFeeHistory = async (req, res) => {
 
       if (studentData) {
         feeStatus.feeHistory.forEach((history) => {
+          // Apply date range filter in-memory for precise matching
+          const historyDate = new Date(history.date);
+          if (from && to) {
+            const fromDate = new Date(from);
+            const toDate = new Date(to);
+            if (historyDate < fromDate || historyDate > toDate) {
+              return;
+            }
+          }
           feeHistory.push({
             studentId: studentData.studentId,
             studentName: studentData.studentName,
@@ -1928,7 +1970,7 @@ exports.getFeeHistory = async (req, res) => {
             fatherName: studentData.fatherName,
             feeReceiptNumber: history.feeReceiptNumber,
             paymentMode: history.paymentMode,
-            status: history.status, // Added status field from feeHistory
+            status: history.status,
             dues:
               history.regularFees.reduce((sum, fee) => sum + fee.dueAmount, 0) +
               history.additionalFees.reduce(

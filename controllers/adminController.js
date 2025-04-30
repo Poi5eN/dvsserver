@@ -4212,8 +4212,19 @@ exports.getRegistrations = async (req, res) => {
       "IX",
       "X",
       "XI",
+      "XI(A)",
+      "XI(C)",
+      "XI(S)",
+      "XI(S)-M",
+      "XI(S)-B",
       "XII",
+      "XII(A)",
+      "XII(C)",
+      "XII(S)",
+      "XII(S)-M",
+      "XII(S)-B",
       "PASS OUT",
+      "Passout2025",
     ];
 
     let query = { schoolId, session };
@@ -10309,8 +10320,19 @@ exports.getClassesGrouped = async (req, res) => {
       "IX",
       "X",
       "XI",
+      "XI(ARTS)",
+      "XI(COMM)",
+      "XI(SCI)",
+      "XI(SCI)-MED",
+      "XI(SCI)-NONMED",
       "XII",
+      "XII(ARTS)",
+      "XII(COMM)",
+      "XII(SCI)",
+      "XII(SCI)-MED",
+      "XII(SCI)-NONMED",
       "PASS OUT",
+      "Passout2025",
     ];
 
     const classes = await classModel

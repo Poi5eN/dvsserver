@@ -1843,7 +1843,14 @@ exports.feeIncomeMonths = async (req, res) => {
 
 exports.getFeeHistory = async (req, res) => {
   try {
-    const { studentId, page = 1, limit = 20, search = '', from, to } = req.query;
+    const {
+      studentId,
+      page = 1,
+      limit = 20,
+      search = "",
+      from,
+      to,
+    } = req.query;
     const session = req.user.session;
 
     // Validate session presence
@@ -1861,7 +1868,8 @@ exports.getFeeHistory = async (req, res) => {
       if (!from || !to) {
         return res.status(400).json({
           success: false,
-          message: "Both 'from' and 'to' dates are required for date range filtering.",
+          message:
+            "Both 'from' and 'to' dates are required for date range filtering.",
         });
       }
 
@@ -1884,50 +1892,44 @@ exports.getFeeHistory = async (req, res) => {
       toDate.setHours(23, 59, 59, 999);
     }
 
-    // Base filter
-    let filter = {
-      schoolId: req.user.schoolId,
-      session,
-      ...(studentId ? { studentId } : {}),
-    };
-
-    // Add date range filter for feeHistory
-    if (from && to) {
-      filter['feeHistory.date'] = {
-        $gte: fromDate,
-        $lte: toDate,
-      };
-    }
-
-    // Fetch all student IDs for search query if search term is provided
-    let studentIds = [];
+    // Initial search and filter preparation
+    let searchStudentIds = [];
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
-      const students = await NewStudentModel.find(
-        {
-          schoolId: req.user.schoolId,
-          $or: [
-            { studentName: searchRegex },
-            { admissionNumber: searchRegex },
-          ],
-        },
-        'studentId'
-      ).exec();
-      studentIds = students.map(student => student.studentId);
-
-      // Include feeReceiptNumber search in feeHistory
-      const feeStatusWithReceipt = await FeeStatus.find({
-        schoolId: req.user.schoolId,
-        session,
-        'feeHistory.feeReceiptNumber': searchRegex,
-        ...(from && to ? { 'feeHistory.date': { $gte: fromDate, $lte: toDate } } : {}),
-      }, 'studentId').exec();
-      studentIds = [...new Set([...studentIds, ...feeStatusWithReceipt.map(fee => fee.studentId)])];
-
-      if (studentIds.length > 0) {
-        filter.studentId = { $in: studentIds };
-      } else {
-        // If no students match the search, return empty result
+      const searchRegex = new RegExp(search, "i");
+      
+      // Perform student search and receipt number search in parallel
+      const [studentSearchResult, receiptSearchResult] = await Promise.all([
+        NewStudentModel.find(
+          {
+            schoolId: req.user.schoolId,
+            $or: [{ studentName: searchRegex }, { admissionNumber: searchRegex }],
+          },
+          "studentId"
+        ).lean(),
+        
+        FeeStatus.find(
+          {
+            schoolId: req.user.schoolId,
+            session,
+            "feeHistory.feeReceiptNumber": searchRegex,
+            ...(from && to ? {
+              "feeHistory.date": { $gte: fromDate, $lte: toDate }
+            } : {})
+          },
+          "studentId"
+        ).lean()
+      ]);
+      
+      // Combine student IDs from both searches, removing duplicates
+      searchStudentIds = [
+        ...new Set([
+          ...studentSearchResult.map(s => s.studentId),
+          ...receiptSearchResult.map(f => f.studentId)
+        ])
+      ];
+      
+      if (searchStudentIds.length === 0) {
+        // If no students match the search, return empty result immediately
         return res.status(200).json({
           success: true,
           message: "No matching fee history found",
@@ -1940,59 +1942,137 @@ exports.getFeeHistory = async (req, res) => {
       }
     }
 
-    // Fetch fee status data with pagination
-    const feeStatusData = await FeeStatus.find(filter).exec();
-    let feeHistory = [];
+    // Prepare MongoDB aggregation pipeline for FeeStatus
+    const feeStatusPipeline = [
+      {
+        $match: {
+          schoolId: req.user.schoolId,
+          session,
+          ...(studentId ? { studentId } : {}),
+          ...(searchStudentIds.length > 0 ? { studentId: { $in: searchStudentIds } } : {}),
+        }
+      },
+      // Unwind feeHistory array to filter individual history entries
+      { $unwind: "$feeHistory" },
+      // Apply date filter if present
+      ...(from && to ? [{
+        $match: {
+          "feeHistory.date": { $gte: fromDate, $lte: toDate }
+        }
+      }] : []),
+      // Group by student and collect filtered history entries
+      {
+        $group: {
+          _id: "$studentId",
+          studentId: { $first: "$studentId" },
+          feeHistory: { $push: "$feeHistory" }
+        }
+      }
+    ];
 
-    for (const feeStatus of feeStatusData) {
-      const studentData = await NewStudentModel.findOne(
-        { studentId: feeStatus.studentId },
+    // Execute aggregation
+    const feeStatusResult = await FeeStatus.aggregate(feeStatusPipeline);
+    
+    // If no results, return early
+    if (feeStatusResult.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No fee history found for the given criteria.",
+        data: [],
+        totalCount: 0,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: 0,
+      });
+    }
+
+    // Extract student IDs from fee results
+    const studentIds = feeStatusResult.map(item => item.studentId);
+    
+    // Fetch all required student and parent data in parallel
+    const [studentsData, parentsMap] = await Promise.all([
+      // Get all student data in a single query
+      NewStudentModel.find(
+        { studentId: { $in: studentIds } },
         "studentName class studentId parentId admissionNumber fatherName"
-      ).exec();
-      const parent = studentData?.parentId
-        ? await ParentModel.findOne({
+      ).lean(),
+      
+      // Get parent data
+      (async () => {
+        // First get all parent IDs from students
+        const students = await NewStudentModel.find(
+          { studentId: { $in: studentIds } },
+          "parentId"
+        ).lean();
+        
+        const parentIds = students
+          .map(s => s.parentId)
+          .filter(id => id); // Filter out null/undefined
+        
+        if (parentIds.length === 0) return {};
+        
+        // Then get all parents in a single query
+        const parents = await ParentModel.find(
+          { 
             schoolId: req.user.schoolId,
-            parentId: studentData.parentId,
-          }).lean()
-        : null;
+            parentId: { $in: parentIds }
+          },
+          "parentId contact"
+        ).lean();
+        
+        // Create a map for quick lookups
+        return parents.reduce((map, parent) => {
+          map[parent.parentId] = parent;
+          return map;
+        }, {});
+      })()
+    ]);
+    
+    // Create map for quick student lookups
+    const studentMap = studentsData.reduce((map, student) => {
+      map[student.studentId] = student;
+      return map;
+    }, {});
 
-      if (studentData) {
-        feeStatus.feeHistory.forEach((history) => {
-          // Apply date range filter in-memory for precise matching
-          const historyDate = new Date(history.date);
-          if (from && to && (historyDate < fromDate || historyDate > toDate)) {
-            return;
-          }
-
-          feeHistory.push({
-            studentId: studentData.studentId,
-            studentName: studentData.studentName,
-            studentClass: studentData.class,
-            parentContact: parent?.contact || null,
-            admissionNumber: studentData.admissionNumber,
-            fatherName: studentData.fatherName,
-            feeReceiptNumber: history.feeReceiptNumber,
-            paymentMode: history.paymentMode,
-            status: history.status,
-            dues:
-              history.regularFees.reduce((sum, fee) => sum + fee.dueAmount, 0) +
-              history.additionalFees.reduce(
-                (sum, fee) => sum + fee.dueAmount,
-                0
-              ),
-            ...history._doc,
-          });
+    // Process and format fee history
+    let allFeeHistory = [];
+    
+    for (const feeStatus of feeStatusResult) {
+      const student = studentMap[feeStatus.studentId];
+      if (!student) continue;
+      
+      const parent = student.parentId ? parentsMap[student.parentId] : null;
+      
+      for (const history of feeStatus.feeHistory) {
+        allFeeHistory.push({
+          studentId: student.studentId,
+          studentName: student.studentName,
+          studentClass: student.class,
+          parentContact: parent?.contact || null,
+          admissionNumber: student.admissionNumber,
+          fatherName: student.fatherName,
+          feeReceiptNumber: history.feeReceiptNumber,
+          paymentMode: history.paymentMode,
+          status: history.status,
+          dues: (
+            (history.regularFees || []).reduce((sum, fee) => sum + (fee.dueAmount || 0), 0) +
+            (history.additionalFees || []).reduce((sum, fee) => sum + (fee.dueAmount || 0), 0)
+          ),
+          ...history
         });
       }
     }
 
     // Sort by date (latest first)
-    feeHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+    allFeeHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Implement pagination
-    const totalCount = feeHistory.length;
+    // Apply pagination
+    const totalCount = allFeeHistory.length;
     const startIndex = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedData = feeHistory.slice(startIndex, startIndex + parseInt(limit));
+    const paginatedData = allFeeHistory.slice(
+      startIndex,
+      startIndex + parseInt(limit)
+    );
     const totalPages = Math.ceil(totalCount / parseInt(limit));
 
     res.status(200).json({
@@ -2012,7 +2092,6 @@ exports.getFeeHistory = async (req, res) => {
     });
   }
 };
-
 
 // Edit fee status
 exports.editFeeStatus = async (req, res) => {
@@ -2331,14 +2410,14 @@ exports.getStudentFeeInfo = async (req, res) => {
       }));
 
     // Create receipts summary array with status
-    const receiptsSummary = feeStatus.feeHistory.map(receipt => ({
+    const receiptsSummary = feeStatus.feeHistory.map((receipt) => ({
       receiptNumber: receipt.feeReceiptNumber,
       date: receipt.date,
       status: receipt.status || "active", // Default to active if not specified
       totalAmount: receipt.totalFeeAmount,
       amountPaid: receipt.totalAmountPaid,
       dueAmount: receipt.totalDues,
-      paymentMode: receipt.paymentMode
+      paymentMode: receipt.paymentMode,
     }));
 
     const responseData = {
@@ -2364,7 +2443,7 @@ exports.getStudentFeeInfo = async (req, res) => {
               m.regularFee.due > 0 || m.additionalFees.some((af) => af.due > 0)
           )
           .map((m) => m.month),
-        receipts: receiptsSummary // Add receipts summary with status
+        receipts: receiptsSummary, // Add receipts summary with status
       },
     };
 
@@ -2858,8 +2937,9 @@ exports.getUnifiedReceipts = async (req, res) => {
     const unifiedReceipts = await UnifiedReceipt.find(query).lean();
 
     if (!unifiedReceipts || unifiedReceipts.length === 0) {
-      return res.status(404).json({
-        success: false,
+      return res.status(200).json({
+        success: true,
+        data: [],
         message: "No unified receipts found",
       });
     }
@@ -3054,9 +3134,6 @@ exports.allotAdditionalFees = async (req, res) => {
   }
 };
 
-
-
-
 exports.createClassExemption = async (req, res) => {
   try {
     const { schoolId, className, section, exemptions } = req.body;
@@ -3072,10 +3149,14 @@ exports.createClassExemption = async (req, res) => {
 
     // Validate exemptions structure
     for (const exemption of exemptions) {
-      if (!exemption.feeType || (exemption.feeType === "additional" && !exemption.name)) {
+      if (
+        !exemption.feeType ||
+        (exemption.feeType === "additional" && !exemption.name)
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Each exemption must have feeType, and additional fees must have a name",
+          message:
+            "Each exemption must have feeType, and additional fees must have a name",
         });
       }
     }
@@ -3083,16 +3164,18 @@ exports.createClassExemption = async (req, res) => {
     // Fetch students in the specified class and section
     const studentQuery = { schoolId, class: className };
     if (section) studentQuery.section = section;
-    
+
     const students = await NewStudentModel.find(studentQuery);
     if (students.length === 0) {
       return res.status(404).json({
         success: false,
-        message: `No students found for class ${className}${section ? `, section ${section}` : ""}`,
+        message: `No students found for class ${className}${
+          section ? `, section ${section}` : ""
+        }`,
       });
     }
-    
-    const studentIds = students.map(s => s.studentId);
+
+    const studentIds = students.map((s) => s.studentId);
     console.log(`Processing exemptions for ${studentIds.length} students`);
 
     // Get all applicable fee structures (class-level and school-level)
@@ -3117,7 +3200,7 @@ exports.createClassExemption = async (req, res) => {
 
     // Map of studentId to their feeStatus
     const feeStatusMap = {};
-    feeStatuses.forEach(status => {
+    feeStatuses.forEach((status) => {
       feeStatusMap[status.studentId] = status;
     });
 
@@ -3138,7 +3221,7 @@ exports.createClassExemption = async (req, res) => {
           overallConcessionApplied: 0,
           overallExemptionApplied: 0,
         });
-        
+
         newFeeStatuses.push(newFeeStatus);
         feeStatusMap[student.studentId] = newFeeStatus;
       }
@@ -3153,46 +3236,61 @@ exports.createClassExemption = async (req, res) => {
     feeStatuses = Object.values(feeStatusMap);
 
     // Initialize the specified fees in fee status records if they don't exist
-    const regularFeeStructure = classFeeStructures.find(f => !f.additional);
-    const regularFeeAmount = regularFeeStructure ? regularFeeStructure.amount : 0;
+    const regularFeeStructure = classFeeStructures.find((f) => !f.additional);
+    const regularFeeAmount = regularFeeStructure
+      ? regularFeeStructure.amount
+      : 0;
 
     const additionalFeeMap = {};
     [...classFeeStructures, ...schoolFeeStructures]
-      .filter(f => f.additional && f.feeType !== "LateFine")
-      .forEach(f => {
+      .filter((f) => f.additional && f.feeType !== "LateFine")
+      .forEach((f) => {
         additionalFeeMap[f.name] = { amount: f.amount, type: f.feeType };
       });
 
     const months = [
-      "April", "May", "June", "July", "August", "September",
-      "October", "November", "December", "January", "February", "March"
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+      "January",
+      "February",
+      "March",
     ];
 
     const processingResults = [];
-    
+
     // Process each student
     for (const feeStatus of feeStatuses) {
       const studentId = feeStatus.studentId;
-      const student = students.find(s => s.studentId === studentId);
-      
+      const student = students.find((s) => s.studentId === studentId);
+
       let totalExemptionAmount = 0;
       const exemptedItems = {
         regularFees: [],
-        additionalFees: []
+        additionalFees: [],
       };
 
       // Handle regular fee exemptions
-      const regularExemptions = exemptions
-        .filter(e => e.feeType === "regular" && e.months?.length > 0);
-      
+      const regularExemptions = exemptions.filter(
+        (e) => e.feeType === "regular" && e.months?.length > 0
+      );
+
       for (const exemption of regularExemptions) {
         for (const month of exemption.months) {
           // Check if month is valid
           if (!months.includes(month)) continue;
-          
+
           // Find or create the regular fee due for this month
-          let regularDue = feeStatus.monthlyDues.regularDues.find(d => d.month === month);
-          
+          let regularDue = feeStatus.monthlyDues.regularDues.find(
+            (d) => d.month === month
+          );
+
           if (!regularDue && regularFeeAmount > 0) {
             // Initialize the due if it doesn't exist
             regularDue = {
@@ -3200,43 +3298,48 @@ exports.createClassExemption = async (req, res) => {
               paidAmount: 0,
               dueAmount: regularFeeAmount,
               status: "Unpaid",
-              exemptionApplied: 0
+              exemptionApplied: 0,
             };
             feeStatus.monthlyDues.regularDues.push(regularDue);
           }
-          
+
           if (regularDue && regularDue.dueAmount > 0) {
             const exemptionAmount = regularDue.dueAmount;
             totalExemptionAmount += exemptionAmount;
-            
-            regularDue.exemptionApplied = (regularDue.exemptionApplied || 0) + exemptionAmount;
+
+            regularDue.exemptionApplied =
+              (regularDue.exemptionApplied || 0) + exemptionAmount;
             regularDue.dueAmount = 0;
             regularDue.status = "Exempt";
-            
+
             exemptedItems.regularFees.push({
               month,
-              exemptionAmount
+              exemptionAmount,
             });
           }
         }
       }
-      
+
       // Handle additional fee exemptions
-      const additionalExemptions = exemptions
-        .filter(e => e.feeType === "additional" && e.name);
-      
+      const additionalExemptions = exemptions.filter(
+        (e) => e.feeType === "additional" && e.name
+      );
+
       for (const exemption of additionalExemptions) {
         if (exemption.months?.length > 0) {
           // Monthly additional fees
           for (const month of exemption.months) {
             if (!months.includes(month)) continue;
-            
+
             // Find or create the additional fee due
             let additionalDue = feeStatus.monthlyDues.additionalDues.find(
-              d => d.name === exemption.name && d.month === month
+              (d) => d.name === exemption.name && d.month === month
             );
-            
-            if (!additionalDue && additionalFeeMap[exemption.name]?.amount > 0) {
+
+            if (
+              !additionalDue &&
+              additionalFeeMap[exemption.name]?.amount > 0
+            ) {
               // Initialize the due if it doesn't exist
               additionalDue = {
                 name: exemption.name,
@@ -3244,32 +3347,33 @@ exports.createClassExemption = async (req, res) => {
                 paidAmount: 0,
                 dueAmount: additionalFeeMap[exemption.name].amount,
                 status: "Unpaid",
-                exemptionApplied: 0
+                exemptionApplied: 0,
               };
               feeStatus.monthlyDues.additionalDues.push(additionalDue);
             }
-            
+
             if (additionalDue && additionalDue.dueAmount > 0) {
               const exemptionAmount = additionalDue.dueAmount;
               totalExemptionAmount += exemptionAmount;
-              
-              additionalDue.exemptionApplied = (additionalDue.exemptionApplied || 0) + exemptionAmount;
+
+              additionalDue.exemptionApplied =
+                (additionalDue.exemptionApplied || 0) + exemptionAmount;
               additionalDue.dueAmount = 0;
               additionalDue.status = "Exempt";
-              
+
               exemptedItems.additionalFees.push({
                 name: exemption.name,
                 month,
-                exemptionAmount
+                exemptionAmount,
               });
             }
           }
         } else {
           // One-time additional fee
           let additionalDue = feeStatus.monthlyDues.additionalDues.find(
-            d => d.name === exemption.name && !d.month
+            (d) => d.name === exemption.name && !d.month
           );
-          
+
           if (!additionalDue && additionalFeeMap[exemption.name]?.amount > 0) {
             // Initialize the due if it doesn't exist
             additionalDue = {
@@ -3277,59 +3381,66 @@ exports.createClassExemption = async (req, res) => {
               paidAmount: 0,
               dueAmount: additionalFeeMap[exemption.name].amount,
               status: "Unpaid",
-              exemptionApplied: 0
+              exemptionApplied: 0,
             };
             feeStatus.monthlyDues.additionalDues.push(additionalDue);
           }
-          
+
           if (additionalDue && additionalDue.dueAmount > 0) {
             const exemptionAmount = additionalDue.dueAmount;
             totalExemptionAmount += exemptionAmount;
-            
-            additionalDue.exemptionApplied = (additionalDue.exemptionApplied || 0) + exemptionAmount;
+
+            additionalDue.exemptionApplied =
+              (additionalDue.exemptionApplied || 0) + exemptionAmount;
             additionalDue.dueAmount = 0;
             additionalDue.status = "Exempt";
-            
+
             exemptedItems.additionalFees.push({
               name: exemption.name,
-              exemptionAmount
+              exemptionAmount,
             });
           }
         }
       }
-      
+
       // If there's anything to exempt
       if (totalExemptionAmount > 0) {
         // Recalculate total dues
-        feeStatus.dues = 
-          feeStatus.monthlyDues.regularDues.reduce((sum, d) => sum + d.dueAmount, 0) +
-          feeStatus.monthlyDues.additionalDues.reduce((sum, d) => sum + d.dueAmount, 0) +
+        feeStatus.dues =
+          feeStatus.monthlyDues.regularDues.reduce(
+            (sum, d) => sum + d.dueAmount,
+            0
+          ) +
+          feeStatus.monthlyDues.additionalDues.reduce(
+            (sum, d) => sum + d.dueAmount,
+            0
+          ) +
           (feeStatus.pastDues || 0);
-        
-        feeStatus.overallExemptionApplied = 
+
+        feeStatus.overallExemptionApplied =
           (feeStatus.overallExemptionApplied || 0) + totalExemptionAmount;
-        
+
         // Generate a fee receipt number
         const feeReceiptNumber = await generateFeeReceiptNumber(schoolId);
-        
+
         // Create a fee history entry
         const feeHistoryEntry = {
           date: new Date(),
           status: "active",
-          regularFees: exemptedItems.regularFees.map(item => ({
+          regularFees: exemptedItems.regularFees.map((item) => ({
             month: item.month,
             paidAmount: 0,
             dueAmount: 0,
             status: "Exempt",
-            exemptionApplied: item.exemptionAmount
+            exemptionApplied: item.exemptionAmount,
           })),
-          additionalFees: exemptedItems.additionalFees.map(item => ({
+          additionalFees: exemptedItems.additionalFees.map((item) => ({
             name: item.name,
             month: item.month,
             paidAmount: 0,
             dueAmount: 0,
             status: "Exempt",
-            exemptionApplied: item.exemptionAmount
+            exemptionApplied: item.exemptionAmount,
           })),
           lateFines: [],
           pastDuesPaid: 0,
@@ -3340,47 +3451,60 @@ exports.createClassExemption = async (req, res) => {
           totalFeeAmount: totalExemptionAmount,
           totalAmountPaid: 0,
           totalDues: feeStatus.dues,
-          remark: `Class-wide exemption for ${className}${section ? `, section ${section}` : ""}`,
+          remark: `Class-wide exemption for ${className}${
+            section ? `, section ${section}` : ""
+          }`,
           feeReceiptNumber,
-          paymentMessage: `Exempted fees: ${exemptedItems.regularFees.map(r => `Regular Fee (${r.month}): ${r.exemptionAmount}`).join(', ')}${exemptedItems.regularFees.length > 0 && exemptedItems.additionalFees.length > 0 ? ', ' : ''}${exemptedItems.additionalFees.map(a => `${a.name} (${a.month || 'N/A'}): ${a.exemptionAmount}`).join(', ')}`
+          paymentMessage: `Exempted fees: ${exemptedItems.regularFees
+            .map((r) => `Regular Fee (${r.month}): ${r.exemptionAmount}`)
+            .join(", ")}${
+            exemptedItems.regularFees.length > 0 &&
+            exemptedItems.additionalFees.length > 0
+              ? ", "
+              : ""
+          }${exemptedItems.additionalFees
+            .map((a) => `${a.name} (${a.month || "N/A"}): ${a.exemptionAmount}`)
+            .join(", ")}`,
         };
-        
+
         feeStatus.feeHistory.push(feeHistoryEntry);
-        
+
         // Save the updated fee status
         await feeStatus.save();
-        
+
         processingResults.push({
           studentId,
           studentName: student?.studentName || "Unknown",
           success: true,
           exemptionAmount: totalExemptionAmount,
           feeReceiptNumber,
-          exemptedItems
+          exemptedItems,
         });
       } else {
         processingResults.push({
           studentId,
           studentName: student?.studentName || "Unknown",
           success: false,
-          message: "No dues found to exempt based on specified criteria"
+          message: "No dues found to exempt based on specified criteria",
         });
       }
     }
-    
-    const successCount = processingResults.filter(r => r.success).length;
-    
+
+    const successCount = processingResults.filter((r) => r.success).length;
+
     res.status(200).json({
       success: true,
-      message: `Exemptions applied to ${successCount} out of ${processingResults.length} students in class ${className}${section ? `, section ${section}` : ""}`,
-      results: processingResults
+      message: `Exemptions applied to ${successCount} out of ${
+        processingResults.length
+      } students in class ${className}${section ? `, section ${section}` : ""}`,
+      results: processingResults,
     });
   } catch (error) {
     console.error("Error in createClassExemption:", error);
     res.status(500).json({
       success: false,
       message: "Failed to apply class-wide exemptions",
-      error: error.message
+      error: error.message,
     });
   }
 };

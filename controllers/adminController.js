@@ -22,7 +22,7 @@ const teacherModel = require("../models/teacherModel");
 const BookModel = require("../models/bookModel");
 const ItemModel = require("../models/inventoryItemModel");
 const Return = require("../models/returnModel");
-const Sale = require("../models/salesModel");
+const {Sale, Counter} = require("../models/salesModel");
 const PurchaseOrder = require("../models/purchaseOrderModel");
 const NewRegistrationModel = require("../models/newRegistrationModel");
 const NewStudentModel = require("../models/newStudentModel");
@@ -499,27 +499,62 @@ exports.createDesignFormat = async (req, res) => {
     if (existingDesign) {
       console.log("Existing design found, updating:", existingDesign._id);
 
-      // Delete old content images
-      for (const oldContent of existingDesign.content) {
-        if (oldContent.image?.public_id) {
+      // Prepare new content array, preserving existing images where no new image is provided
+      const newContentArray = contentArray.map((newEntry, index) => {
+        const existingContent = existingDesign.content[index];
+        const imageFile = files.find(f => f.fieldname === `content[${index}][image]`);
+        
+        if (imageFile) {
+          // New image provided, delete old image if it exists
+          if (existingContent?.image?.public_id) {
+            try {
+              console.log("Deleting old content image:", existingContent.image.public_id);
+              s3.deleteObject({
+                Bucket: process.env.MINIO_BUCKET,
+                Key: existingContent.image.public_id
+              }).promise().catch(err => console.error("Error deleting old content image:", err));
+            } catch (deleteError) {
+              console.error("Error deleting old content image:", deleteError);
+            }
+          }
+          // New image is already set in contentArray
+          return newEntry;
+        } else if (existingContent?.image?.public_id) {
+          // No new image, preserve existing image
+          console.log("Preserving existing content image for index:", index);
+          return {
+            ...newEntry,
+            image: existingContent.image
+          };
+        }
+        // No new image and no existing image
+        return newEntry;
+      });
+
+      // Delete images for content entries that are no longer present
+      for (let i = newContentArray.length; i < existingDesign.content.length; i++) {
+        const oldContent = existingDesign.content[i];
+        if (oldContent?.image?.public_id) {
           try {
-            await s3.deleteObject({
+            console.log("Deleting orphaned content image:", oldContent.image.public_id);
+            s3.deleteObject({
               Bucket: process.env.MINIO_BUCKET,
               Key: oldContent.image.public_id
-            }).promise();
+            }).promise().catch(err => console.error("Error deleting orphaned content image:", err));
           } catch (deleteError) {
-            console.error("Error deleting old content image:", deleteError);
+            console.error("Error deleting orphaned content image:", deleteError);
           }
         }
       }
 
-      // Delete old background image
-      if (existingDesign.backgroundImage?.public_id && backgroundImageFile) {
+      // Delete old background image if new one is provided
+      if (backgroundImageFile && existingDesign.backgroundImage?.public_id) {
         try {
-          await s3.deleteObject({
+          console.log("Deleting old background image:", existingDesign.backgroundImage.public_id);
+          s3.deleteObject({
             Bucket: process.env.MINIO_BUCKET,
             Key: existingDesign.backgroundImage.public_id
-          }).promise();
+          }).promise().catch(err => console.error("Error deleting old background image:", err));
         } catch (deleteError) {
           console.error("Error deleting old background image:", deleteError);
         }
@@ -527,7 +562,7 @@ exports.createDesignFormat = async (req, res) => {
 
       // Update existing design
       existingDesign.name = name.trim();
-      existingDesign.content = contentArray;
+      existingDesign.content = newContentArray;
       existingDesign.description = description ? description.trim() : "";
       existingDesign.isDefault = isDefault === "true" || isDefault === true;
       existingDesign.isPublic = isPublic === "true" || isPublic === true;
@@ -587,6 +622,7 @@ exports.createDesignFormat = async (req, res) => {
   }
 };
 
+// Other functions remain unchanged
 exports.getDesignFormats = async (req, res) => {
   try {
     const { type, formatId, isDefault, includePublic, schoolId } = req.query;
@@ -814,7 +850,7 @@ exports.updateDesignFormat = async (req, res) => {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
         Body: backgroundImageFile.buffer,
-        ContentType: backgroundImageFile.mimetype,
+        ContentType: imageFile.mimetype,
         ACL: "public-read"
       };
       const minioData = await s3.upload(params).promise();
@@ -2938,39 +2974,39 @@ exports.createPurchaseOrder = async (req, res) => {
         schoolId,
         session,
       });
-      if (!inventoryItem)
-        return res
-          .status(404)
-          .json({ success: false, message: `Item ${item.itemId} not found.` });
-      item.itemName = inventoryItem.itemName;
-      item.category = inventoryItem.category;
-      item.totalCost = item.quantity * item.price;
-      totalCost += item.totalCost;
+        if (!inventoryItem)
+          return res
+            .status(404)
+            .json({ success: false, message: `Item ${item.itemId} not found.` });
+        item.itemName = inventoryItem.itemName;
+        item.category = inventoryItem.category;
+        item.totalCost = item.quantity * item.price;
+        totalCost += item.totalCost;
+      }
+
+      const purchaseOrder = new PurchaseOrder({
+        schoolId,
+        session,
+        items,
+        supplier,
+        totalCost,
+        expectedDeliveryDate,
+        updatedBy,
+      });
+      await purchaseOrder.save();
+
+      res.status(201).json({
+        success: true,
+        message: "Purchase order created",
+        data: purchaseOrder,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error creating purchase order",
+        error: error.message,
+      });
     }
-
-    const purchaseOrder = new PurchaseOrder({
-      schoolId,
-      session,
-      items,
-      supplier,
-      totalCost,
-      expectedDeliveryDate,
-      updatedBy,
-    });
-    await purchaseOrder.save();
-
-    res.status(201).json({
-      success: true,
-      message: "Purchase order created",
-      data: purchaseOrder,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating purchase order",
-      error: error.message,
-    });
-  }
 };
 
 exports.receivePurchaseOrder = async (req, res) => {
@@ -3084,7 +3120,22 @@ exports.createSale = async (req, res) => {
         message: "Paid amount insufficient for paid status.",
       });
 
+    // Generate unique 4-digit saleNumber
+    let counter = await Counter.findOneAndUpdate(
+      { schoolId, session },
+      { $inc: { sequence: 1 } },
+      { upsert: true, new: true }
+    );
+    let saleNumber = counter.sequence;
+    if (saleNumber > 9999) {
+      return res.status(400).json({
+        success: false,
+        message: "Sale number limit reached for this school and session.",
+      });
+    }
+
     const sale = new Sale({
+      saleNumber,
       schoolId,
       session,
       studentId,
@@ -3094,6 +3145,9 @@ exports.createSale = async (req, res) => {
       paidAmount,
       dueAmount,
       updatedBy,
+      paymentHistory: paidAmount
+        ? [{ amount: paidAmount, date: new Date(), updatedBy }]
+        : [],
     });
     await sale.save();
 
@@ -3113,26 +3167,40 @@ exports.createSale = async (req, res) => {
       );
     }
 
-    // Generate receipt after sale, handle failure gracefully
+    // Generate receipt
     let receipt = null;
     try {
-      const receiptResponse = await axios.get(
-        `https://dvsserver.onrender.com/api/v1/adminRoute/receipts/${sale.saleId}`,
-        {
-          withCredentials: true,
-          headers: {
-            Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
-          },
-        }
-      );
-      if (receiptResponse.data.success) {
-        receipt = receiptResponse.data.receipt;
-      } else {
-        console.warn(
-          "Receipt generation failed:",
-          receiptResponse.data.message
-        );
-      }
+      let studentName = studentResponse.data.students?.data[0]?.studentName || "Unknown";
+      const receiptData = {
+        receiptId: sale.receiptId,
+        saleNumber: sale.saleNumber,
+        studentName,
+        date: sale.date,
+        items: sale.items.map((item) => ({
+          itemName: item.itemName,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        })),
+        totalAmount: sale.totalAmount,
+        paidAmount: sale.paidAmount,
+        dueAmount: sale.dueAmount,
+        paymentStatus: sale.paymentStatus,
+        paymentHistory: sale.paymentHistory,
+      };
+
+      await ReceiptModel.create({
+        receiptId: receiptData.receiptId,
+        saleNumber: sale.saleNumber,
+        studentId: sale.studentId,
+        itemsSold: receiptData.items,
+        totalAmount: receiptData.totalAmount,
+        dueAmount: receiptData.dueAmount,
+        paymentStatus: receiptData.paymentStatus,
+        paymentHistory: receiptData.paymentHistory,
+      });
+
+      receipt = receiptData;
     } catch (receiptError) {
       console.error("Error generating receipt:", receiptError.message);
       // Continue with sale creation even if receipt fails
@@ -3144,7 +3212,7 @@ exports.createSale = async (req, res) => {
         "Sale created" +
         (receipt ? " and receipt generated" : ", receipt generation failed"),
       data: { sale },
-      receipt, // Include receipt if successful, null otherwise
+      receipt,
     });
   } catch (error) {
     res.status(500).json({
@@ -3155,10 +3223,9 @@ exports.createSale = async (req, res) => {
   }
 };
 
-
 exports.payDuesAndAddSale = async (req, res) => {
   try {
-    const { saleId, paymentAmount, newItems } = req.body;
+    const { saleNumber, paymentAmount = 0, newItems = [] } = req.body;
     const { schoolId, session, _id: updatedBy } = req.user;
 
     // Validate required fields
@@ -3168,15 +3235,29 @@ exports.payDuesAndAddSale = async (req, res) => {
         message: "School ID and session are required.",
       });
     }
-    if (!saleId || (!paymentAmount && (!newItems || newItems.length === 0))) {
+    if (!saleNumber) {
       return res.status(400).json({
         success: false,
-        message: "Sale ID and either payment amount or new items are required.",
+        message: "Sale number is required.",
+      });
+    }
+    if (paymentAmount === 0 && newItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Either payment amount or new items must be provided.",
+      });
+    }
+
+    // Validate paymentAmount
+    if (paymentAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment amount cannot be negative.",
       });
     }
 
     // Find the existing sale
-    const sale = await Sale.findOne({ saleId, schoolId, session });
+    const sale = await Sale.findOne({ saleNumber, schoolId, session });
     if (!sale) {
       return res.status(404).json({
         success: false,
@@ -3208,12 +3289,21 @@ exports.payDuesAndAddSale = async (req, res) => {
       console.error("Error fetching student data:", studentError.message);
     }
 
+    // Initialize variables
     let totalNewAmount = 0;
     let updatedItems = [...sale.items]; // Copy existing items
+    const updatedPaymentHistory = [...(sale.paymentHistory || [])];
 
     // Handle new items (additional sales)
-    if (newItems && newItems.length > 0) {
+    if (newItems.length > 0) {
       for (let item of newItems) {
+        if (!item.itemId || !item.quantity || item.quantity <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid item data: itemId and positive quantity are required.`,
+          });
+        }
+
         const inventoryItem = await ItemModel.findOne({
           itemId: item.itemId,
           schoolId,
@@ -3231,6 +3321,7 @@ exports.payDuesAndAddSale = async (req, res) => {
             message: `Insufficient stock for ${inventoryItem.itemName}.`,
           });
         }
+
         const itemTotal = item.quantity * inventoryItem.price;
         updatedItems.push({
           itemId: item.itemId,
@@ -3260,29 +3351,38 @@ exports.payDuesAndAddSale = async (req, res) => {
       }
     }
 
-    // Handle payment for dues
-    let updatedPaidAmount = sale.paidAmount;
-    let updatedDueAmount = sale.dueAmount;
-    let updatedTotalAmount = sale.totalAmount + totalNewAmount;
-    let updatedPaymentStatus = sale.paymentStatus;
+    // Calculate updated amounts
+    const updatedTotalAmount = sale.totalAmount + totalNewAmount;
+    const updatedPaidAmount = sale.paidAmount + paymentAmount;
+    const updatedDueAmount = updatedTotalAmount - updatedPaidAmount;
 
-    if (paymentAmount) {
-      if (paymentAmount < 0) {
+    // Validate payment amount against due amount
+    if (paymentAmount > 0) {
+      if (paymentAmount > sale.dueAmount + totalNewAmount) {
         return res.status(400).json({
           success: false,
-          message: "Payment amount cannot be negative.",
+          message: `Payment amount (${paymentAmount}) exceeds total due amount (${
+            sale.dueAmount + totalNewAmount
+          }).`,
         });
       }
-      updatedPaidAmount += paymentAmount;
-      updatedDueAmount = updatedTotalAmount - updatedPaidAmount;
-      if (updatedDueAmount < 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Payment amount exceeds total amount due.",
-        });
-      }
-      updatedPaymentStatus = updatedDueAmount === 0 ? "paid" : "pending";
+      updatedPaymentHistory.push({
+        amount: paymentAmount,
+        date: new Date(),
+        updatedBy,
+      });
     }
+
+    // Validate final due amount
+    if (updatedDueAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Total paid amount exceeds total sale amount.",
+      });
+    }
+
+    // Update payment status
+    const updatedPaymentStatus = updatedDueAmount === 0 ? "paid" : "pending";
 
     // Update sale record
     sale.items = updatedItems;
@@ -3290,6 +3390,7 @@ exports.payDuesAndAddSale = async (req, res) => {
     sale.paidAmount = updatedPaidAmount;
     sale.dueAmount = updatedDueAmount;
     sale.paymentStatus = updatedPaymentStatus;
+    sale.paymentHistory = updatedPaymentHistory;
     sale.updatedBy = updatedBy;
     sale.updatedAt = new Date();
     await sale.save();
@@ -3297,7 +3398,7 @@ exports.payDuesAndAddSale = async (req, res) => {
     // Generate or update receipt
     const receiptData = {
       receiptId: sale.receiptId,
-      saleId: sale.saleId,
+      saleNumber: sale.saleNumber,
       studentName,
       date: sale.date,
       items: sale.items.map((item) => ({
@@ -3310,23 +3411,14 @@ exports.payDuesAndAddSale = async (req, res) => {
       paidAmount: sale.paidAmount,
       dueAmount: sale.dueAmount,
       paymentStatus: sale.paymentStatus,
-      paymentHistory: [
-        ...(sale.paymentHistory || []),
-        paymentAmount
-          ? {
-              amount: paymentAmount,
-              date: new Date(),
-              updatedBy,
-            }
-          : null,
-      ].filter(Boolean),
+      paymentHistory: sale.paymentHistory,
     };
 
     await ReceiptModel.findOneAndUpdate(
-      { saleId: sale._id },
+      { saleNumber: sale.saleNumber },
       {
         receiptId: receiptData.receiptId,
-        saleId: sale._id,
+        saleNumber: sale.saleNumber,
         studentId: sale.studentId,
         itemsSold: receiptData.items,
         totalAmount: receiptData.totalAmount,
@@ -3344,6 +3436,7 @@ exports.payDuesAndAddSale = async (req, res) => {
       receipt: receiptData,
     });
   } catch (error) {
+    console.error("Error in payDuesAndAddSale:", error.message);
     res.status(500).json({
       success: false,
       message: "Error processing dues payment or new sale",
@@ -3354,7 +3447,7 @@ exports.payDuesAndAddSale = async (req, res) => {
 
 exports.processReturn = async (req, res) => {
   try {
-    const { saleId, items, reason } = req.body;
+    const { saleNumber, items, reason } = req.body;
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
@@ -3362,12 +3455,12 @@ exports.processReturn = async (req, res) => {
         success: false,
         message: "School ID and session are required.",
       });
-    if (!saleId || !items)
+    if (!saleNumber || !items)
       return res
         .status(400)
-        .json({ success: false, message: "Sale ID and items are required." });
+        .json({ success: false, message: "Sale number and items are required." });
 
-    const sale = await Sale.findOne({ _id: saleId, schoolId, session });
+    const sale = await Sale.findOne({ saleNumber, schoolId, session });
     if (!sale)
       return res
         .status(404)
@@ -3391,7 +3484,7 @@ exports.processReturn = async (req, res) => {
     const returnRecord = new Return({
       schoolId,
       session,
-      saleId,
+      saleNumber,
       studentId: sale.studentId,
       items,
       totalAmount,
@@ -3414,7 +3507,7 @@ exports.processReturn = async (req, res) => {
         }
       );
       await Sale.findOneAndUpdate(
-        { _id: saleId },
+        { saleNumber },
         { $inc: { dueAmount: -item.total }, updatedBy, updatedAt: new Date() }
       );
     }
@@ -3469,7 +3562,7 @@ exports.getInventoryStats = async (req, res) => {
     const lowStockThresholdNum = parseInt(lowStockThreshold, 10);
     const lowStockItems = await ItemModel.find({
       ...match,
-      quantity: { $lt: 25 }, // Low stock threshold set to 25 as requested
+      quantity: { $lt: 25 },
     }).lean();
     const totalCategories = await ItemModel.distinct("category", match);
     const topSellingItems = await Sale.aggregate([
@@ -3580,10 +3673,9 @@ exports.getAllSales = async (req, res) => {
   }
 };
 
-// CONTROLLER FOR RECEIPT
 exports.generateReceipt = async (req, res) => {
   try {
-    const { saleId } = req.params;
+    const { saleNumber } = req.params;
     const { schoolId, session } = req.user;
 
     if (!schoolId || !session) {
@@ -3592,19 +3684,18 @@ exports.generateReceipt = async (req, res) => {
         message: "School ID and session are required from authenticated admin.",
       });
     }
-    if (!saleId) {
+    if (!saleNumber) {
       return res.status(400).json({
         success: false,
-        message: "Sale ID is required in the URL parameter.",
+        message: "Sale number is required in the URL parameter.",
       });
     }
 
-    const sale = await Sale.findOne({ saleId, schoolId, session });
+    const sale = await Sale.findOne({ saleNumber, schoolId, session });
     if (!sale) {
       return res.status(404).json({
         success: false,
-        message:
-          "Sale not found or does not belong to this school and session.",
+        message: "Sale not found or does not belong to this school and session.",
       });
     }
 
@@ -3632,8 +3723,8 @@ exports.generateReceipt = async (req, res) => {
     }
 
     const receiptData = {
-      receiptId: sale.receiptId || `REC-${Date.now()}`,
-      saleId: sale.saleId,
+      receiptId: sale.receiptId,
+      saleNumber: sale.saleNumber,
       studentName,
       date: sale.date,
       items: sale.items.map((item) => ({
@@ -3646,20 +3737,23 @@ exports.generateReceipt = async (req, res) => {
       paidAmount: sale.paidAmount,
       dueAmount: sale.dueAmount,
       paymentStatus: sale.paymentStatus,
+      paymentHistory: sale.paymentHistory,
     };
 
-    const existingReceipt = await ReceiptModel.findOne({ saleId: sale._id });
-    if (!existingReceipt) {
-      await ReceiptModel.create({
+    await ReceiptModel.findOneAndUpdate(
+      { saleNumber: sale.saleNumber },
+      {
         receiptId: receiptData.receiptId,
-        saleId: sale._id,
+        saleNumber: sale.saleNumber,
         studentId: sale.studentId,
-        itemsSold: receiptData.items, // Directly use the mapped items
+        itemsSold: receiptData.items,
         totalAmount: receiptData.totalAmount,
         dueAmount: receiptData.dueAmount,
         paymentStatus: receiptData.paymentStatus,
-      });
-    }
+        paymentHistory: receiptData.paymentHistory,
+      },
+      { upsert: true }
+    );
 
     res.status(200).json({
       success: true,

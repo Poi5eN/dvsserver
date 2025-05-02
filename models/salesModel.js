@@ -1,9 +1,17 @@
-// models/salesModel.js
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
+// Counter schema for generating unique 4-digit sale numbers
+const counterSchema = new mongoose.Schema({
+  schoolId: { type: String, required: true },
+  session: { type: String, required: true },
+  sequence: { type: Number, default: 1000 },
+});
+
+const Counter = mongoose.model("Counter", counterSchema);
+
 const saleSchema = new mongoose.Schema({
-  saleId: { type: String, default: uuidv4, unique: true }, // Added saleId
+  saleNumber: { type: Number, unique: true, required: true }, // 4-digit unique number
   schoolId: { type: String, required: true },
   session: { type: String, required: true },
   studentId: { type: String, required: true },
@@ -28,7 +36,14 @@ const saleSchema = new mongoose.Schema({
   updatedAt: { type: Date },
   updatedBy: { type: String },
   receiptId: { type: String, unique: true, default: uuidv4 },
+  paymentHistory: [
+    {
+      amount: { type: Number, required: true },
+      date: { type: Date, default: Date.now },
+      updatedBy: { type: String },
+    },
+  ],
 });
 
 const Sale = mongoose.model("Sale", saleSchema);
-module.exports = Sale;
+module.exports = { Sale, Counter };

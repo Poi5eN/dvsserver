@@ -2952,7 +2952,6 @@ exports.createItem = async (req, res) => {
   }
 };
 
-
 exports.updateItem = async (req, res) => {
   try {
     const { itemId } = req.params;
@@ -2973,7 +2972,6 @@ exports.updateItem = async (req, res) => {
         .json({ success: false, message: "Item not found." });
     }
 
-    // Optional duplicate check (within same school/session)
     const duplicate = await ItemModel.findOne({
       itemId: { $ne: itemId },
       schoolId: item.schoolId,
@@ -2989,7 +2987,6 @@ exports.updateItem = async (req, res) => {
       });
     }
 
-    // Update fields
     item.itemName = itemName;
     item.category = category;
     item.quantity = quantity;
@@ -3009,7 +3006,6 @@ exports.updateItem = async (req, res) => {
     });
   }
 };
-
 
 exports.createPurchaseOrder = async (req, res) => {
   try {
@@ -3033,39 +3029,39 @@ exports.createPurchaseOrder = async (req, res) => {
         schoolId,
         session,
       });
-        if (!inventoryItem)
-          return res
-            .status(404)
-            .json({ success: false, message: `Item ${item.itemId} not found.` });
-        item.itemName = inventoryItem.itemName;
-        item.category = inventoryItem.category;
-        item.totalCost = item.quantity * item.price;
-        totalCost += item.totalCost;
-      }
-
-      const purchaseOrder = new PurchaseOrder({
-        schoolId,
-        session,
-        items,
-        supplier,
-        totalCost,
-        expectedDeliveryDate,
-        updatedBy,
-      });
-      await purchaseOrder.save();
-
-      res.status(201).json({
-        success: true,
-        message: "Purchase order created",
-        data: purchaseOrder,
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: "Error creating purchase order",
-        error: error.message,
-      });
+      if (!inventoryItem)
+        return res
+          .status(404)
+          .json({ success: false, message: `Item ${item.itemId} not found.` });
+      item.itemName = inventoryItem.itemName;
+      item.category = inventoryItem.category;
+      item.totalCost = item.quantity * item.price;
+      totalCost += item.totalCost;
     }
+
+    const purchaseOrder = new PurchaseOrder({
+      schoolId,
+      session,
+      items,
+      supplier,
+      totalCost,
+      expectedDeliveryDate,
+      updatedBy,
+    });
+    await purchaseOrder.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Purchase order created",
+      data: purchaseOrder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error creating purchase order",
+      error: error.message,
+    });
+  }
 };
 
 exports.receivePurchaseOrder = async (req, res) => {
@@ -3179,7 +3175,6 @@ exports.createSale = async (req, res) => {
         message: "Paid amount insufficient for paid status.",
       });
 
-    // Generate unique 4-digit saleNumber
     let counter = await Counter.findOneAndUpdate(
       { schoolId, session },
       { $inc: { sequence: 1 } },
@@ -3210,7 +3205,6 @@ exports.createSale = async (req, res) => {
     });
     await sale.save();
 
-    // Deduct quantities from stock
     for (let item of items) {
       await ItemModel.findOneAndUpdate(
         { itemId: item.itemId, schoolId, session },
@@ -3226,7 +3220,6 @@ exports.createSale = async (req, res) => {
       );
     }
 
-    // Generate receipt
     let receipt = null;
     try {
       let studentName = studentResponse.data.students?.data[0]?.studentName || "Unknown";
@@ -3262,7 +3255,6 @@ exports.createSale = async (req, res) => {
       receipt = receiptData;
     } catch (receiptError) {
       console.error("Error generating receipt:", receiptError.message);
-      // Continue with sale creation even if receipt fails
     }
 
     res.status(201).json({
@@ -3287,7 +3279,6 @@ exports.payDuesAndAddSale = async (req, res) => {
     const { saleNumber, paymentAmount = 0, newItems = [] } = req.body;
     const { schoolId, session, _id: updatedBy } = req.user;
 
-    // Validate required fields
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
@@ -3307,7 +3298,6 @@ exports.payDuesAndAddSale = async (req, res) => {
       });
     }
 
-    // Validate paymentAmount
     if (paymentAmount < 0) {
       return res.status(400).json({
         success: false,
@@ -3315,7 +3305,6 @@ exports.payDuesAndAddSale = async (req, res) => {
       });
     }
 
-    // Find the existing sale
     const sale = await Sale.findOne({ saleNumber, schoolId, session });
     if (!sale) {
       return res.status(404).json({
@@ -3324,7 +3313,6 @@ exports.payDuesAndAddSale = async (req, res) => {
       });
     }
 
-    // Validate student
     let studentName = "Unknown";
     try {
       const studentResponse = await axios.get(
@@ -3348,12 +3336,10 @@ exports.payDuesAndAddSale = async (req, res) => {
       console.error("Error fetching student data:", studentError.message);
     }
 
-    // Initialize variables
     let totalNewAmount = 0;
-    let updatedItems = [...sale.items]; // Copy existing items
+    let updatedItems = [...sale.items];
     const updatedPaymentHistory = [...(sale.paymentHistory || [])];
 
-    // Handle new items (additional sales)
     if (newItems.length > 0) {
       for (let item of newItems) {
         if (!item.itemId || !item.quantity || item.quantity <= 0) {
@@ -3394,7 +3380,6 @@ exports.payDuesAndAddSale = async (req, res) => {
         });
         totalNewAmount += itemTotal;
 
-        // Update inventory
         await ItemModel.findOneAndUpdate(
           { itemId: item.itemId, schoolId, session },
           {
@@ -3410,12 +3395,10 @@ exports.payDuesAndAddSale = async (req, res) => {
       }
     }
 
-    // Calculate updated amounts
     const updatedTotalAmount = sale.totalAmount + totalNewAmount;
     const updatedPaidAmount = sale.paidAmount + paymentAmount;
     const updatedDueAmount = updatedTotalAmount - updatedPaidAmount;
 
-    // Validate payment amount against due amount
     if (paymentAmount > 0) {
       if (paymentAmount > sale.dueAmount + totalNewAmount) {
         return res.status(400).json({
@@ -3432,7 +3415,6 @@ exports.payDuesAndAddSale = async (req, res) => {
       });
     }
 
-    // Validate final due amount
     if (updatedDueAmount < 0) {
       return res.status(400).json({
         success: false,
@@ -3440,10 +3422,8 @@ exports.payDuesAndAddSale = async (req, res) => {
       });
     }
 
-    // Update payment status
     const updatedPaymentStatus = updatedDueAmount === 0 ? "paid" : "pending";
 
-    // Update sale record
     sale.items = updatedItems;
     sale.totalAmount = updatedTotalAmount;
     sale.paidAmount = updatedPaidAmount;
@@ -3454,7 +3434,6 @@ exports.payDuesAndAddSale = async (req, res) => {
     sale.updatedAt = new Date();
     await sale.save();
 
-    // Generate or update receipt
     const receiptData = {
       receiptId: sale.receiptId,
       saleNumber: sale.saleNumber,
@@ -3824,6 +3803,133 @@ exports.generateReceipt = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Receipt generation failed due to error",
+      error: error.message,
+    });
+  }
+};
+
+exports.getStudentsWithDues = async (req, res) => {
+  try {
+    const { schoolId, session } = req.user;
+    const { page = 1, limit = 10 } = req.query;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
+    }
+
+    const salesWithDues = await Sale.aggregate([
+      {
+        $match: {
+          schoolId,
+          session,
+          paymentStatus: { $ne: "paid" },
+          dueAmount: { $gt: 0 },
+        },
+      },
+      {
+        $group: {
+          _id: "$studentId",
+          totalDue: { $sum: "$dueAmount" },
+          sales: {
+            $push: {
+              saleNumber: "$saleNumber",
+              date: "$date",
+              totalAmount: "$totalAmount",
+              paidAmount: "$paidAmount",
+              dueAmount: "$dueAmount",
+              paymentStatus: "$paymentStatus",
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: "students", // Assuming a students collection exists
+          localField: "_id",
+          foreignField: "studentId",
+          as: "studentDetails",
+        },
+      },
+      {
+        $unwind: {
+          path: "$studentDetails",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $project: {
+          studentId: "$_id",
+          studentName: "$studentDetails.studentName",
+          class: "$studentDetails.class",
+          section: "$studentDetails.section",
+          admissionNumber: "$studentDetails.admissionNumber",
+          totalDue: 1,
+          sales: 1,
+        },
+      },
+      { $sort: { totalDue: -1 } },
+      {
+        $facet: {
+          paginatedResults: [
+            { $skip: (parseInt(page) - 1) * parseInt(limit) },
+            { $limit: parseInt(limit) },
+          ],
+          totalCount: [{ $count: "count" }],
+        },
+      },
+    ]);
+
+    const studentsWithDues = salesWithDues[0].paginatedResults;
+    const total = salesWithDues[0].totalCount[0]?.count || 0;
+
+    // Fetch student details from external API for those not found in local collection
+    for (let student of studentsWithDues) {
+      if (!student.studentName) {
+        try {
+          const studentResponse = await axios.get(
+            `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${student.studentId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+              },
+            }
+          );
+          if (studentResponse.data.success) {
+            const studentData = studentResponse.data.students?.data[0] || {};
+            student.studentName = studentData.studentName || "Unknown";
+            student.class = studentData.class || "N/A";
+            student.section = studentData.section || "N/A";
+            student.admissionNumber = studentData.admissionNumber || "N/A";
+          }
+        } catch (studentError) {
+          console.error(`Error fetching student ${student.studentId}:`, studentError.message);
+          student.studentName = "Unknown";
+          student.class = "N/A";
+          student.section = "N/A";
+          student.admissionNumber = "N/A";
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Students with dues fetched",
+      students: studentsWithDues,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("Error in getStudentsWithDues:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching students with dues",
       error: error.message,
     });
   }

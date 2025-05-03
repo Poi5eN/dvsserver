@@ -133,7 +133,7 @@ router.post("/inventory/sell/:itemId", verifyToken, admin.sellItem);
 router.post("/inventory/multi-sell", verifyToken, admin.multiSellItem);
 
 router.post("/items", verifyToken, admin.createItem);
-router.put("/items", verifyToken, admin.createItem);
+router.put("/items/:itemId", verifyToken, admin.createItem);
 router.post("/purchase-orders", verifyToken, admin.createPurchaseOrder);
 router.put("/purchase-orders/:orderId/receive", verifyToken, admin.receivePurchaseOrder);
 router.post("/sales", verifyToken, admin.createSale);

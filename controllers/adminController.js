@@ -2952,6 +2952,65 @@ exports.createItem = async (req, res) => {
   }
 };
 
+
+exports.updateItem = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { itemName, category, quantity, price, icon, color } = req.body;
+    const { _id: updatedBy } = req.user;
+
+    if (!itemName || !category || !quantity || !price) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required." });
+    }
+
+    const item = await ItemModel.findOne({ itemId });
+
+    if (!item) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found." });
+    }
+
+    // Optional duplicate check (within same school/session)
+    const duplicate = await ItemModel.findOne({
+      itemId: { $ne: itemId },
+      schoolId: item.schoolId,
+      session: item.session,
+      itemName,
+      category,
+    });
+
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: "Another item with the same name and category exists.",
+      });
+    }
+
+    // Update fields
+    item.itemName = itemName;
+    item.category = category;
+    item.quantity = quantity;
+    item.price = price;
+    item.icon = icon || item.icon;
+    item.color = color || item.color;
+    item.updatedBy = updatedBy;
+
+    await item.save();
+
+    res.json({ success: true, message: "Item updated successfully", data: item });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating item",
+      error: error.message,
+    });
+  }
+};
+
+
 exports.createPurchaseOrder = async (req, res) => {
   try {
     const { items, supplier, expectedDeliveryDate } = req.body;

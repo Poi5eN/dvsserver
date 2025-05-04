@@ -5722,12 +5722,12 @@ exports.createStudentParent = async (req, res) => {
       });
     }
 
-    // Validate required fields, skipping parentEmail and parentPassword if parentAdmissionNumber is provided
+    // Validate required fields
+    // Require student fields and either parentAdmissionNumber or (parentEmail and parentPassword)
     if (
       !studentFullName ||
       !studentEmail ||
       !studentPassword ||
-      !fatherName ||
       !studentJoiningDate ||
       !studentClass ||
       (!parentAdmissionNumber && (!parentEmail || !parentPassword))
@@ -5845,6 +5845,11 @@ exports.createStudentParent = async (req, res) => {
         ? admissionNumber
         : await generateAdmissionNumber(schoolId, NewStudentModel);
 
+    // Use parentExist data for fatherName, motherName, etc., if available
+    const studentFatherName = parentExist ? parentExist.fatherName : fatherName;
+    const studentMotherName = parentExist ? parentExist.motherName : motherName;
+    const studentGuardianName = parentExist ? parentExist.guardianName : guardianName;
+
     const studentData = await NewStudentModel.create({
       schoolId,
       session,
@@ -5864,9 +5869,9 @@ exports.createStudentParent = async (req, res) => {
       address: studentAddress,
       contact: studentContact,
       class: studentClass,
-      fatherName,
-      motherName,
-      guardianName,
+      fatherName: studentFatherName,
+      motherName: studentMotherName,
+      guardianName: studentGuardianName,
       remarks,
       transport,
       section: studentSection,
@@ -5886,6 +5891,8 @@ exports.createStudentParent = async (req, res) => {
       guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
       approvalStatus: "approved",
       assignedThirdParty: null,
+      parentId: parentExist ? parentExist._id : undefined,
+      parentAdmissionNumber: parentExist ? parentExist.admissionNumber : undefined,
       udisePlusDetails: {
         stu_id,
         class: studentUdiseClass,
@@ -5908,7 +5915,7 @@ exports.createStudentParent = async (req, res) => {
         category,
         minority,
         is_bpl,
-aay,
+        is_aay,
         ews_aged_group,
         is_cwsn,
         cwsn_imp_type,
@@ -5957,6 +5964,10 @@ aay,
         },
         { new: true }
       );
+      // Update student with parent details if not already set
+      studentData.parentId = parentData._id;
+      studentData.parentAdmissionNumber = parentData.admissionNumber;
+      await studentData.save();
     } else if (parentEmail && parentPassword) {
       const parentImageResult =
         files.find((f) => f.fieldname === "parentImage") ||
@@ -5997,6 +6008,11 @@ aay,
         guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
       });
 
+      // Update student with new parent details
+      studentData.parentId = parentData._id;
+      studentData.parentAdmissionNumber = parentData.admissionNumber;
+      await studentData.save();
+
       const parentEmailContent = `
         <!DOCTYPE html>
         <html>
@@ -6029,12 +6045,6 @@ aay,
         "Parent Login Credentials",
         parentEmailContent
       );
-    }
-
-    if (parentData) {
-      studentData.parentId = parentData._id;
-      studentData.parentAdmissionNumber = parentData.admissionNumber;
-      await studentData.save();
     }
 
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select(

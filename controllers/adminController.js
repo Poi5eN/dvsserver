@@ -5722,9 +5722,7 @@ exports.createStudentParent = async (req, res) => {
       });
     }
 
-    // Modified validation logic to account for parentAdmissionNumber path
-    const isUsingParentAdmissionNumber = parentAdmissionNumber && parentAdmissionNumber.trim() !== "";
-    
+    // Validate required fields, skipping parentEmail and parentPassword if parentAdmissionNumber is provided
     if (
       !studentFullName ||
       !studentEmail ||
@@ -5732,8 +5730,7 @@ exports.createStudentParent = async (req, res) => {
       !fatherName ||
       !studentJoiningDate ||
       !studentClass ||
-      (!parentEmail && !isUsingParentAdmissionNumber) ||
-      (!parentPassword && !isUsingParentAdmissionNumber)
+      (!parentAdmissionNumber && (!parentEmail || !parentPassword))
     ) {
       return res
         .status(400)
@@ -5759,15 +5756,12 @@ exports.createStudentParent = async (req, res) => {
     }
 
     let parentExist = null;
-    
-    // Look for existing parent either by admission number or email
-    if (isUsingParentAdmissionNumber) {
+    if (parentAdmissionNumber) {
       parentExist = await ParentModel.findOne({
         admissionNumber: parentAdmissionNumber,
         schoolId,
         session,
       });
-      
       if (!parentExist) {
         return res.status(400).json({
           success: false,
@@ -5775,12 +5769,11 @@ exports.createStudentParent = async (req, res) => {
         });
       }
     } else if (parentEmail) {
-      parentExist = await ParentModel.findOne({ 
-        email: parentEmail, 
-        schoolId, 
-        session 
+      parentExist = await ParentModel.findOne({
+        email: parentEmail,
+        schoolId,
+        session,
       });
-      
       if (parentExist) {
         return res.status(400).json({
           success: false,
@@ -5811,9 +5804,7 @@ exports.createStudentParent = async (req, res) => {
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
-      const fileKey = `students/father/${Date.now()}-${
-        fatherFile.originalname
-      }`;
+      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -5825,9 +5816,7 @@ exports.createStudentParent = async (req, res) => {
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
-      const fileKey = `students/mother/${Date.now()}-${
-        motherFile.originalname
-      }`;
+      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -5839,9 +5828,7 @@ exports.createStudentParent = async (req, res) => {
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `students/guardian/${Date.now()}-${
-        guardianFile.originalname
-      }`;
+      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -5921,7 +5908,7 @@ exports.createStudentParent = async (req, res) => {
         category,
         minority,
         is_bpl,
-        is_aay,
+aay,
         ews_aged_group,
         is_cwsn,
         cwsn_imp_type,
@@ -5959,17 +5946,14 @@ exports.createStudentParent = async (req, res) => {
     });
 
     let parentData = null;
-    if (isUsingParentAdmissionNumber && parentExist) {
-      // Fix 1: Correctly update the existing parent with the new student info
-      const currentStudentNames = parentExist.studentNames || [];
-      
+    if (parentAdmissionNumber && parentExist) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId, session },
         {
-          $addToSet: { studentIds: studentData.studentId },
-          $set: { 
-            studentNames: [...currentStudentNames, studentFullName] 
-          }
+          $push: {
+            studentIds: studentData._id,
+            studentNames: studentFullName,
+          },
         },
         { new: true }
       );
@@ -5981,9 +5965,7 @@ exports.createStudentParent = async (req, res) => {
         guardianFile;
       let parentImageData = {};
       if (parentImageResult) {
-        const fileKey = `parents/${Date.now()}-${
-          parentImageResult.originalname
-        }`;
+        const fileKey = `parents/${Date.now()}-${parentImageResult.originalname}`;
         const params = {
           Bucket: process.env.MINIO_BUCKET,
           Key: fileKey,
@@ -5997,7 +5979,7 @@ exports.createStudentParent = async (req, res) => {
       parentData = await ParentModel.create({
         schoolId,
         session,
-        studentIds: [studentData.studentId],
+        studentIds: [studentData._id],
         studentNames: [studentFullName],
         fatherName,
         motherName,
@@ -6012,9 +5994,7 @@ exports.createStudentParent = async (req, res) => {
         parentImage: parentImageData.url ? parentImageData : undefined,
         fatherImage: fatherImageResult.url ? fatherImageResult : undefined,
         motherImage: motherImageResult.url ? motherImageResult : undefined,
-        guardianImage: guardianImageResult.url
-          ? guardianImageResult
-          : undefined,
+        guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
       });
 
       const parentEmailContent = `
@@ -6037,7 +6017,7 @@ exports.createStudentParent = async (req, res) => {
                 <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Your Credentials</h2>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${parentEmail}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${parentPassword}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Parent ID:</strong> ${parentData.parentId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Parent ID:</strong> ${parentData._id}</p>
               </td>
             </tr>
           </table>
@@ -6051,10 +6031,9 @@ exports.createStudentParent = async (req, res) => {
       );
     }
 
-    if (parentData || parentExist) {
-      // Fix 2: Ensure student is properly linked with parent
-      studentData.parentId = parentData?.parentId || parentExist?.parentId;
-      studentData.parentAdmissionNumber = parentData?.admissionNumber || parentAdmissionNumber;
+    if (parentData) {
+      studentData.parentId = parentData._id;
+      studentData.parentAdmissionNumber = parentData.admissionNumber;
       await studentData.save();
     }
 
@@ -6088,13 +6067,11 @@ exports.createStudentParent = async (req, res) => {
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
               <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We're thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${
-                  studentData.studentId
-                }</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData._id}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>
@@ -6128,7 +6105,7 @@ exports.createStudentParent = async (req, res) => {
       success: true,
       message: "Student and parent created successfully, emails sent.",
       student: studentData,
-      parent: parentData || parentExist,
+      parent: parentData,
     });
   } catch (error) {
     res.status(500).json({

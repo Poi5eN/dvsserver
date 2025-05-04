@@ -1,5 +1,5 @@
 const express = require("express");
-const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt, createUnifiedFeePayment, generateFeeReceipt, getUnifiedReceipts, allocateAdditionalFees, allotAdditionalFees, createClassExemption} = require("../controllers/feeStatusController");
+const { createOrUpdateFeePayment , getFeeStatus, feeIncomeMonths, getFeeHistory, editFeeStatus, deleteFeeStatus, getAllStudentsFeeStatus, getFeeStatusByMonth, getStudentFeeHistory, getFeeHistoryAndDues, addPastDues, cancelFeePayment, getMonthlyDues, getStudentFeeInfo, generateUnifiedFeeReceipt, generateFormattedFeeReceipt, createUnifiedFeePayment, generateFeeReceipt, getUnifiedReceipts, allocateAdditionalFees, allotAdditionalFees, createClassExemption, exemptClassFees} = require("../controllers/feeStatusController");
 const { manageDuesPayment, createPayment } = require("../controllers/manageDuesPayment");
 const verifyToken = require("../middleware/auth");
 
@@ -31,7 +31,8 @@ router.post('/cancelFeePayment', verifyToken, cancelFeePayment);
 
 
 
-router.post("/exemption", verifyToken, createClassExemption);
+// router.post("/exemption", verifyToken, createClassExemption);
+router.post("/exemption", verifyToken, exemptClassFees);
 
 // router.post('/generateUnifiedReceipt', verifyToken, generateUnifiedFeeReceipt);
 // router.get("/formatted-receipt/:receiptNumber", verifyToken, generateFormattedFeeReceipt);

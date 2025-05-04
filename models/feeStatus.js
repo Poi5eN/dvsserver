@@ -68,8 +68,12 @@ const feeHistorySchema = new mongoose.Schema(
     totalDues: { type: Number, default: 0 },
     remark: { type: String },
   },
-  { toJSON: { getters: true } }
+  {
+    toJSON: { getters: true },
+    timestamps: true, // 👈 This adds createdAt and updatedAt
+  }
 );
+
 
 const monthlyRegularDuesSchema = new mongoose.Schema({
   month: { type: String },

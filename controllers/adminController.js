@@ -5558,6 +5558,77 @@ exports.createParentOnly = async (req, res) => {
   }
 };
 
+
+exports.getParentByEmail = async (req, res) => {
+  try {
+    const { email } = req.query; // Email passed as query parameter
+    const { schoolId, session } = req.user;
+
+    // Validate inputs
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Parent email is required.",
+      });
+    }
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required.",
+      });
+    }
+
+    // Fetch parent details
+    const parent = await ParentModel.findOne({
+      email,
+      schoolId,
+      session,
+    }).select('-password -base64'); // Exclude sensitive fields
+
+    if (!parent) {
+      return res.status(404).json({
+        success: false,
+        message: `No parent found with email ${email} for the specified school and session.`,
+      });
+    }
+
+    // Prepare response data
+    const parentDetails = {
+      parentId: parent.parentId,
+      fatherName: parent.fatherName,
+      motherName: parent.motherName,
+      guardianName: parent.guardianName,
+      email: parent.email,
+      contact: parent.contact,
+      admissionNumber: parent.admissionNumber,
+      income: parent.income,
+      qualification: parent.qualification,
+      studentIds: parent.studentIds,
+      studentNames: parent.studentNames,
+      status: parent.status,
+      role: parent.role,
+      parentImage: parent.parentImage.url ? parent.parentImage : undefined,
+      fatherImage: parent.fatherImage.url ? parent.fatherImage : undefined,
+      motherImage: parent.motherImage.url ? parent.motherImage : undefined,
+      guardianImage: parent.guardianImage.url ? parent.guardianImage : undefined,
+      createdAt: parent.createdAt,
+    };
+
+    res.status(200).json({
+      success: true,
+      message: "Parent details retrieved successfully.",
+      parent: parentDetails,
+    });
+  } catch (error) {
+    console.error("Error fetching parent details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch parent details.",
+      error: error.message,
+    });
+  }
+};
+
 // Updated parseDate to handle malformed input gracefully
 // Updated helper function to parse DD/MM/YYYY strings into Date objects
 const parseDate = (dateString) => {
@@ -5891,7 +5962,7 @@ exports.createStudentParent = async (req, res) => {
       guardianImage: guardianImageResult.url ? guardianImageResult : undefined,
       approvalStatus: "approved",
       assignedThirdParty: null,
-      parentId: parentExist ? parentExist._id : undefined,
+      parentId: parentExist ? parentExist.parentId : undefined,
       parentAdmissionNumber: parentExist ? parentExist.admissionNumber : undefined,
       udisePlusDetails: {
         stu_id,
@@ -5958,16 +6029,18 @@ exports.createStudentParent = async (req, res) => {
         { admissionNumber: parentAdmissionNumber, schoolId, session },
         {
           $push: {
-            studentIds: studentData._id,
+            studentIds: studentData.studentId, // Use UUID studentId
             studentNames: studentFullName,
           },
         },
         { new: true }
       );
-      // Update student with parent details if not already set
-      studentData.parentId = parentData._id;
-      studentData.parentAdmissionNumber = parentData.admissionNumber;
-      await studentData.save();
+      // Ensure student has correct parentId (UUID)
+      if (!studentData.parentId) {
+        studentData.parentId = parentData.parentId;
+        studentData.parentAdmissionNumber = parentData.admissionNumber;
+        await studentData.save();
+      }
     } else if (parentEmail && parentPassword) {
       const parentImageResult =
         files.find((f) => f.fieldname === "parentImage") ||
@@ -5990,7 +6063,7 @@ exports.createStudentParent = async (req, res) => {
       parentData = await ParentModel.create({
         schoolId,
         session,
-        studentIds: [studentData._id],
+        studentIds: [studentData.studentId], // Use UUID studentId
         studentNames: [studentFullName],
         fatherName,
         motherName,
@@ -6009,7 +6082,7 @@ exports.createStudentParent = async (req, res) => {
       });
 
       // Update student with new parent details
-      studentData.parentId = parentData._id;
+      studentData.parentId = parentData.parentId; // Use UUID parentId
       studentData.parentAdmissionNumber = parentData.admissionNumber;
       await studentData.save();
 
@@ -6033,7 +6106,7 @@ exports.createStudentParent = async (req, res) => {
                 <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Your Credentials</h2>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${parentEmail}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${parentPassword}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Parent ID:</strong> ${parentData._id}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Parent ID:</strong> ${parentData.parentId}</p>
               </td>
             </tr>
           </table>
@@ -6081,7 +6154,7 @@ exports.createStudentParent = async (req, res) => {
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
-                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData._id}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Student ID:</strong> ${studentData.studentId}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Class:</strong> ${studentClass}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Admission Number:</strong> ${studentAdmissionNumberToUse}</p>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Status:</strong> <span style="color: #ff5600; font-weight: bold;">Approved</span></p>

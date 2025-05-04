@@ -3471,6 +3471,10 @@ exports.exemptClassFees = async (req, res) => {
       if (regularFees && regularFees.length > 0) {
         regularFees.forEach(month => {
           let due = feeStatus.monthlyDues.regularDues.find(d => d.month === month);
+          if (due && (due.status === "Paid" || due.status === "Exempt")) {
+            console.log(`Skipping exemption for regular fee of ${month} for student ${studentId} as it's already ${due.status}`);
+            return;
+          }
           if (!due) {
             const exemptionAmount = regularFeeAmount;
             totalExemptionApplied += exemptionAmount;
@@ -3483,7 +3487,7 @@ exports.exemptClassFees = async (req, res) => {
               frequency: "monthly",
             };
             feeStatus.monthlyDues.regularDues.push(due);
-          } else if (due.status !== "Paid" && due.dueAmount > 0) {
+          } else if (due.dueAmount > 0) {
             const exemptionAmount = due.dueAmount;
             totalExemptionApplied += exemptionAmount;
             due.exemptionApplied = (due.exemptionApplied || 0) + exemptionAmount;
@@ -3504,6 +3508,10 @@ exports.exemptClassFees = async (req, res) => {
           if (feeInfo.frequency === "monthly" && fee.months && fee.months.length > 0) {
             fee.months.forEach(month => {
               let due = feeStatus.monthlyDues.additionalDues.find(d => d.name === fee.name && d.month === month);
+              if (due && (due.status === "Paid" || due.status === "Exempt")) {
+                console.log(`Skipping exemption for ${fee.name} of ${month} for student ${studentId} as it's already ${due.status}`);
+                return;
+              }
               if (!due) {
                 const exemptionAmount = feeInfo.amount;
                 totalExemptionApplied += exemptionAmount;
@@ -3517,7 +3525,7 @@ exports.exemptClassFees = async (req, res) => {
                   frequency: "monthly",
                 };
                 feeStatus.monthlyDues.additionalDues.push(due);
-              } else if (due.status !== "Paid" && due.dueAmount > 0) {
+              } else if (due.dueAmount > 0) {
                 const exemptionAmount = due.dueAmount;
                 totalExemptionApplied += exemptionAmount;
                 due.exemptionApplied = (due.exemptionApplied || 0) + exemptionAmount;
@@ -3527,6 +3535,10 @@ exports.exemptClassFees = async (req, res) => {
             });
           } else if (feeInfo.frequency === "one-time") {
             let due = feeStatus.monthlyDues.additionalDues.find(d => d.name === fee.name && !d.month);
+            if (due && (due.status === "Paid" || due.status === "Exempt")) {
+              console.log(`Skipping exemption for one-time fee ${fee.name} for student ${studentId} as it's already ${due.status}`);
+              return;
+            }
             if (!due) {
               const exemptionAmount = feeInfo.amount;
               totalExemptionApplied += exemptionAmount;
@@ -3539,7 +3551,7 @@ exports.exemptClassFees = async (req, res) => {
                 frequency: "one-time",
               };
               feeStatus.monthlyDues.additionalDues.push(due);
-            } else if (due.status !== "Paid" && due.dueAmount > 0) {
+            } else if (due.dueAmount > 0) {
               const exemptionAmount = due.dueAmount;
               totalExemptionApplied += exemptionAmount;
               due.exemptionApplied = (due.exemptionApplied || 0) + exemptionAmount;
@@ -3565,7 +3577,7 @@ exports.exemptClassFees = async (req, res) => {
             month,
             paidAmount: 0,
             dueAmount: 0,
-            status: "Exempt",
+            status: due ? due.status : "Exempt",
             exemptionApplied: due ? due.exemptionApplied : 0,
             frequency: "monthly",
           };
@@ -3579,7 +3591,7 @@ exports.exemptClassFees = async (req, res) => {
                 month,
                 paidAmount: 0,
                 dueAmount: 0,
-                status: "Exempt",
+                status: due ? due.status : "Exempt",
                 exemptionApplied: due ? due.exemptionApplied : 0,
                 frequency: "monthly",
               };
@@ -3590,7 +3602,7 @@ exports.exemptClassFees = async (req, res) => {
               name: fee.name,
               paidAmount: 0,
               dueAmount: 0,
-              status: "Exempt",
+              status: due ? due.status : "Exempt",
               exemptionApplied: due ? due.exemptionApplied : 0,
               frequency: "one-time",
             };

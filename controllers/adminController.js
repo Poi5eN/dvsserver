@@ -5722,6 +5722,9 @@ exports.createStudentParent = async (req, res) => {
       });
     }
 
+    // Modified validation logic to account for parentAdmissionNumber path
+    const isUsingParentAdmissionNumber = parentAdmissionNumber && parentAdmissionNumber.trim() !== "";
+    
     if (
       !studentFullName ||
       !studentEmail ||
@@ -5729,8 +5732,8 @@ exports.createStudentParent = async (req, res) => {
       !fatherName ||
       !studentJoiningDate ||
       !studentClass ||
-      (!parentEmail && !parentAdmissionNumber) ||
-      (!parentPassword && !parentAdmissionNumber)
+      (!parentEmail && !isUsingParentAdmissionNumber) ||
+      (!parentPassword && !isUsingParentAdmissionNumber)
     ) {
       return res
         .status(400)
@@ -5755,26 +5758,35 @@ exports.createStudentParent = async (req, res) => {
       });
     }
 
-    const parentExist = parentAdmissionNumber
-      ? await ParentModel.findOne({
-          admissionNumber: parentAdmissionNumber,
-          schoolId,
-          session,
-        })
-      : parentEmail
-      ? await ParentModel.findOne({ email: parentEmail, schoolId, session })
-      : null;
-    if (parentAdmissionNumber && !parentExist) {
-      return res.status(400).json({
-        success: false,
-        message: `Parent with admission number ${parentAdmissionNumber} does not exist.`,
+    let parentExist = null;
+    
+    // Look for existing parent either by admission number or email
+    if (isUsingParentAdmissionNumber) {
+      parentExist = await ParentModel.findOne({
+        admissionNumber: parentAdmissionNumber,
+        schoolId,
+        session,
       });
-    }
-    if (!parentAdmissionNumber && parentEmail && parentExist) {
-      return res.status(400).json({
-        success: false,
-        message: `Parent with email ${parentEmail} already exists.`,
+      
+      if (!parentExist) {
+        return res.status(400).json({
+          success: false,
+          message: `Parent with admission number ${parentAdmissionNumber} does not exist.`,
+        });
+      }
+    } else if (parentEmail) {
+      parentExist = await ParentModel.findOne({ 
+        email: parentEmail, 
+        schoolId, 
+        session 
       });
+      
+      if (parentExist) {
+        return res.status(400).json({
+          success: false,
+          message: `Parent with email ${parentEmail} already exists.`,
+        });
+      }
     }
 
     const studentHashPassword = await hashPassword(studentPassword);
@@ -5947,12 +5959,17 @@ exports.createStudentParent = async (req, res) => {
     });
 
     let parentData = null;
-    if (parentAdmissionNumber) {
+    if (isUsingParentAdmissionNumber && parentExist) {
+      // Fix 1: Correctly update the existing parent with the new student info
+      const currentStudentNames = parentExist.studentNames || [];
+      
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId, session },
         {
-          $push: { studentIds: studentData.studentId },
-          studentNames: studentFullName,
+          $addToSet: { studentIds: studentData.studentId },
+          $set: { 
+            studentNames: [...currentStudentNames, studentFullName] 
+          }
         },
         { new: true }
       );
@@ -6034,10 +6051,10 @@ exports.createStudentParent = async (req, res) => {
       );
     }
 
-    if (parentData) {
-      studentData.parentId = parentData.parentId || parentExist.parentId;
-      studentData.parentAdmissionNumber =
-        parentAdmissionNumber || parentData.admissionNumber;
+    if (parentData || parentExist) {
+      // Fix 2: Ensure student is properly linked with parent
+      studentData.parentId = parentData?.parentId || parentExist?.parentId;
+      studentData.parentAdmissionNumber = parentData?.admissionNumber || parentAdmissionNumber;
       await studentData.save();
     }
 
@@ -6071,7 +6088,7 @@ exports.createStudentParent = async (req, res) => {
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
               <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
-              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We're thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>
                 <p style="margin: 5px 0; font-size: 16px;"><strong>Student Name:</strong> ${studentFullName}</p>
@@ -6111,7 +6128,7 @@ exports.createStudentParent = async (req, res) => {
       success: true,
       message: "Student and parent created successfully, emails sent.",
       student: studentData,
-      parent: parentData,
+      parent: parentData || parentExist,
     });
   } catch (error) {
     res.status(500).json({

@@ -5856,9 +5856,31 @@ exports.createStudentParent = async (req, res) => {
         session,
       });
       if (parentExist) {
-        return res.status(400).json({
-          success: false,
-          message: `Parent with email ${parentEmail} already exists.`,
+        // Instead of error, return parent details
+        const parentDetails = {
+          parentId: parentExist.parentId,
+          fatherName: parentExist.fatherName,
+          motherName: parentExist.motherName,
+          guardianName: parentExist.guardianName,
+          email: parentExist.email,
+          contact: parentExist.contact,
+          admissionNumber: parentExist.admissionNumber,
+          income: parentExist.income,
+          qualification: parentExist.qualification,
+          studentIds: parentExist.studentIds,
+          studentNames: parentExist.studentNames,
+          status: parentExist.status,
+          role: parentExist.role,
+          parentImage: parentExist.parentImage?.url ? parentExist.parentImage : undefined,
+          fatherImage: parentExist.fatherImage?.url ? parentExist.fatherImage : undefined,
+          motherImage: parentExist.motherImage?.url ? parentExist.motherImage : undefined,
+          guardianImage: parentExist.guardianImage?.url ? parentExist.guardianImage : undefined,
+          createdAt: parentExist.createdAt,
+        };
+        return res.status(200).json({
+          success: true,
+          message: `Parent with email ${parentEmail} already exists. Here are the parent details.`,
+          parent: parentDetails,
         });
       }
     }

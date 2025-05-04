@@ -5832,7 +5832,7 @@ exports.createStudentParent = async (req, res) => {
     if (studentExist) {
       return res.status(400).json({
         success: false,
-        message: `Student with email ${studentEmail} already exists.`,
+        message: `Student with email ${studentEmail} already exists Bourne.`,
       });
     }
 
@@ -5856,7 +5856,7 @@ exports.createStudentParent = async (req, res) => {
         session,
       });
       if (parentExist) {
-        // Instead of error, return parent details
+        // Return error with parent details and halt execution
         const parentDetails = {
           parentId: parentExist.parentId,
           fatherName: parentExist.fatherName,
@@ -5877,9 +5877,9 @@ exports.createStudentParent = async (req, res) => {
           guardianImage: parentExist.guardianImage?.url ? parentExist.guardianImage : undefined,
           createdAt: parentExist.createdAt,
         };
-        return res.status(200).json({
-          success: true,
-          message: `Parent with email ${parentEmail} already exists. Here are the parent details.`,
+        return res.status(400).json({
+          success: false,
+          message: `Parent with email ${parentEmail} already exists.`,
           parent: parentDetails,
         });
       }
@@ -6181,7 +6181,9 @@ exports.createStudentParent = async (req, res) => {
           </tr>
           <tr>
             <td style="padding: 30px; background-color: #ffffff;">
-              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
+              <h2 style="color: #ff560
+
+0; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, ${studentFullName}!</h2>
               <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to welcome you to ${schoolName}! Your admission has been successfully created.</p>
               <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
                 <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Admission Details</h3>

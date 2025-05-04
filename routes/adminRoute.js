@@ -144,7 +144,7 @@ router.post("/duesandsales", verifyToken, admin.payDuesAndAddSale);
 router.get("/inventory/stats", verifyToken, admin.getInventoryStats);
 router.get("/items", verifyToken, admin.getAllItems); // Existing endpoint
 
-router.get("/receipts/:saleId", verifyToken, admin.generateReceipt);
+router.get("/receipts/:saleNumber", verifyToken, admin.generateReceipt);
 router.get("/salesdues", verifyToken, admin.getStudentsWithDues);
 
 

@@ -3738,6 +3738,9 @@ exports.generateReceipt = async (req, res) => {
     }
 
     let studentName = "Unknown";
+    let studentId = sale.studentId;
+    let studentClass = "N/A";
+    let section = "N/A";
     try {
       const studentResponse = await axios.get(
         `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
@@ -3747,9 +3750,13 @@ exports.generateReceipt = async (req, res) => {
           },
         }
       );
+      // console.log("Student API response:", studentResponse.data); // Debug log
       if (studentResponse.data && studentResponse.data.success) {
-        studentName =
-          studentResponse.data.students?.data[0]?.studentName || "Unknown";
+        const studentData = studentResponse.data.student || {};
+        studentName = studentData.studentName || "Unknown";
+        studentId = studentData.studentId || sale.studentId;
+        studentClass = studentData.class || "N/A";
+        section = studentData.section || "N/A";
       } else {
         console.warn(
           "Student API response invalid or failed:",
@@ -3764,6 +3771,9 @@ exports.generateReceipt = async (req, res) => {
       receiptId: sale.receiptId,
       saleNumber: sale.saleNumber,
       studentName,
+      studentId,
+      class: studentClass,
+      section,
       date: sale.date,
       items: sale.items.map((item) => ({
         itemName: item.itemName,

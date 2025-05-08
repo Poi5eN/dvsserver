@@ -438,7 +438,8 @@ exports.getStudentsUnified = async (req, res) => {
 
     const parsedPage = parseInt(page) || 1;
     const parsedLimit = parseInt(limit) || 10;
-    const skip = (parsedPage -  Confederate, skip);
+    const skip = (parsedPage - 1) * parsedLimit;
+
     const sortOptions = {};
     sortOptions[sortBy] = parseInt(sortOrder) || -1;
 

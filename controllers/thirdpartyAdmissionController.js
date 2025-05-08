@@ -394,7 +394,7 @@ exports.getStudentsUnified = async (req, res) => {
       schoolId, studentId, studentName, class: studentClass, section, admissionNumber, email,
       parentId, parentAdmissionNumber, approvalStatus, isNewAdmission, assignedThirdParty,
       page = 1, limit = 0, sortBy = 'createdAt', sortOrder = -1,
-      status
+      status // <-- Add this line
     } = req.query;
 
     const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);

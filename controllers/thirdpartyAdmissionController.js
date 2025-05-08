@@ -306,7 +306,7 @@ exports.createAdmission = async (req, res) => {
     const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
     const schoolName = schoolDetails?.schoolName || 'Your School';
     const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94';
-    const softwareLogoUrl = 'https://digitalvidyasaarthხ://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+    const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -378,8 +378,6 @@ exports.createAdmission = async (req, res) => {
   }
 };
 
-
-
 /**
  * Unified Get Students API
  */
@@ -396,7 +394,7 @@ exports.getStudentsUnified = async (req, res) => {
       schoolId, studentId, studentName, class: studentClass, section, admissionNumber, email,
       parentId, parentAdmissionNumber, approvalStatus, isNewAdmission, assignedThirdParty,
       page = 1, limit = 0, sortBy = 'createdAt', sortOrder = -1,
-      status // <-- Add this line
+      status
     } = req.query;
 
     const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
@@ -440,8 +438,7 @@ exports.getStudentsUnified = async (req, res) => {
 
     const parsedPage = parseInt(page) || 1;
     const parsedLimit = parseInt(limit) || 10;
-    const skip = (parsedPage - 1) * parsedLimit;
-
+    const skip = (parsedPage -  Confederate, skip);
     const sortOptions = {};
     sortOptions[sortBy] = parseInt(sortOrder) || -1;
 
@@ -506,8 +503,16 @@ exports.getStudentsUnified = async (req, res) => {
  */
 exports.editAdmission = async (req, res) => {
   try {
-    const { studentId } = req.params; // Now studentId is UUID
+    const { studentId } = req.params; // UUID
     const { schoolId } = req.body;
+
+    // Validate inputs
+    if (!studentId || !schoolId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and school ID are required.",
+      });
+    }
 
     const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
     if (!hasAccess) {
@@ -532,10 +537,22 @@ exports.editAdmission = async (req, res) => {
     const formData = req.body;
     const files = req.files || [];
 
+    // Validate required fields
+    if (formData.studentEmail && formData.studentEmail !== student.email) {
+      const existingStudent = await NewStudentModel.findOne({ email: formData.studentEmail, schoolId });
+      if (existingStudent && existingStudent.studentId !== studentId) {
+        return res.status(400).json({
+          success: false,
+          message: "Email is already in use by another student.",
+        });
+      }
+    }
+
     if (!process.env.MINIO_BUCKET) {
       throw new Error("MinIO bucket configuration is missing.");
     }
 
+    // Initialize image results
     let studentImageResult = student.studentImage || { public_id: "", url: "" };
     let fatherImageResult = student.fatherImage || { public_id: "", url: "" };
     let motherImageResult = student.motherImage || { public_id: "", url: "" };
@@ -546,6 +563,7 @@ exports.editAdmission = async (req, res) => {
     const motherFile = files.find(f => f.fieldname === "motherImage");
     const guardianFile = files.find(f => f.fieldname === "guardianImage");
 
+    // Handle image uploads
     if (studentFile) {
       if (studentImageResult.public_id) {
         await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: studentImageResult.public_id }).promise();
@@ -583,6 +601,7 @@ exports.editAdmission = async (req, res) => {
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
+    // Handle student password
     let studentHashPassword = student.password;
     if (formData.studentPassword) {
       if (formData.studentPassword.length < 8) {
@@ -594,15 +613,15 @@ exports.editAdmission = async (req, res) => {
       studentHashPassword = await hashPassword(formData.studentPassword);
     }
 
-    // Match NewStudentModel schema
+    // Prepare student update fields
     const updateStudentFields = {
-      studentName: formData.studentFullName || student.studentName,
+      studentName: formData.studentFullName?.trim() || student.studentName,
       email: formData.studentEmail || student.email,
       password: studentHashPassword,
       dateOfBirth: formData.studentDateOfBirth || student.dateOfBirth,
       motherName: formData.motherName || student.motherName,
       fatherName: formData.fatherName || student.fatherName,
-      parentContact: formData.studentContact ? Number(formData.studentContact) : student.parentContact,
+      parentContact: formData.parentContact ? Number(formData.parentContact) : student.parentContact,
       rollNo: formData.rollNo || student.rollNo,
       gender: formData.studentGender || student.gender,
       joiningDate: formData.studentJoiningDate || student.joiningDate,
@@ -615,7 +634,7 @@ exports.editAdmission = async (req, res) => {
       guardianName: formData.guardianName || student.guardianName,
       remarks: formData.remarks || student.remarks,
       transport: formData.transport || student.transport,
-      base64: formData.base64 || student.base64,
+      base64: undefined,
       studentImage: studentImageResult,
       fatherImage: fatherImageResult,
       motherImage: motherImageResult,
@@ -626,6 +645,9 @@ exports.editAdmission = async (req, res) => {
       pincode: formData.pincode || student.pincode,
       state: formData.state || student.state,
       city: formData.city || student.city,
+      approvalStatus: formData.approvalStatus || student.approvalStatus,
+      isNewAdmission: formData.isNewAdmission !== undefined ? formData.isNewAdmission : student.isNewAdmission,
+      assignedThirdParty: formData.assignedThirdParty || student.assignedThirdParty,
       udisePlusDetails: {
         stu_id: formData.stu_id || student.udisePlusDetails?.stu_id,
         class: formData.studentUdiseClass || student.udisePlusDetails?.class,
@@ -685,18 +707,33 @@ exports.editAdmission = async (req, res) => {
       },
     };
 
+    // Update student
     const updatedStudent = await NewStudentModel.findOneAndUpdate(
       { studentId },
-      updateStudentFields,
+      { $set: updateStudentFields },
       { new: true, runValidators: true }
     );
 
-    if (formData.parentId) {
-      const parent = await ParentModel.findOne({ parentId: formData.parentId });
+    if (!updatedStudent) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to update student record.",
+      });
+    }
+
+    // Handle parent updates
+    let updatedParent = null;
+    if (formData.parentId || formData.parentAdmissionNumber) {
+      const parentQuery = formData.parentId 
+        ? { parentId: formData.parentId }
+        : { admissionNumber: formData.parentAdmissionNumber, schoolId };
+      
+      const parent = await ParentModel.findOne(parentQuery);
       if (!parent) {
         return res.status(404).json({ success: false, message: "Parent not found." });
       }
 
+      // Initialize parent images
       let parentImageResult = parent.parentImage || { public_id: "", url: "" };
       let pFatherImageResult = parent.fatherImage || { public_id: "", url: "" };
       let pMotherImageResult = parent.motherImage || { public_id: "", url: "" };
@@ -740,6 +777,7 @@ exports.editAdmission = async (req, res) => {
         pGuardianImageResult = { public_id: fileKey, url: minioData.Location };
       }
 
+      // Handle parent password
       let parentHashPassword = parent.password;
       if (formData.parentPassword) {
         if (formData.parentPassword.length < 8) {
@@ -751,13 +789,13 @@ exports.editAdmission = async (req, res) => {
         parentHashPassword = await hashPassword(formData.parentPassword);
       }
 
-      // Match ParentModel schema
+      // Prepare parent update fields
       const updateParentFields = {
         fatherName: formData.fatherName || parent.fatherName,
         motherName: formData.motherName || parent.motherName,
         email: formData.parentEmail || parent.email,
         password: parentHashPassword,
-        contact: formData.parentContact || parent.contact,
+        contact: formData.parentContact ? Number(formData.parentContact) : parent.contact,
         income: formData.parentIncome ? Number(formData.parentIncome) : parent.income,
         qualification: formData.parentQualification || parent.qualification,
         guardianName: formData.guardianName || parent.guardianName,
@@ -765,23 +803,39 @@ exports.editAdmission = async (req, res) => {
         fatherImage: pFatherImageResult,
         motherImage: pMotherImageResult,
         guardianImage: pGuardianImageResult,
+        studentNames: parent.studentNames.includes(updatedStudent.studentName)
+          ? parent.studentNames
+          : [...parent.studentNames, updatedStudent.studentName],
       };
 
-      await ParentModel.findOneAndUpdate(
-        { parentId: formData.parentId },
-        updateParentFields,
+      // Update parent
+      updatedParent = await ParentModel.findOneAndUpdate(
+        parentQuery,
+        { $set: updateParentFields },
         { new: true, runValidators: true }
       );
+
+      // Update student with parentId if not already set
+      if (!updatedStudent.parentId || updatedStudent.parentId !== parent.parentId) {
+        updatedStudent.parentId = parent.parentId;
+        updatedStudent.parentAdmissionNumber = parent.admissionNumber;
+        await updatedStudent.save();
+      }
     }
 
     res.status(200).json({
       success: true,
-      message: "Admission updated successfully",
+      message: "Admission updated successfully.",
       student: updatedStudent,
+      parent: updatedParent,
     });
   } catch (error) {
     console.error("Error in editAdmission:", error);
-    res.status(500).json({ success: false, message: "Failed to update admission.", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update admission.",
+      error: error.message,
+    });
   }
 };
 

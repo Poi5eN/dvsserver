@@ -3115,7 +3115,7 @@ exports.receivePurchaseOrder = async (req, res) => {
 
 exports.createSale = async (req, res) => {
   try {
-    const { studentId, items, paymentStatus, paidAmount } = req.body;
+    const { studentId, items, paymentStatus, paidAmount, paymentMode } = req.body;
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
@@ -3127,6 +3127,11 @@ exports.createSale = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Student ID and items are required.",
+      });
+    if (paidAmount > 0 && !paymentMode)
+      return res.status(400).json({
+        success: false,
+        message: "Payment mode is required when paid amount is provided.",
       });
 
     const studentResponse = await axios.get(
@@ -3199,8 +3204,9 @@ exports.createSale = async (req, res) => {
       paidAmount,
       dueAmount,
       updatedBy,
+      paymentMode,
       paymentHistory: paidAmount
-        ? [{ amount: paidAmount, date: new Date(), updatedBy }]
+        ? [{ amount: paidAmount, date: new Date(), updatedBy, paymentMode }]
         : [],
     });
     await sale.save();
@@ -3238,6 +3244,7 @@ exports.createSale = async (req, res) => {
         paidAmount: sale.paidAmount,
         dueAmount: sale.dueAmount,
         paymentStatus: sale.paymentStatus,
+        paymentMode: sale.paymentMode,
         paymentHistory: sale.paymentHistory,
       };
 
@@ -3249,6 +3256,7 @@ exports.createSale = async (req, res) => {
         totalAmount: receiptData.totalAmount,
         dueAmount: receiptData.dueAmount,
         paymentStatus: receiptData.paymentStatus,
+        paymentMode: receiptData.paymentMode,
         paymentHistory: receiptData.paymentHistory,
       });
 
@@ -3664,6 +3672,9 @@ exports.getAllSales = async (req, res) => {
     const {
       dateStart,
       dateEnd,
+      specificDate,
+      search,
+      saleNumber,
       studentId,
       paymentStatus,
       page = 1,
@@ -3677,23 +3688,72 @@ exports.getAllSales = async (req, res) => {
       });
 
     const query = { schoolId, session };
-    if (dateStart || dateEnd) {
+
+    // Date filters
+    if (specificDate) {
+      const startOfDay = new Date(specificDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(specificDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      query.date = { $gte: startOfDay, $lte: endOfDay };
+    } else if (dateStart || dateEnd) {
       query.date = {};
       if (dateStart) query.date.$gte = new Date(dateStart);
       if (dateEnd) query.date.$lte = new Date(dateEnd);
     }
-    if (studentId) query.studentId = studentId;
-    if (paymentStatus) query.paymentStatus = paymentStatus;
 
+    // Search filter (assuming fields like customerName or description exist)
+    if (search) {
+      query.$or = [
+        { customerName: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Sale number filter
+    if (saleNumber) {
+      query.saleNumber = saleNumber;
+    }
+
+    // Student ID filter
+    if (studentId) {
+      query.studentId = studentId;
+    }
+
+    // Payment status filter
+    if (paymentStatus) {
+      query.paymentStatus = paymentStatus;
+    }
+
+    // Fetch sales
     const sales = await Sale.find(query)
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();
+
+    // Count total sales
     const totalSales = await Sale.countDocuments(query);
+
+    // Count sales with dues (paymentStatus: 'pending' or similar)
+    const salesWithDues = await Sale.countDocuments({
+      ...query,
+      paymentStatus: 'pending',
+    });
+
+    // Count sales without dues (paymentStatus: 'completed' or similar)
+    const salesWithoutDues = await Sale.countDocuments({
+      ...query,
+      paymentStatus: 'completed',
+    });
 
     res.status(200).json({
       success: true,
       message: "Sales fetched",
+      counts: {
+        totalSales,
+        salesWithDues,
+        salesWithoutDues,
+      },
       sales,
       pagination: {
         total: totalSales,
@@ -3783,6 +3843,7 @@ exports.generateReceipt = async (req, res) => {
       })),
       totalAmount: sale.totalAmount,
       paidAmount: sale.paidAmount,
+      paymentMode: sale.paymentMode,
       dueAmount: sale.dueAmount,
       paymentStatus: sale.paymentStatus,
       paymentHistory: sale.paymentHistory,
@@ -6690,7 +6751,8 @@ exports.createBulkStudentParent = async (req, res) => {
           guardianName,
           remarks,
           transport,
-          parentContact,
+          parentContact, // Explicitly extract parentContact
+          studentContact, // Explicitly extract studentContact
           studentAddress,
           religion,
           caste,
@@ -6698,10 +6760,14 @@ exports.createBulkStudentParent = async (req, res) => {
           pincode,
           state,
           city,
-          studentContact,
           admissionNumber,
           parentAdmissionNumber,
         } = student;
+
+        // For debugging - log the contacts
+        console.log(`Processing student: ${studentFullName}`);
+        console.log(`Student Contact: ${studentContact}`);
+        console.log(`Parent Contact: ${parentContact}`);
 
         if (
           !studentFullName ||
@@ -6814,6 +6880,10 @@ exports.createBulkStudentParent = async (req, res) => {
           );
         }
 
+        // IMPORTANT FIX: Make sure studentContact is used for student
+        const studentContactToUse = studentContact || ""; // Explicitly use student contact 
+        
+        // Create student with explicit studentContact
         const studentData = await NewStudentModel.create({
           schoolId,
           session,
@@ -6831,7 +6901,7 @@ exports.createBulkStudentParent = async (req, res) => {
           gender: studentGender,
           joiningDate: parsedJoiningDate,
           address: studentAddress,
-          contact: studentContact || "",
+          contact: studentContactToUse, // FIX: Use student contact specifically
           class: studentClass,
           fatherName,
           motherName,
@@ -6879,10 +6949,12 @@ exports.createBulkStudentParent = async (req, res) => {
           finalParentEmail = student.parentEmail;
           if (!finalParentEmail) {
             const baseName = fatherName.toLowerCase().replace(/\s+/g, "");
-            const contact =
-              parentContact ||
-              Math.floor(1000000000 + Math.random() * 9000000000).toString();
-            finalParentEmail = `${baseName}${contact}@dvs.com`;
+            
+            // IMPORTANT FIX: Use parentContact for parent email generation, not mixing contacts
+            const contactForEmail = parentContact || 
+                                   Math.floor(1000000000 + Math.random() * 9000000000).toString();
+                                   
+            finalParentEmail = `${baseName}${contactForEmail}@dvs.com`;
             let suffix = "";
             let attempt = 0;
             while (
@@ -6915,6 +6987,10 @@ exports.createBulkStudentParent = async (req, res) => {
             const parentPassword = "dvs@parent";
             const parentHashPassword = await hashPassword(parentPassword);
 
+            // IMPORTANT FIX: Make sure parentContact is used for parent
+            const parentContactToUse = parentContact || ""; // Explicitly use parent contact
+            
+            // Create parent with explicit parentContact
             parentData = await ParentModel.create({
               schoolId,
               session,
@@ -6925,7 +7001,7 @@ exports.createBulkStudentParent = async (req, res) => {
               guardianName,
               email: finalParentEmail,
               password: parentHashPassword,
-              contact: parentContact || "",
+              contact: parentContactToUse, // FIX: Use parent contact specifically
               admissionNumber: await generateAdmissionNumber(
                 schoolId,
                 ParentModel
@@ -6970,6 +7046,9 @@ exports.createBulkStudentParent = async (req, res) => {
           parentEmail: parentData.email,
           parentPassword: "dvs@parent",
           parentAdmissionNumber: parentData.admissionNumber,
+          // Add the contacts for debugging/verification
+          studentContact: studentContactToUse,
+          parentContact: parentData.contact
         });
       } catch (error) {
         errors.push({

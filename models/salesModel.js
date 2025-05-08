@@ -31,6 +31,11 @@ const saleSchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ["paid", "pending"], default: "pending" },
   paidAmount: { type: Number, default: 0 },
   dueAmount: { type: Number, default: 0 },
+  paymentMode: {
+    type: String,
+    enum: ["Cash", "Card", "Online", "Cheque", ""],
+    default: "",
+  },
   date: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },
@@ -41,6 +46,7 @@ const saleSchema = new mongoose.Schema({
       amount: { type: Number, required: true },
       date: { type: Date, default: Date.now },
       updatedBy: { type: String },
+      paymentMode: { type: String, enum: ["Cash", "Card", "Online", "Cheque", ""] },
     },
   ],
 });

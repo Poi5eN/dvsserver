@@ -86,46 +86,64 @@ async function getFeesForClass(schoolId, className, studentId = null) {
 async function getAllApplicableFees(schoolId, className, studentId) {
   try {
     let allApplicableFees = [];
+    
+    // First, check for student-specific regular fee (highest priority)
     const studentRegularFee = await FeeStructure.findOne({
       schoolId,
       studentId,
       additional: false,
     }).lean();
 
-    let regularFee;
+    // Add the student-specific regular fee if exists, otherwise use class regular fee
     if (studentRegularFee) {
-      regularFee = studentRegularFee;
+      allApplicableFees.push(studentRegularFee);
     } else {
-      regularFee = await FeeStructure.findOne({
+      const classRegularFee = await FeeStructure.findOne({
         schoolId,
         className,
         additional: false,
         studentId: { $exists: false },
       }).lean();
+      
+      if (classRegularFee) {
+        allApplicableFees.push(classRegularFee);
+      }
     }
 
-    if (regularFee) {
-      allApplicableFees.push(regularFee);
-    }
-
+    // Handle additional fees - first check student-specific ones
     const studentAdditionalFees = await FeeStructure.find({
       schoolId,
       studentId,
       additional: true,
     }).lean();
 
+    // Add all student-specific additional fees
     if (studentAdditionalFees.length > 0) {
       allApplicableFees = [...allApplicableFees, ...studentAdditionalFees];
-    } else {
-      const classAdditionalFees = await FeeStructure.find({
-        schoolId,
-        className,
-        additional: true,
-        studentId: { $exists: false },
-      }).lean();
-      allApplicableFees = [...allApplicableFees, ...classAdditionalFees];
     }
 
+    // Then add class additional fees that don't conflict with student-specific ones
+    const classAdditionalFees = await FeeStructure.find({
+      schoolId,
+      className,
+      additional: true,
+      studentId: { $exists: false },
+    }).lean();
+    
+    if (classAdditionalFees.length > 0) {
+      // Only add class additional fees that don't have a student-specific equivalent
+      for (const classFee of classAdditionalFees) {
+        const studentSpecificExists = studentAdditionalFees.some(
+          fee => fee.name === classFee.name && fee.feeType === classFee.feeType
+        );
+        
+        if (!studentSpecificExists) {
+          allApplicableFees.push(classFee);
+        }
+      }
+    }
+
+    // Finally, add school-level fees that don't conflict
     const schoolLevelFees = await FeeStructure.find({
       schoolId,
       additional: true,
@@ -134,15 +152,16 @@ async function getAllApplicableFees(schoolId, className, studentId) {
     }).lean();
 
     if (schoolLevelFees.length > 0) {
-      schoolLevelFees.forEach((fee) => {
-        const feeExists = allApplicableFees.some(
-          (existingFee) =>
-            existingFee.name === fee.name && existingFee.feeType === fee.feeType
+      for (const schoolFee of schoolLevelFees) {
+        const alreadyExists = allApplicableFees.some(
+          existingFee =>
+            existingFee.name === schoolFee.name && existingFee.feeType === schoolFee.feeType
         );
-        if (!feeExists) {
-          allApplicableFees.push(fee);
+        
+        if (!alreadyExists) {
+          allApplicableFees.push(schoolFee);
         }
-      });
+      }
     }
 
     return allApplicableFees;

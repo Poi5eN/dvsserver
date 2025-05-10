@@ -7800,6 +7800,7 @@ exports.editStudentParent = async (req, res) => {
   }
 };
 
+
 exports.getStudentParent = async (req, res) => {
   try {
     const schoolId = req.user.schoolId;
@@ -7812,7 +7813,6 @@ exports.getStudentParent = async (req, res) => {
       });
     }
 
-    // Build a base query for counting images
     const countQuery = { schoolId };
     if (req.query.session) {
       countQuery.$or = [
@@ -7823,13 +7823,11 @@ exports.getStudentParent = async (req, res) => {
       countQuery.session = session;
     }
 
-    // Count students WITH an image URL
     const countWithImage = await NewStudentModel.countDocuments({
       ...countQuery,
       "studentImage.url": { $ne: "" },
     });
 
-    // Count students WITHOUT an image URL (empty or missing)
     const countWithoutImage = await NewStudentModel.countDocuments({
       ...countQuery,
       $or: [
@@ -7838,7 +7836,6 @@ exports.getStudentParent = async (req, res) => {
       ],
     });
 
-    // Now build the detailed queries for students and parents
     const {
       studentId,
       parentId,
@@ -7877,7 +7874,6 @@ exports.getStudentParent = async (req, res) => {
     let studentQuery = { schoolId };
     let parentQuery = { schoolId };
 
-    // Session filtering
     if (req.query.session) {
       studentQuery.$or = [
         { session: req.query.session },
@@ -7892,7 +7888,6 @@ exports.getStudentParent = async (req, res) => {
       parentQuery.session = session;
     }
 
-    // Apply all other student filters...
     if (studentId) studentQuery.studentId = studentId;
     if (admissionNumber) studentQuery.admissionNumber = admissionNumber;
     if (email) studentQuery.email = email;
@@ -7900,8 +7895,7 @@ exports.getStudentParent = async (req, res) => {
     if (section) studentQuery.section = section;
     if (gender) studentQuery.gender = gender;
     if (status) studentQuery.status = status;
-    if (studentName)
-      studentQuery.studentName = { $regex: studentName, $options: "i" };
+    if (studentName) studentQuery.studentName = { $regex: studentName, $options: "i" };
     if (contact) studentQuery.contact = contact;
     if (rollNo) studentQuery.rollNo = rollNo;
     if (religion) studentQuery.religion = religion;
@@ -7914,32 +7908,25 @@ exports.getStudentParent = async (req, res) => {
     if (createdBy) studentQuery.createdBy = createdBy;
     if (joiningDateStart || joiningDateEnd) {
       studentQuery.joiningDate = {};
-      if (joiningDateStart)
-        studentQuery.joiningDate.$gte = new Date(joiningDateStart);
-      if (joiningDateEnd)
-        studentQuery.joiningDate.$lte = new Date(joiningDateEnd);
+      if (joiningDateStart) studentQuery.joiningDate.$gte = new Date(joiningDateStart);
+      if (joiningDateEnd) studentQuery.joiningDate.$lte = new Date(joiningDateEnd);
     }
     if (dateOfBirthStart || dateOfBirthEnd) {
       studentQuery.dateOfBirth = {};
-      if (dateOfBirthStart)
-        studentQuery.dateOfBirth.$gte = new Date(dateOfBirthStart);
-      if (dateOfBirthEnd)
-        studentQuery.dateOfBirth.$lte = new Date(dateOfBirthEnd);
+      if (dateOfBirthStart) studentQuery.dateOfBirth.$gte = new Date(dateOfBirthStart);
+      if (dateOfBirthEnd) studentQuery.dateOfBirth.$lte = new Date(dateOfBirthEnd);
     }
     if (fetchNewAdmissions === "true") {
       studentQuery.isNewAdmission = true;
     }
 
-    // Apply parent filters
     if (parentId) parentQuery.parentId = parentId;
-    if (parentAdmissionNumber)
-      parentQuery.admissionNumber = parentAdmissionNumber;
+    if (parentAdmissionNumber) parentQuery.admissionNumber = parentAdmissionNumber;
     if (email) parentQuery.email = email;
 
     const skip = (page - 1) * (limit || 0);
     const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
 
-    // Start building the response payload, including the new image counts
     let responseData = {
       imageCounts: {
         withImage: countWithImage,
@@ -7947,9 +7934,26 @@ exports.getStudentParent = async (req, res) => {
       },
     };
 
-    // Now handle all the different fetch modes...
+    const attachParentContact = async (students) => {
+      const parentIds = [...new Set(students.map((s) => s.parentId).filter(Boolean))];
+      const parentContacts = await ParentModel.find({
+        parentId: { $in: parentIds },
+        schoolId,
+      }, { parentId: 1, contact: 1 }).lean();
+
+      const contactMap = {};
+      parentContacts.forEach(p => {
+        contactMap[p.parentId] = typeof p.contact === 'string' ? Number(p.contact) : p.contact;
+      });
+
+      return students.map((student) => ({
+        ...student,
+        parentContact: contactMap[student.parentId] || null,
+      }));
+    };
+
     if (studentId) {
-      const student = await NewStudentModel.findOne(studentQuery).lean();
+      let student = await NewStudentModel.findOne(studentQuery).lean();
       if (!student)
         return res.status(404).json({
           success: false,
@@ -7962,7 +7966,11 @@ exports.getStudentParent = async (req, res) => {
             session,
           }).lean()
         : null;
-      responseData.student = { ...student, parentDetails: parentData };
+      responseData.student = {
+        ...student,
+        parentContact: parentData?.contact ? Number(parentData.contact) : null,
+        parentDetails: parentData,
+      };
     } else if (parentId) {
       const parent = await ParentModel.findOne(parentQuery).lean();
       if (!parent)
@@ -7970,11 +7978,12 @@ exports.getStudentParent = async (req, res) => {
           success: false,
           message: `Parent with ID ${parentId} not found`,
         });
-      const students = await NewStudentModel.find({
+      let students = await NewStudentModel.find({
         parentId: parent.parentId,
         schoolId,
         session,
       }).lean();
+      students = await attachParentContact(students);
       responseData.parent = {
         ...parent,
         studentDetails: students,
@@ -7985,17 +7994,19 @@ exports.getStudentParent = async (req, res) => {
       const parents = await ParentModel.find(parentQuery).sort(sort).lean();
       const parentsWithMultipleChildren = [];
       for (const parent of parents) {
-        const students = await NewStudentModel.find({
+        let students = await NewStudentModel.find({
           parentId: parent.parentId,
           schoolId,
           session,
         }).lean();
-        if (students.length > 1)
+        if (students.length > 1) {
+          students = await attachParentContact(students);
           parentsWithMultipleChildren.push({
             ...parent,
             studentDetails: students,
             totalChildren: students.length,
           });
+        }
       }
       const totalParentsWithMultiple = parentsWithMultipleChildren.length;
       responseData.parentsWithMultipleChildren = {
@@ -8010,11 +8021,12 @@ exports.getStudentParent = async (req, res) => {
         },
       };
     } else if (fetchAllStudents === "true") {
-      const students = await NewStudentModel.find(studentQuery)
+      let students = await NewStudentModel.find(studentQuery)
         .sort(sort)
         .skip(skip)
         .limit(limit ? parseInt(limit) : undefined)
         .lean();
+      students = await attachParentContact(students);
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
       responseData.students = {
         data: students,
@@ -8026,14 +8038,13 @@ exports.getStudentParent = async (req, res) => {
         },
       };
     } else if (fetchNewAdmissions === "true") {
-      const newStudents = await NewStudentModel.find(studentQuery)
+      let newStudents = await NewStudentModel.find(studentQuery)
         .sort(sort)
         .skip(skip)
         .limit(limit ? parseInt(limit) : undefined)
         .lean();
-      const totalNewStudents = await NewStudentModel.countDocuments(
-        studentQuery
-      );
+      newStudents = await attachParentContact(newStudents);
+      const totalNewStudents = await NewStudentModel.countDocuments(studentQuery);
       responseData.newAdmissions = {
         data: newStudents,
         pagination: {
@@ -8063,11 +8074,12 @@ exports.getStudentParent = async (req, res) => {
       Object.keys(studentQuery).length > 2 ||
       Object.keys(parentQuery).length > 2
     ) {
-      const students = await NewStudentModel.find(studentQuery)
+      let students = await NewStudentModel.find(studentQuery)
         .sort(sort)
         .skip(skip)
         .limit(limit ? parseInt(limit) : undefined)
         .lean();
+      students = await attachParentContact(students);
       const totalStudents = await NewStudentModel.countDocuments(studentQuery);
       responseData.students = {
         data: students,
@@ -8095,16 +8107,12 @@ exports.getStudentParent = async (req, res) => {
         },
       };
     } else {
-      // default: all students + parents
-      const students = await NewStudentModel.find({ schoolId, session })
-        .sort(sort)
-        .lean();
+      let students = await NewStudentModel.find({ schoolId, session }).sort(sort).lean();
+      students = await attachParentContact(students);
       const totalStudents = students.length;
       responseData.students = { data: students, total: totalStudents };
 
-      const parents = await ParentModel.find({ schoolId, session })
-        .sort(sort)
-        .lean();
+      const parents = await ParentModel.find({ schoolId, session }).sort(sort).lean();
       const totalParents = parents.length;
       responseData.parents = { data: parents, total: totalParents };
     }
@@ -8122,6 +8130,8 @@ exports.getStudentParent = async (req, res) => {
     });
   }
 };
+
+
 
 exports.getStudentAndParent = async (req, res) => {
   try {

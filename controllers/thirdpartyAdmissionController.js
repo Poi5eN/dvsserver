@@ -549,17 +549,17 @@ exports.editAdmission = async (req, res) => {
       }
     }
 
-    // Check if admission number is being updated and validate uniqueness
-    if (formData.admissionNumber && formData.admissionNumber !== student.admissionNumber) {
+    // Check if student admission number is being updated and validate uniqueness
+    if (formData.studentAdmissionNumber && formData.studentAdmissionNumber !== student.admissionNumber) {
       const existingStudentWithAdmissionNumber = await NewStudentModel.findOne({ 
-        admissionNumber: formData.admissionNumber, 
+        admissionNumber: formData.studentAdmissionNumber, 
         schoolId,
         studentId: { $ne: studentId } // Exclude current student
       });
       if (existingStudentWithAdmissionNumber) {
         return res.status(400).json({
           success: false,
-          message: "Admission number is already in use by another student in this school.",
+          message: "Student admission number is already in use by another student in this school.",
         });
       }
     }
@@ -639,7 +639,7 @@ exports.editAdmission = async (req, res) => {
       fatherName: formData.fatherName || student.fatherName,
       parentContact: formData.parentContact ? Number(formData.parentContact) : student.parentContact,
       rollNo: formData.rollNo || student.rollNo,
-      admissionNumber: formData.admissionNumber || student.admissionNumber, // ADDED: Support for admission number update
+      admissionNumber: formData.studentAdmissionNumber || student.admissionNumber, // ADDED: Support for student admission number update
       gender: formData.studentGender || student.gender,
       joiningDate: formData.studentJoiningDate || student.joiningDate,
       address: formData.studentAddress || student.address,
@@ -751,9 +751,9 @@ exports.editAdmission = async (req, res) => {
       }
 
       // Check if parent admission number is being updated and validate uniqueness
-      if (formData.newParentAdmissionNumber && formData.newParentAdmissionNumber !== parent.admissionNumber) {
+      if (formData.parentAdmissionNumber && formData.parentAdmissionNumber !== parent.admissionNumber) {
         const existingParentWithAdmissionNumber = await ParentModel.findOne({ 
-          admissionNumber: formData.newParentAdmissionNumber, 
+          admissionNumber: formData.parentAdmissionNumber, 
           schoolId,
           parentId: { $ne: parent.parentId } // Exclude current parent
         });
@@ -831,7 +831,7 @@ exports.editAdmission = async (req, res) => {
         income: formData.parentIncome ? Number(formData.parentIncome) : parent.income,
         qualification: formData.parentQualification || parent.qualification,
         guardianName: formData.guardianName || parent.guardianName,
-        admissionNumber: formData.newParentAdmissionNumber || parent.admissionNumber, // ADDED: Support for parent admission number update
+        admissionNumber: formData.parentAdmissionNumber || parent.admissionNumber, // ADDED: Support for parent admission number update
         parentImage: parentImageResult,
         fatherImage: pFatherImageResult,
         motherImage: pMotherImageResult,
@@ -850,7 +850,7 @@ exports.editAdmission = async (req, res) => {
 
       // Update student with parentId and new parent admission number if updated
       if (!updatedStudent.parentId || updatedStudent.parentId !== parent.parentId || 
-          (formData.newParentAdmissionNumber && updatedStudent.parentAdmissionNumber !== formData.newParentAdmissionNumber)) {
+          (formData.parentAdmissionNumber && updatedStudent.parentAdmissionNumber !== formData.parentAdmissionNumber)) {
         updatedStudent.parentId = parent.parentId;
         updatedStudent.parentAdmissionNumber = updatedParent.admissionNumber; // Use the updated admission number
         await updatedStudent.save();

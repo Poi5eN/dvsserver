@@ -68,6 +68,23 @@ const classSchema = new mongoose.Schema(
         trim: true,
       },
     ],
+
+    createdBy: {
+      type: String,
+      required: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedBy: {
+      type: String,
+      required: false,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,

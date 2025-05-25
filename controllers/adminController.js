@@ -44,6 +44,7 @@ const { generateStructuredNumber } = require("../utils/numberGenerator");
 
 // controllers/designFormatController.js
 const DesignFormat = require("../models/designFormatModel");
+const UserCredentials = require("../models/userCredentialsModel");
 // const { v4: uuidv4 } = require("uuid");
 
 // SCHOOL RELATED CONTROLLER FLOW
@@ -1052,7 +1053,6 @@ exports.createTeacher = async (req, res) => {
       });
     }
 
-    // Use session from request body if provided, otherwise fallback to admin's session
     const assignedSession = session || req.user.session;
     if (!assignedSession) {
       return res.status(400).json({
@@ -1061,7 +1061,6 @@ exports.createTeacher = async (req, res) => {
       });
     }
 
-    // Check if teacher already exists by email, school, and session
     const userExist = await Teacher.findOne({
       email,
       schoolId: req.user.schoolId,
@@ -1071,13 +1070,11 @@ exports.createTeacher = async (req, res) => {
     if (userExist) {
       return res.status(400).send({
         success: false,
-        message:
-          "Teacher already exists with this email for the specified session",
+        message: "Teacher already exists with this email for the specified session",
       });
     }
 
     const hashedPassword = await hashPassword(password);
-
     let fileData = {};
     if (file) {
       const fileUri = getDataUri(file);
@@ -1099,85 +1096,73 @@ exports.createTeacher = async (req, res) => {
       password: hashedPassword,
       employeeId,
       image: fileData,
+      createdBy: req.user._id, // Added createdBy from admin user
       ...userFields,
     });
 
-    if (teacherData) {
-      const schoolDetails = await AdminInfo.findOne({
-        schoolId: req.user.schoolId,
-      }).select("schoolName image.url");
-      const schoolName = schoolDetails?.schoolName || "Your School";
-      const schoolImageUrl =
-        schoolDetails?.image?.url ||
-        "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
-      const softwareLogoUrl =
-        "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    // Save credentials in UserCredentials
+    const schoolDetails = await AdminInfo.findOne({ schoolId: req.user.schoolId }).select("schoolName");
+    await UserCredentials.create({
+      userId: teacherId,
+      email,
+      password, // Store plain-text password
+      userType: "teacher",
+      schoolName: schoolDetails?.schoolName || "Your School",
+      createdBy: req.user._id,
+    });
 
-      const emailContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Teacher Account Created</title>
-        </head>
-        <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-            <tr>
-              <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
-                <img src="${schoolImageUrl}" alt="${schoolName}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
-                <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolName}</h1>
-                <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Our Faculty!</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 30px; background-color: #ffffff;">
-                <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, Teacher!</h2>
-                <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to have you join ${schoolName} as a teacher for session ${assignedSession}.</p>
-                <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
-                  <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Employee ID:</strong> ${employeeId}</p>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Teacher ID:</strong> ${teacherId}</p>
-                  <p style="margin: 5px 0; font-size: 16px;"><strong>Session:</strong> ${assignedSession}</p>
-                </div>
-                <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start shaping young minds with us!</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
-                <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
-                <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
-                <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
-                <p style="margin: 5px 0; font-size: 12px; color: #000000;">
-                  Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
-                  <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
-                </p>
-                <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-      `;
-
-      sendEmail(email, "Teacher Login Credentials", emailContent)
-        .then(() => {
-          console.log("Teacher created and message sent to teacher email ID");
-        })
-        .catch((error) => {
-          return res.status(500).json({
-            success: false,
-            message: "Error sending email to teacher email ID",
-          });
-        });
-    } else {
-      return res.status(500).json({
-        success: false,
-        message: "Teacher is not created",
-      });
-    }
+    // Email sending logic (unchanged)
+    const schoolImageUrl = schoolDetails?.image?.url || "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl = "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
+    const emailContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Teacher Account Created</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: 'Comic Sans MS', Arial, sans-serif; background-color: #e0f7fa; color: #000000;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #4caf50, #81c784); padding: 20px; text-align: center;">
+              <img src="${schoolImageUrl}" alt="${schoolDetails?.schoolName || 'Your School'}" style="max-width: 120px; height: auto; border-radius: 50%; border: 3px solid #fff; margin-bottom: 10px;" onerror="this.src='https://i.ibb.co/1Y1qz1g/school.webp';">
+              <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0;">${schoolDetails?.schoolName || 'Your School'}</h1>
+              <p style="color: #ffffff; font-size: 18px; margin: 5px 0 0;">Welcome to Our Faculty!</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px; background-color: #ffffff;">
+              <h2 style="color: #ff5600; font-size: 24px; margin: 0 0 20px; text-align: center;">Hello, Teacher!</h2>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">We’re thrilled to have you join ${schoolDetails?.schoolName || 'Your School'} as a teacher for session ${assignedSession}.</p>
+              <div style="background-color: #e0f7fa; padding: 20px; border-radius: 10px; margin: 20px 0; border: 2px dashed #ff5600;">
+                <h3 style="color: #000000; font-size: 20px; margin: 0 0 10px;">Your Credentials</h3>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Email:</strong> ${email}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Password:</strong> ${password}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Employee ID:</strong> ${employeeId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Teacher ID:</strong> ${teacherId}</p>
+                <p style="margin: 5px 0; font-size: 16px;"><strong>Session:</strong> ${assignedSession}</p>
+              </div>
+              <p style="font-size: 16px; line-height: 1.5; color: #000000; text-align: center;">Log in to start shaping young minds with us!</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #e5e5e5; padding: 20px; text-align: center;">
+              <img src="${softwareLogoUrl}" alt="Digital Vidya Saarthi | Vidyaalay ERP" style="max-width: 150px; height: auto; margin-bottom: 10px;" onerror="this.src='https://via.placeholder.com/150?text=Digital+Vidya+Saarthi';">
+              <p style="margin: 0; font-size: 16px; color: #000000; font-weight: bold;">Digital Vidya Saarthi | Vidyaalay ERP</p>
+              <p style="margin: 5px 0; font-size: 14px; color: #000000;">Empowering Education with Technology</p>
+              <p style="margin: 5px 0; font-size: 12px; color: #000000;">
+                Contact us: <a href="mailto:digitalvidyasaarthi@gmail.com" style="color: #ff5600; text-decoration: none;">digitalvidyasaarthi@gmail.com</a> | 
+                <a href="https://digitalvidyasaarthi.in" style="color: #ff5600; text-decoration: none;">DigitalVidyaSaarthi.in</a>
+              </p>
+              <p style="margin: 5px 0 0; font-size: 12px; color: #000000;">© ${new Date().getFullYear()} All Rights Reserved</p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+    await sendEmail(email, "Teacher Login Credentials", emailContent);
 
     res.status(201).send({
       success: true,
@@ -1311,6 +1296,19 @@ exports.updateTeacher = async (req, res) => {
 
     const updatedTeacher = await existingTeacher.save();
 
+    // Update credentials if email or password is changed
+    if (updateFields.email || updateFields.password) {
+      const credential = await UserCredentials.findOne({
+        userId: teacherId,
+        userType: "teacher",
+      });
+      if (credential) {
+        if (updateFields.email) credential.email = updateFields.email;
+        if (updateFields.password) credential.password = updateFields.password; // Store plain-text password
+        await credential.save();
+      }
+    }
+
     res.json({
       success: true,
       message: "Teacher updated successfully",
@@ -1332,9 +1330,24 @@ exports.getAllTeachers = async (req, res) => {
       schoolId: req.user.schoolId,
       session: req.user.session,
       status: "active",
+    }).lean();
+
+    const teacherIds = teachers.map((t) => t.teacherId);
+    const credentials = await UserCredentials.find({
+      userId: { $in: teacherIds },
+      userType: "teacher",
+    }).select("userId email password");
+
+    const teachersWithCredentials = teachers.map((teacher) => {
+      const cred = credentials.find((c) => c.userId === teacher.teacherId);
+      return {
+        ...teacher,
+        email: cred ? cred.email : teacher.email,
+        password: cred ? cred.password : undefined, // Plain-text password from UserCredentials
+      };
     });
 
-    res.status(200).json({ success: true, data: teachers });
+    res.status(200).json({ success: true, data: teachersWithCredentials });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: error.message });
@@ -10645,10 +10658,7 @@ exports.createClass = async (req, res) => {
   try {
     let { className, sections, subjects } = req.body;
 
-    // Trim className
     className = className?.trim();
-
-    // Trim sections and subjects arrays
     sections = sections
       ? sections
           .split(",")
@@ -10682,12 +10692,66 @@ exports.createClass = async (req, res) => {
       className,
       sections,
       subjects,
+      createdBy: req.user._id,
     });
+
+    // Track created teachers for response (optional)
+    const createdTeachers = [];
+
+    // Create default teachers for each section
+    const defaultPassword = "dvs@teacher";
+    for (const section of sections) {
+      const defaultEmail = `classteacher${className.toLowerCase()}${section.toLowerCase()}@dvs.com`;
+      const teacherId = uuidv4();
+      const employeeId = generateEmployeeId();
+
+      const existingTeacher = await Teacher.findOne({
+        email: defaultEmail,
+        schoolId: req.user.schoolId,
+        session: req.user.session,
+      });
+
+      if (!existingTeacher) {
+        const hashedPassword = await hashPassword(defaultPassword);
+        await Teacher.create({
+          teacherId,
+          schoolId: req.user.schoolId,
+          session: req.user.session,
+          email: defaultEmail,
+          password: hashedPassword,
+          employeeId,
+          teacherName: `Class Teacher ${className} ${section}`,
+          classTeacher: `${className} ${section}`,
+          section,
+          createdBy: req.user._id,
+        });
+
+        // Save credentials in UserCredentials
+        const schoolDetails = await AdminInfo.findOne({ schoolId: req.user.schoolId }).select("schoolName");
+        await UserCredentials.create({
+          userId: teacherId,
+          email: defaultEmail,
+          password: defaultPassword, // Store plain-text password
+          userType: "teacher",
+          schoolName: schoolDetails?.schoolName || "Your School",
+          createdBy: req.user._id,
+        });
+
+        // Add to createdTeachers for response
+        createdTeachers.push({
+          teacherId,
+          email: defaultEmail,
+          teacherName: `Class Teacher ${className} ${section}`,
+          section,
+        });
+      }
+    }
 
     res.status(201).json({
       success: true,
       message: "Class created successfully",
       class: newClass,
+      createdTeachers, // Include created teachers in response for confirmation
     });
   } catch (error) {
     res.status(500).json({
@@ -10698,71 +10762,7 @@ exports.createClass = async (req, res) => {
   }
 };
 
-// Get all classes
-// exports.getAllClasses = async (req, res) => {
-//   try {
-//     // Define the class order
-//     const classOrder = [
-//       "PRE NUR",
-//       "NUR",
-//       "LKG",
-//       "UKG",
-//       "I",
-//       "II",
-//       "III",
-//       "IV",
-//       "V",
-//       "VI",
-//       "VII",
-//       "VIII",
-//       "IX",
-//       "X",
-//       "XI",
-//       "XII",
-//       "PASS OUT",
-//     ];
-
-//     const classes = await classModel
-//       .find({
-//         schoolId: req.user.schoolId,
-//       })
-//       .lean();
-
-//     // Sort classes by className based on classOrder and sort sections alphabetically
-//     const sortedClasses = classes
-//       .map((cls) => ({
-//         ...cls,
-//         sections: cls.sections ? [...new Set(cls.sections)].sort() : [], // Sort sections and remove duplicates
-//       }))
-//       .sort((a, b) => {
-//         const aIndex = classOrder.indexOf(a.className);
-//         const bIndex = classOrder.indexOf(b.className);
-//         // Handle cases where className is not in classOrder (put at the end)
-//         return aIndex === -1 ? (bIndex === -1 ? 0 : 1) : bIndex === -1 ? -1 : aIndex - bIndex;
-//       });
-
-//     // Format classes as className-section (e.g., I-A, I-B)
-//     const formattedClasses = sortedClasses.flatMap((cls) =>
-//       cls.sections.map((section) => ({
-//         ...cls,
-//         displayName: `${cls.className}-${section}`,
-//         section,
-//       }))
-//     );
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Class list fetched successfully",
-//       classes: formattedClasses,
-//     });
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       message: "Error fetching class list",
-//       error: error.message,
-//     });
-//   }
-// };
+// Get all classes grouped by className and sorted
 exports.getClassesGrouped = async (req, res) => {
   try {
     // Define the class order

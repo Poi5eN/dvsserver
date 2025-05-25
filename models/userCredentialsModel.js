@@ -19,7 +19,7 @@ const userCredentialsSchema = new mongoose.Schema({
   userType: {
     type: String,
     required: true,
-    enum: ['admin', 'thirdparty'], // To differentiate user types
+    enum: ['admin', 'thirdparty', 'teacher'], // To differentiate user types
   },
   schoolName: {
     type: String, // Optional for third-party users

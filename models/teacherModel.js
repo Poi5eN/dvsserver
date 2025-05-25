@@ -105,7 +105,7 @@ const teacherSchema = new mongoose.Schema(
     },
     createdBy: {
       type: String,
-      required: true,
+      required: false,
     },
     updatedAt: {
       type: Date,

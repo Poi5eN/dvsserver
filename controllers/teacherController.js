@@ -17,6 +17,7 @@ exports.createStudyMaterial = async (req, res) => {
     if (type == "youtube" || type == "Video") {
       study = await studyMaterial.create({
         schoolId: req.user.schoolId,
+        session: req.user.session, // Added session
         className: req.user.classTeacher,
         title,
         type,
@@ -27,6 +28,7 @@ exports.createStudyMaterial = async (req, res) => {
       const mycloud = await cloudinary.v2.uploader.upload(fileDataUri.content);
       study = await studyMaterial.create({
         schoolId: req.user.schoolId,
+        session: req.user.session, // Added session
         className: req.user.classTeacher,
         title,
         type,
@@ -68,7 +70,11 @@ exports.getStudyMaterial = async (req, res) => {
       className = req.user.class;
     }
 
-    const study = await studyMaterial.find({ schoolId: req.user.schoolId, className: className});
+    const study = await studyMaterial.find({ 
+      schoolId: req.user.schoolId, 
+      session: req.user.session, // Added session
+      className: className 
+    });
 
     res.status(200).json({
       success: true,
@@ -90,8 +96,9 @@ exports.deleteStudyMaterial = async (req, res) => {
     console.log("io", req.params);
     console.log("yId", studyId);
 
-    const existStudy = await studyMaterial.findById({
+    const existStudy = await studyMaterial.findOne({
       schoolId: req.user.schoolId,
+      session: req.user.session, // Added session
       _id: studyId,
     });
 
@@ -102,7 +109,11 @@ exports.deleteStudyMaterial = async (req, res) => {
       });
     }
 
-    const deleteStudy = await studyMaterial.deleteOne({ _id: studyId });
+    const deleteStudy = await studyMaterial.deleteOne({ 
+      _id: studyId,
+      schoolId: req.user.schoolId,
+      session: req.user.session // Added session
+    });
 
     res.status(200).json({
       success: true,
@@ -117,7 +128,6 @@ exports.deleteStudyMaterial = async (req, res) => {
     });
   }
 };
-
 
 exports.createAttendance = async (req, res) => {
   try {
@@ -134,6 +144,7 @@ exports.createAttendance = async (req, res) => {
 
     const attendanceDateCheck = await Attendance.find({
       schoolId: req.user.schoolId,
+      session: req.user.session, // Added session
       date: {
         $gte: startOfDay,
         $lt: endOfDay,
@@ -148,16 +159,14 @@ exports.createAttendance = async (req, res) => {
       });
     }
 
-    // console.log(teacherId, date, attendanceRecords)
     // Create an array of attendance records
     const attendanceData = attendanceRecords.map(
       ({ studentId, present, rollNo, date }) => ({
         className: req.user.classTeacher,
         section: req.user.section,
         schoolId: req.user.schoolId,
+        session: req.user.session, // Added session
         studentId: studentId,
-        // studentName: studentName,
-        // teacher: req.user._id,
         rollNo: rollNo,
         date: new Date(attendanceRecords[0].date),
         present,
@@ -185,11 +194,11 @@ exports.getAttendanceByMonth = async (req, res) => {
     console.log("yo", startDate);
     console.log("y1", endDate);
 
-
     const attendance = await Attendance.aggregate([
       {
         $match: {
           schoolId: req.user.schoolId,
+          session: req.user.session, // Added session
           className: req.user.classTeacher,
           section: req.user.section,
           date: { $gte: startDate, $lte: endDate },
@@ -198,10 +207,7 @@ exports.getAttendanceByMonth = async (req, res) => {
       {
         $group: {
           _id: {
-            // schoolId: '$schoolId',
             studentId: "$studentId",
-            // className: '$className',
-            // section: '$section'
           },
           attendanceData: {
             $push: {
@@ -215,10 +221,6 @@ exports.getAttendanceByMonth = async (req, res) => {
         $project: {
           _id: 0,
           studentId: "$_id.studentId",
-          // schoolId: "$_id.schoolId",
-          // studentName: "$_id.fullName",
-          // className: '$_id.className',
-          // section: '$_id.section',
           attendanceData: 1,
         },
       },
@@ -251,16 +253,11 @@ exports.getAttendanceForStudent = async (req, res) => {
     console.log("yo", startDate);
     console.log("y1", endDate);
 
-    // const attendance = await Attendance.find({
-    //   className: req.user.classTeacher,
-    //   section: req.user.section,
-    //   date: { $gte: startDate, $lte: endDate },
-    // });
-
     const attendance = await Attendance.aggregate([
       {
         $match: {
           schoolId: req.user.schoolId,
+          session: req.user.session, // Added session
           studentId: studentId,
           className: req.user.class,
           section: req.user.section,
@@ -270,10 +267,7 @@ exports.getAttendanceForStudent = async (req, res) => {
       {
         $group: {
           _id: {
-            // schoolId: '$schoolId',
             studentId: "$studentId",
-            // className: '$className',
-            // section: '$section'
           },
           attendanceData: {
             $push: {
@@ -287,10 +281,6 @@ exports.getAttendanceForStudent = async (req, res) => {
         $project: {
           _id: 0,
           studentId: "$_id.studentId",
-          // schoolId: "$_id.schoolId",
-          // studentName: "$_id.fullName",
-          // className: '$_id.className',
-          // section: '$_id.section',
           attendanceData: 1,
         },
       },
@@ -307,8 +297,12 @@ exports.getAttendanceForStudent = async (req, res) => {
 exports.updateAttendance = async (req, res) => {
   try {
     const { attendanceId, present } = req.body;
-    const attendance = await Attendance.findByIdAndUpdate(
-      attendanceId,
+    const attendance = await Attendance.findOneAndUpdate(
+      { 
+        _id: attendanceId, 
+        schoolId: req.user.schoolId, 
+        session: req.user.session // Added session
+      },
       { present },
       { new: true }
     );
@@ -325,12 +319,12 @@ exports.createSalaryPayment = async (req, res) => {
     year = new Date().getFullYear().toString();
     const existingPayment = await teacherPayment.findOne({
       schoolId: req.user.schoolId,
+      session: req.user.session, // Added session
       teacherId,
-      year: year,
+      year,
     });
 
     if (existingPayment) {
-
       const existSameMonthData = existingPayment.salaryHistory.find((item) => {
         return item.month === salaryHistory[0].month;
       });
@@ -339,10 +333,9 @@ exports.createSalaryPayment = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "Salary of this month is already Paid"
-        })
+        });
       }
     }
-
 
     if (existingPayment) {
       existingPayment.salaryHistory.push(...salaryHistory);
@@ -355,6 +348,7 @@ exports.createSalaryPayment = async (req, res) => {
     } else {
       const newPayment = new teacherPayment({
         schoolId: req.user.schoolId,
+        session: req.user.session, // Added session
         year: year,
         ...req.body,
       });
@@ -384,6 +378,7 @@ exports.getPayment = async (req, res) => {
 
     const paymentData = await teacherPayment.find({
       schoolId: req.user.schoolId,
+      session: req.user.session, // Added session
       ...filter,
     });
 

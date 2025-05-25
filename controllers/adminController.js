@@ -10658,12 +10658,19 @@ exports.createClass = async (req, res) => {
   try {
     let { className, sections, subjects } = req.body;
 
+    // Validate and trim inputs
     className = className?.trim();
+    if (!className || !/^[a-zA-Z0-9]+$/.test(className)) {
+      return res.status(400).json({
+        success: false,
+        message: "Class name must be alphanumeric and non-empty",
+      });
+    }
     sections = sections
       ? sections
           .split(",")
           .map((s) => s.trim())
-          .filter(Boolean)
+          .filter((s) => /^[a-zA-Z0-9]+$/.test(s)) // Ensure sections are alphanumeric
       : [];
     subjects = subjects
       ? subjects
@@ -10695,15 +10702,33 @@ exports.createClass = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    // Track created teachers for response (optional)
+    // Generate school initials from schoolName
+    const schoolName = req.user.schoolName || "Default School";
+    const initials = schoolName
+      .split(/\s+/)
+      .map((word) => word[0]?.toLowerCase())
+      .join("");
+
+    // Track created teachers for response
     const createdTeachers = [];
 
     // Create default teachers for each section
     const defaultPassword = "dvs@teacher";
     for (const section of sections) {
-      const defaultEmail = `classteacher${className.toLowerCase()}${section.toLowerCase()}@dvs.com`;
+      // Generate email prefix with conflict resolution
+      let prefix = initials;
+      let counter = 0;
+      let defaultEmail = `${prefix}class${className.toLowerCase()}${section.toLowerCase()}@dvs.com`;
+
+      // Check for email conflicts and increment if necessary
+      while (await UserCredentials.findOne({ email: defaultEmail })) {
+        counter++;
+        prefix = `${initials}${counter}`;
+        defaultEmail = `${prefix}class${className.toLowerCase()}${section.toLowerCase()}@dvs.com`;
+      }
+
       const teacherId = uuidv4();
-      const employeeId = generateEmployeeId();
+      const employeeId = await generateStructuredNumber(req.user.schoolId, Teacher, 'employeeId');
 
       const existingTeacher = await Teacher.findOne({
         email: defaultEmail,
@@ -10713,7 +10738,9 @@ exports.createClass = async (req, res) => {
 
       if (!existingTeacher) {
         const hashedPassword = await hashPassword(defaultPassword);
-        await Teacher.create({
+
+        // Create teacher
+        const teacher = await Teacher.create({
           teacherId,
           schoolId: req.user.schoolId,
           session: req.user.session,
@@ -10726,21 +10753,29 @@ exports.createClass = async (req, res) => {
           createdBy: req.user._id,
         });
 
-        // Save credentials in UserCredentials
-        const schoolDetails = await AdminInfo.findOne({ schoolId: req.user.schoolId }).select("schoolName");
-        await UserCredentials.create({
-          userId: teacherId,
-          email: defaultEmail,
-          password: defaultPassword, // Store plain-text password
-          userType: "teacher",
-          schoolName: schoolDetails?.schoolName || "Your School",
-          createdBy: req.user._id,
-        });
+        // Create credentials with rollback on failure
+        try {
+          const schoolDetails = await AdminInfo.findOne({ schoolId: req.user.schoolId }).select("schoolName");
+          await UserCredentials.create({
+            userId: teacherId,
+            email: defaultEmail,
+            password: defaultPassword, // Store plain-text password
+            userType: "teacher",
+            schoolName: schoolDetails?.schoolName || "Your School",
+            createdBy: req.user._id,
+          });
+          console.log(`Created teacher: ${defaultEmail} with employeeId: ${employeeId} for class ${className} section ${section}`);
+        } catch (credError) {
+          // Rollback teacher creation if credentials fail
+          await Teacher.deleteOne({ teacherId });
+          throw new Error(`Failed to create credentials for section ${section}: ${credError.message}`);
+        }
 
         // Add to createdTeachers for response
         createdTeachers.push({
           teacherId,
           email: defaultEmail,
+          employeeId,
           teacherName: `Class Teacher ${className} ${section}`,
           section,
         });
@@ -10751,9 +10786,10 @@ exports.createClass = async (req, res) => {
       success: true,
       message: "Class created successfully",
       class: newClass,
-      createdTeachers, // Include created teachers in response for confirmation
+      createdTeachers,
     });
   } catch (error) {
+    console.error(`Error in createClass: ${error.message}`);
     res.status(500).json({
       success: false,
       message: "Error creating class",

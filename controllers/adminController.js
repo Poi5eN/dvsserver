@@ -10653,6 +10653,15 @@ exports.toggleEmployeeStatus = async (req, res) => {
 
 // CLASS CONTROLLERS (Updated with whitespace trimming)
 
+
+// Define class enum
+const CLASS_ENUM = [
+  "PRE NUR", "NUR", "LKG", "UKG", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+  "XI", "XI(ARTS)", "XI(COMM)", "XI(SCI)", "XI(SCI)-MED", "XI(SCI)-NONMED",
+  "XII", "XII(ARTS)", "XII(COMM)", "XII(SCI)", "XII(SCI)-MED", "XII(SCI)-NONMED",
+  "PASS OUT", "Passout2025"
+];
+
 // Create a new class
 exports.createClass = async (req, res) => {
   try {
@@ -10660,10 +10669,10 @@ exports.createClass = async (req, res) => {
 
     // Validate and trim inputs
     className = className?.trim();
-    if (!className || !/^[a-zA-Z0-9]+$/.test(className)) {
+    if (!className || !CLASS_ENUM.includes(className)) {
       return res.status(400).json({
         success: false,
-        message: "Class name must be alphanumeric and non-empty",
+        message: `Class name must be one of: ${CLASS_ENUM.join(", ")}`,
       });
     }
     sections = sections
@@ -10715,16 +10724,18 @@ exports.createClass = async (req, res) => {
     // Create default teachers for each section
     const defaultPassword = "dvs@teacher";
     for (const section of sections) {
+      // Sanitize className for email (remove spaces, parentheses, hyphens)
+      const sanitizedClassName = className.toLowerCase().replace(/[\s()]+/g, "").replace(/-/g, "");
       // Generate email prefix with conflict resolution
       let prefix = initials;
       let counter = 0;
-      let defaultEmail = `${prefix}class${className.toLowerCase()}${section.toLowerCase()}@dvs.com`;
+      let defaultEmail = `${prefix}class${sanitizedClassName}${section.toLowerCase()}@dvs.com`;
 
       // Check for email conflicts and increment if necessary
       while (await UserCredentials.findOne({ email: defaultEmail })) {
         counter++;
         prefix = `${initials}${counter}`;
-        defaultEmail = `${prefix}class${className.toLowerCase()}${section.toLowerCase()}@dvs.com`;
+        defaultEmail = `${prefix}class${sanitizedClassName}${section.toLowerCase()}@dvs.com`;
       }
 
       const teacherId = uuidv4();

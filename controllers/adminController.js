@@ -10662,6 +10662,7 @@ const CLASS_ENUM = [
   "PASS OUT", "Passout2025"
 ];
 
+
 // Create a new class
 exports.createClass = async (req, res) => {
   try {
@@ -10759,10 +10760,13 @@ exports.createClass = async (req, res) => {
           password: hashedPassword,
           employeeId,
           teacherName: `Class Teacher ${className} ${section}`,
-          classTeacher: `${className} ${section}`,
-          section,
+          classTeacher: className, // Set to className (e.g., "PRE NUR")
+          section: section, // Set to section (e.g., "A")
           createdBy: req.user._id,
         });
+
+        // Log teacher details for debugging
+        console.log(`Teacher created: ID=${teacher.teacherId}, Email=${teacher.email}, ClassTeacher=${teacher.classTeacher}, Section=${teacher.section}`);
 
         // Create credentials with rollback on failure
         try {
@@ -10788,7 +10792,8 @@ exports.createClass = async (req, res) => {
           email: defaultEmail,
           employeeId,
           teacherName: `Class Teacher ${className} ${section}`,
-          section,
+          classTeacher: className, // Include classTeacher in response
+          section, // Include section in response
         });
       }
     }

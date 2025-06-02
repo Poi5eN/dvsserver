@@ -150,6 +150,25 @@ router.get("/salesdues", verifyToken, admin.getStudentsWithDues);
 
 
 
+
+
+// BUNDLE RELATED CONTROLLERS FLOW
+// Add these lines to your existing adminRoute.js after other routes
+router.post("/bundles", verifyToken, admin.createBundle);
+router.get("/bundles", verifyToken, admin.getBundles);
+router.put("/bundles/:bundleId", verifyToken, admin.updateBundle);
+router.delete("/bundles/:bundleId", verifyToken, admin.deleteBundle);
+
+router.post("/suppliers", verifyToken, admin.createSupplier);
+router.get("/suppliers", verifyToken, admin.getSuppliers);
+router.put("/suppliers/:supplierId", verifyToken, admin.updateSupplier);
+router.delete("/suppliers/:supplierId", verifyToken, admin.deleteSupplier);
+router.post("/supplier-payments", verifyToken, admin.createSupplierPayment);
+router.get("/supplier-payments", verifyToken, admin.getSupplierPayments);
+
+
+
+
 // EMPLOYEE RELATED CONTROLLERS FLOW
 router.post("/staff", verifyToken, singleUpload, admin.createEmployee);
 router.get("/staff", verifyToken, admin.getEmployees); // Dynamic GET

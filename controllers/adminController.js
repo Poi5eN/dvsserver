@@ -45,6 +45,9 @@ const { generateStructuredNumber } = require("../utils/numberGenerator");
 // controllers/designFormatController.js
 const DesignFormat = require("../models/designFormatModel");
 const UserCredentials = require("../models/userCredentialsModel");
+const BundleModel = require("../models/bundleModel");
+const SupplierModel = require("../models/supplierModel");
+const SupplierPayment = require("../models/supplierPaymentModel");
 // const { v4: uuidv4 } = require("uuid");
 
 // SCHOOL RELATED CONTROLLER FLOW
@@ -3043,7 +3046,7 @@ exports.updateItem = async (req, res) => {
 
 exports.createPurchaseOrder = async (req, res) => {
   try {
-    const { items, supplier, expectedDeliveryDate } = req.body;
+    const { items, supplierId, expectedDeliveryDate } = req.body; // Updated from supplier to supplierId
     const { schoolId, session, _id: updatedBy } = req.user;
 
     if (!schoolId || !session)
@@ -3051,10 +3054,10 @@ exports.createPurchaseOrder = async (req, res) => {
         success: false,
         message: "School ID and session are required.",
       });
-    if (!items || !supplier)
+    if (!items || !supplierId)
       return res
         .status(400)
-        .json({ success: false, message: "Items and supplier are required." });
+        .json({ success: false, message: "Items and supplier ID are required." });
 
     let totalCost = 0;
     for (let item of items) {
@@ -3077,7 +3080,7 @@ exports.createPurchaseOrder = async (req, res) => {
       schoolId,
       session,
       items,
-      supplier,
+      supplierId, // Updated from supplier to supplierId
       totalCost,
       expectedDeliveryDate,
       updatedBy,
@@ -4039,6 +4042,170 @@ exports.getStudentsWithDues = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+exports.createBundle = async (req, res) => {
+  try {
+    const { bundleName, items, price } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    if (!bundleName || !items || !price) {
+      return res.status(400).json({ success: false, message: "All fields are required." });
+    }
+
+    const bundle = new BundleModel({ schoolId, session, bundleName, items, price, updatedBy });
+    await bundle.save();
+    res.status(201).json({ success: true, message: "Bundle created", data: bundle });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error creating bundle", error: error.message });
+  }
+};
+
+exports.getBundles = async (req, res) => {
+  try {
+    const { schoolId, session } = req.user;
+    const bundles = await BundleModel.find({ schoolId, session });
+    res.status(200).json({ success: true, message: "Bundles fetched", data: bundles });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching bundles", error: error.message });
+  }
+};
+
+exports.updateBundle = async (req, res) => {
+  try {
+    const { bundleId } = req.params;
+    const { bundleName, items, price } = req.body;
+    const { _id: updatedBy } = req.user;
+
+    const bundle = await BundleModel.findOneAndUpdate(
+      { bundleId },
+      { bundleName, items, price, updatedBy, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!bundle) {
+      return res.status(404).json({ success: false, message: "Bundle not found." });
+    }
+    res.status(200).json({ success: true, message: "Bundle updated", data: bundle });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error updating bundle", error: error.message });
+  }
+};
+
+exports.deleteBundle = async (req, res) => {
+  try {
+    const { bundleId } = req.params;
+    const bundle = await BundleModel.findOneAndDelete({ bundleId });
+    if (!bundle) {
+      return res.status(404).json({ success: false, message: "Bundle not found." });
+    }
+    res.status(200).json({ success: true, message: "Bundle deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error deleting bundle", error: error.message });
+  }
+};
+
+exports.createSupplier = async (req, res) => {
+  try {
+    const { name, contact, address } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Supplier name is required." });
+    }
+
+    const supplier = new SupplierModel({ schoolId, session, name, contact, address, updatedBy });
+    await supplier.save();
+    res.status(201).json({ success: true, message: "Supplier created", data: supplier });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error creating supplier", error: error.message });
+  }
+};
+
+exports.getSuppliers = async (req, res) => {
+  try {
+    const { schoolId, session } = req.user;
+    const suppliers = await SupplierModel.find({ schoolId, session });
+    res.status(200).json({ success: true, message: "Suppliers fetched", data: suppliers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching suppliers", error: error.message });
+  }
+};
+
+exports.updateSupplier = async (req, res) => {
+  try {
+    const { supplierId } = req.params;
+    const { name, contact, address } = req.body;
+    const { _id: updatedBy } = req.user;
+
+    const supplier = await SupplierModel.findOneAndUpdate(
+      { supplierId },
+      { name, contact, address, updatedBy, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!supplier) {
+      return res.status(404).json({ success: false, message: "Supplier not found." });
+    }
+    res.status(200).json({ success: true, message: "Supplier updated", data: supplier });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error updating supplier", error: error.message });
+  }
+};
+
+exports.deleteSupplier = async (req, res) => {
+  try {
+    const { supplierId } = req.params;
+    const supplier = await SupplierModel.findOneAndDelete({ supplierId });
+    if (!supplier) {
+      return res.status(404).json({ success: false, message: "Supplier not found." });
+    }
+    res.status(200).json({ success: true, message: "Supplier deleted" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error deleting supplier", error: error.message });
+  }
+};
+
+exports.createSupplierPayment = async (req, res) => {
+  try {
+    const { supplierId, amount, paymentMode, description } = req.body;
+    const { schoolId, session, _id: updatedBy } = req.user;
+
+    if (!supplierId || !amount) {
+      return res.status(400).json({ success: false, message: "Supplier ID and amount are required." });
+    }
+
+    const payment = new SupplierPayment({
+      schoolId,
+      session,
+      supplierId,
+      amount,
+      paymentMode,
+      description,
+      updatedBy,
+    });
+    await payment.save();
+    res.status(201).json({ success: true, message: "Payment recorded", data: payment });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error recording payment", error: error.message });
+  }
+};
+
+exports.getSupplierPayments = async (req, res) => {
+  try {
+    const { schoolId, session } = req.user;
+    const payments = await SupplierPayment.find({ schoolId, session });
+    res.status(200).json({ success: true, message: "Payments fetched", data: payments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching payments", error: error.message });
+  }
+};
+
+
+
 
 //creating Subjects
 

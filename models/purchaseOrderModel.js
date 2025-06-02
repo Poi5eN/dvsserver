@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const { v4: uuidv4 } = require("uuid");
 
 const purchaseOrderSchema = new mongoose.Schema({
   schoolId: { type: String, required: true },
@@ -12,13 +11,12 @@ const purchaseOrderSchema = new mongoose.Schema({
       quantity: { type: Number, required: true },
       price: { type: Number, required: true },
       totalCost: { type: Number, required: true },
-      status: { type: String, enum: ["ordered", "received"], default: "ordered" },
     },
   ],
+  supplierId: { type: String, required: true }, // Updated to reference SupplierModel
   totalCost: { type: Number, required: true },
-  supplier: { type: String, required: true },
-  orderDate: { type: Date, default: Date.now },
   expectedDeliveryDate: { type: Date },
+  status: { type: String, enum: ["ordered", "received"], default: "ordered" },
   receivedDate: { type: Date },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date },

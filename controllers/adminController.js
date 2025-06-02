@@ -3101,6 +3101,20 @@ exports.createPurchaseOrder = async (req, res) => {
   }
 };
 
+
+exports.getPurchaseOrders = async (req, res) => {
+  try {
+    const { schoolId, session } = req.user;
+    const purchaseOrders = await PurchaseOrder.find({ schoolId, session });
+    res.status(200).json({ success: true, message: "Purchase orders fetched", data: purchaseOrders });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Error fetching purchase orders", error: error.message });
+  }
+};
+
+
+
+
 exports.receivePurchaseOrder = async (req, res) => {
   try {
     const { orderId } = req.params;

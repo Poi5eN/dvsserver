@@ -169,6 +169,12 @@ router.get("/supplier-payments", verifyToken, admin.getSupplierPayments);
 
 
 
+// Add this line to your existing adminRoute.js after other routes
+router.get("/purchaseorders", verifyToken, admin.getPurchaseOrders);
+
+
+
+
 // EMPLOYEE RELATED CONTROLLERS FLOW
 router.post("/staff", verifyToken, singleUpload, admin.createEmployee);
 router.get("/staff", verifyToken, admin.getEmployees); // Dynamic GET

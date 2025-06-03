@@ -12,7 +12,7 @@ const generateSlug = (schoolName) => {
 
 const migrateSlugs = async () => {
   try {
-    await mongoose.connect(process.env.DB_URI, {
+    await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });

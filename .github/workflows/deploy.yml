@@ -1,0 +1,65 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Obfuscate code
+        run: node obfuscate.js
+
+      - name: Create .env file
+        run: |
+          echo "PORT=4000" > .env
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
+
+      - name: Create backend directory on VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            mkdir -p /root/backend
+
+      - name: Transfer files to VPS
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "dist,package.json,Dockerfile,.env"
+          target: "/root/backend"
+
+      - name: Deploy on VPS and clean up
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /root/backend
+            docker build -t digiserver:latest .
+            docker stop digiserver || true
+            docker rm digiserver || true
+            docker run -d -p 4000:4000 --name digiserver digiserver:latest
+            docker image prune -a -f
+            docker container prune -f

@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -27,6 +27,18 @@ jobs:
         run: |
           echo "PORT=4000" > .env
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
+          echo "CLOUDINARY_CLIENT_NAME=${{ secrets.CLOUDINARY_CLIENT_NAME }}" >> .env
+          echo "CLOUDINARY_CLIENT_API=${{ secrets.CLOUDINARY_CLIENT_API }}" >> .env
+          echo "CLOUDINARY_CLIENT_SECRET=${{ secrets.CLOUDINARY_CLIENT_SECRET }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+          echo "SMTP_MAIL=${{ secrets.SMTP_MAIL }}" >> .env
+          echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> .env
+          echo "MINIO_ENDPOINT=${{ secrets.MINIO_ENDPOINT }}" >> .env
+          echo "MINIO_ACCESS_KEY=${{ secrets.MINIO_ACCESS_KEY }}" >> .env
+          echo "MINIO_SECRET_KEY=${{ secrets.MINIO_SECRET_KEY }}" >> .env
+          echo "MINIO_BUCKET=${{ secrets.MINIO_BUCKET }}" >> .env
+          echo "ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}" >> .env
+          echo "ENCRYPTION_IV=${{ secrets.ENCRYPTION_IV }}" >> .env
 
       - name: Create backend directory on VPS
         uses: appleboy/ssh-action@master

@@ -9,6 +9,7 @@ COPY package.json ./
 RUN npm install
 
 # Copy obfuscated code
+COPY .env ./
 COPY dist/ ./
 
 # Expose port

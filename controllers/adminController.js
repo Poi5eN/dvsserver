@@ -11095,21 +11095,16 @@ exports.updateClass = async (req, res) => {
     const { classId } = req.params;
     let { className, sections, subjects } = req.body;
 
-    // Trim all inputs
+    // Trim and sanitize inputs
     className = className?.trim();
     sections = sections
-      ? sections
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
+      ? sections.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
     subjects = subjects
-      ? subjects
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
+      ? subjects.split(",").map((s) => s.trim()).filter(Boolean)
       : [];
 
+    // Find class to update
     const classToUpdate = await classModel.findOne({
       classId,
       schoolId: req.user.schoolId,
@@ -11122,7 +11117,7 @@ exports.updateClass = async (req, res) => {
       });
     }
 
-    // Check for className conflicts
+    // Assign className if changed
     if (className && className !== classToUpdate.className) {
       const existingClass = await classModel.findOne({
         schoolId: req.user.schoolId,
@@ -11137,35 +11132,45 @@ exports.updateClass = async (req, res) => {
       classToUpdate.className = className;
     }
 
-    // Merge sections (add new ones, keep existing ones)
+    // Merge sections
     if (sections.length > 0) {
       const existingSections = classToUpdate.sections || [];
-      const updatedSections = [...new Set([...existingSections, ...sections])]; // Remove duplicates
-      classToUpdate.sections = updatedSections.sort(); // Sort alphabetically
+      const updatedSections = [...new Set([...existingSections, ...sections])];
+      classToUpdate.sections = updatedSections.sort();
     }
 
-    // Merge subjects (add new ones, keep existing ones)
+    // Merge subjects
     if (subjects.length > 0) {
       const existingSubjects = classToUpdate.subjects || [];
       const updatedSubjects = [...new Set([...existingSubjects, ...subjects])];
       classToUpdate.subjects = updatedSubjects;
     }
 
+    // ✅ Auto-set createdBy if missing
+    if (!classToUpdate.createdBy) {
+      classToUpdate.createdBy = req.user._id.toString();
+    }
+
+    // ✅ Always set updatedBy and updatedAt
+    classToUpdate.updatedBy = req.user._id.toString();
+    classToUpdate.updatedAt = new Date();
+
     const updatedClass = await classToUpdate.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Class updated successfully",
       class: updatedClass,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Error updating class",
       error: error.message,
     });
   }
 };
+
 
 // Delete a class
 exports.deleteClass = async (req, res) => {

@@ -7,6 +7,7 @@ const sendEmail = require("../utils/email");
 const crypto = require("crypto");
 const s3 = require("../config/minio");
 const axios = require("axios");
+const moment = require('moment');
 
 const {
   setTokenCookie,
@@ -11098,10 +11099,16 @@ exports.updateClass = async (req, res) => {
     // Trim and sanitize inputs
     className = className?.trim();
     sections = sections
-      ? sections.split(",").map((s) => s.trim()).filter(Boolean)
+      ? sections
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => /^[a-zA-Z0-9]+$/.test(s)) // Ensure sections are alphanumeric
       : [];
     subjects = subjects
-      ? subjects.split(",").map((s) => s.trim()).filter(Boolean)
+      ? subjects
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
 
     // Find class to update
@@ -11117,13 +11124,19 @@ exports.updateClass = async (req, res) => {
       });
     }
 
-    // Assign className if changed
+    // Validate and assign className if changed
     if (className && className !== classToUpdate.className) {
+      if (!CLASS_ENUM.includes(className)) {
+        return res.status(400).json({
+          success: false,
+          message: `Class name must be one of: ${CLASS_ENUM.join(", ")}`,
+        });
+      }
       const existingClass = await classModel.findOne({
         schoolId: req.user.schoolId,
         className,
       });
-      if (existingClass) {
+      if (existingClass && existingClass.classId !== classId) {
         return res.status(400).json({
           success: false,
           message: "Another class with this name already exists",
@@ -11132,26 +11145,18 @@ exports.updateClass = async (req, res) => {
       classToUpdate.className = className;
     }
 
-    // Merge sections
-    if (sections.length > 0) {
-      const existingSections = classToUpdate.sections || [];
-      const updatedSections = [...new Set([...existingSections, ...sections])];
-      classToUpdate.sections = updatedSections.sort();
-    }
+    // Replace sections (overwrite instead of merge)
+    classToUpdate.sections = sections.length > 0 ? sections.sort() : classToUpdate.sections;
 
-    // Merge subjects
-    if (subjects.length > 0) {
-      const existingSubjects = classToUpdate.subjects || [];
-      const updatedSubjects = [...new Set([...existingSubjects, ...subjects])];
-      classToUpdate.subjects = updatedSubjects;
-    }
+    // Replace subjects (overwrite instead of merge)
+    classToUpdate.subjects = subjects.length > 0 ? subjects : classToUpdate.subjects;
 
-    // ✅ Auto-set createdBy if missing
+    // Auto-set createdBy if missing
     if (!classToUpdate.createdBy) {
       classToUpdate.createdBy = req.user._id.toString();
     }
 
-    // ✅ Always set updatedBy and updatedAt
+    // Always set updatedBy and updatedAt
     classToUpdate.updatedBy = req.user._id.toString();
     classToUpdate.updatedAt = new Date();
 
@@ -11163,6 +11168,7 @@ exports.updateClass = async (req, res) => {
       class: updatedClass,
     });
   } catch (error) {
+    console.error(`Error in updateClass: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: "Error updating class",
@@ -12599,77 +12605,85 @@ exports.getAdminBySlug = async (req, res) => {
 // API CONTROLLERS FOR THE ADMIN
 exports.createAdminExam = async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only admins can create exams.",
-      });
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Only admins can create exams.' });
     }
 
     const {
       name,
       examType,
-      className,
-      section,
+      classNames,
+      sections,
+      term,
       subjects,
       startDate,
       endDate,
       resultPublishDate,
-      gradeSystem,
+      gradeSystem
     } = req.body;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const createdBy = req.user._id;
-    const updatedBy = req.user._id;
+
+    // Parse frontend date strings into Date objects
+    const parsedStart = moment(startDate, 'DD-MM-YYYY').startOf('day').toDate();
+    const parsedEnd   = moment(endDate,   'DD-MM-YYYY').endOf('day').toDate();
+    const parsedResult = moment(resultPublishDate, 'DD-MM-YYYY').startOf('day').toDate();
+
+    // Parse each assessment's examDate, startTime, endTime into a Date
+    const parsedSubjects = subjects.map(subj => ({
+      name: subj.name,
+      assessments: subj.assessments.map(ass => {
+        const examDateOnly = ass.examDate;
+        const exDate = moment(examDateOnly, 'DD-MM-YYYY');
+        return {
+          name: ass.name,
+          totalMarks: ass.totalMarks,
+          passingMarks: ass.passingMarks,
+          examDate: exDate.toDate(),
+          startTime: moment(examDateOnly + ' ' + ass.startTime, 'DD-MM-YYYY hh:mm a').toDate(),
+          endTime:   moment(examDateOnly + ' ' + ass.endTime,   'DD-MM-YYYY hh:mm a').toDate()
+        };
+      })
+    }));
 
     const examData = {
-      schoolId,
-      session,
-      createdBy,
+      schoolId: req.user.schoolId,
+      session:  req.user.session,
+      createdBy: req.user._id,
+      updatedBy: req.user._id,
+
       name,
       examType,
-      className,
-      section,
-      subjects,
-      startDate,
-      endDate,
-      resultPublishDate,
-      gradeSystem,
-      updatedBy,
+      term,
+      classNames,
+      sections,
+      subjects: parsedSubjects,
+
+      startDate: parsedStart,
+      endDate:   parsedEnd,
+      resultPublishDate: parsedResult,
+      gradeSystem
     };
 
-    const existingExam = await Exam.findOne({
-      schoolId,
-      session,
-      className,
-      section,
+    // Check duplicates
+    const exists = await Exam.findOne({
+      schoolId: examData.schoolId,
+      session:  examData.session,
       examType,
-      startDate,
-      endDate,
+      classNames,
+      sections,
+      startDate: parsedStart,
+      endDate: parsedEnd
     });
-
-    if (existingExam) {
-      return res.status(400).json({
-        success: false,
-        message: "An exam with these details already exists.",
-      });
+    if (exists) {
+      return res.status(400).json({ success: false, message: 'An exam with these details already exists.' });
     }
 
     const exam = new Exam(examData);
     await exam.save();
 
-    res.status(201).json({
-      success: true,
-      message: "Exam created successfully",
-      exam,
-    });
+    res.status(201).json({ success: true, message: 'Exam created successfully', exam });
   } catch (error) {
-    console.error("Error in createAdminExam:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create exam",
-      error: error.message,
-    });
+    console.error('Error in createAdminExam:', error);
+    res.status(500).json({ success: false, message: 'Failed to create exam', error: error.message });
   }
 };
 
@@ -12720,46 +12734,79 @@ exports.getAdminExams = async (req, res) => {
 
 exports.updateAdminExam = async (req, res) => {
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied. Only admins can update exams.",
-      });
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     const { examId } = req.params;
-    const schoolId = req.user.schoolId;
-    const session = req.user.session;
-    const updatedBy = req.user._id;
-    const updateData = req.body;
+    const raw = req.body;
+    const updateData = { updatedBy: req.user._id, updatedAt: new Date() };
 
+    // 1️⃣ Parse top‑level dates if provided
+    if (raw.startDate) {
+      updateData.startDate = moment(raw.startDate, 'DD-MM-YYYY')
+                              .startOf('day').toDate();
+    }
+    if (raw.endDate) {
+      updateData.endDate = moment(raw.endDate, 'DD-MM-YYYY')
+                            .endOf('day').toDate();
+    }
+    if (raw.resultPublishDate) {
+      updateData.resultPublishDate = moment(raw.resultPublishDate, 'DD-MM-YYYY')
+                                      .startOf('day').toDate();
+    }
+
+    // 2️⃣ Parse subjects if provided
+    if (raw.subjects) {
+      updateData.subjects = raw.subjects.map(subj => ({
+        name: subj.name,
+        assessments: subj.assessments.map(ass => {
+          const dateOnly = ass.examDate;
+          return {
+            name: ass.name,
+            totalMarks: ass.totalMarks,
+            passingMarks: ass.passingMarks,
+            examDate: moment(dateOnly, 'DD-MM-YYYY').toDate(),
+            startTime: moment(`${dateOnly} ${ass.startTime}`, 'DD-MM-YYYY hh:mm a').toDate(),
+            endTime:   moment(`${dateOnly} ${ass.endTime}`,   'DD-MM-YYYY hh:mm a').toDate(),
+          };
+        })
+      }));
+    }
+
+    // 3️⃣ Copy over any other simple fields (name, examType, term, classNames, sections, gradeSystem…)
+    //    These will only overwrite if present in the body.
+    [
+      'name','examType','term',
+      'classNames','sections','gradeSystem'
+    ].forEach(field => {
+      if (raw[field] !== undefined) {
+        updateData[field] = raw[field];
+      }
+    });
+
+    // 4️⃣ Run the update
     const exam = await Exam.findOneAndUpdate(
-      { examId, schoolId, session },
-      { $set: { ...updateData, updatedBy, updatedAt: new Date() } },
+      { examId, schoolId: req.user.schoolId, session: req.user.session },
+      { $set: updateData },
       { new: true, runValidators: true }
     );
 
     if (!exam) {
-      return res.status(404).json({
-        success: false,
-        message: "Exam not found.",
-      });
+      return res.status(404).json({ success: false, message: 'Exam not found.' });
     }
+    res.status(200).json({ success: true, message: 'Exam updated', exam });
 
-    res.status(200).json({
-      success: true,
-      message: "Exam updated successfully",
-      exam,
-    });
   } catch (error) {
-    console.error("Error in updateAdminExam:", error);
+    console.error('Error in updateAdminExam:', error);
     res.status(500).json({
       success: false,
-      message: "Failed to update exam",
-      error: error.message,
+      message: 'Failed to update exam',
+      error: error.message
     });
   }
 };
+
 
 exports.deleteAdminExam = async (req, res) => {
   try {

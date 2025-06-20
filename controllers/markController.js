@@ -1,17 +1,31 @@
 const Mark = require("../models/mark");
 const Exam = require("../models/exam");
+const moment = require("moment");
 
 exports.addMark = async (req, res) => {
   try {
-    const { studentId, examId, marks, coScholasticMarks, className, section } = req.body;
+    const { studentId, examId, marks, coScholasticMarks, className, section } =
+      req.body;
 
-    if (!className || !section) return res.status(400).json({ success: false, message: "className and section are required" });
+    if (!className || !section)
+      return res
+        .status(400)
+        .json({ success: false, message: "className and section are required" });
 
-    const exam = await Exam.findOne({ examId, schoolId: req.user.schoolId, session: req.user.session });
-    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const exam = await Exam.findOne({
+      examId,
+      schoolId: req.user.schoolId,
+      session: req.user.session,
+    });
+    if (!exam)
+      return res
+        .status(404)
+        .json({ success: false, message: "Exam not found" });
 
     if (!exam.classNames.includes(className) || !exam.sections.includes(section)) {
-      return res.status(400).json({ success: false, message: "Class or section not part of the exam" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Class or section not part of the exam" });
     }
 
     let studentMark = await Mark.findOne({
@@ -25,19 +39,34 @@ exports.addMark = async (req, res) => {
 
     if (studentMark) {
       marks.forEach((newSubjectMark) => {
-        const examSubject = exam.subjects.find((s) => s.name === newSubjectMark.subjectName);
-        if (!examSubject) throw new Error(`Subject ${newSubjectMark.subjectName} not found`);
+        const examSubject = exam.subjects.find(
+          (s) => s.name === newSubjectMark.subjectName
+        );
+        if (!examSubject)
+          throw new Error(`Subject ${newSubjectMark.subjectName} not found`);
         newSubjectMark.assessments.forEach((newAss) => {
-          const examAss = examSubject.assessments.find((a) => a.name === newAss.assessmentName);
-          if (!examAss) throw new Error(`Assessment ${newAss.assessmentName} not found`);
-          if (newAss.marksObtained > examAss.totalMarks) throw new Error(`Marks exceed total for ${newAss.assessmentName}`);
+          const examAss = examSubject.assessments.find(
+            (a) => a.name === newAss.assessmentName
+          );
+          if (!examAss)
+            throw new Error(`Assessment ${newAss.assessmentName} not found`);
+          if (newAss.marksObtained > examAss.totalMarks)
+            throw new Error(
+              `Marks exceed total for ${newAss.assessmentName}`
+            );
           newAss.totalMarks = examAss.totalMarks;
+          newAss.examDate = examAss.examDate; // Copy examDate
+          newAss.startTime = examAss.startTime;
+          newAss.endTime = examAss.endTime;
         });
-        const idx = studentMark.marks.findIndex((m) => m.subjectName === newSubjectMark.subjectName);
+        const idx = studentMark.marks.findIndex(
+          (m) => m.subjectName === newSubjectMark.subjectName
+        );
         if (idx !== -1) studentMark.marks[idx] = newSubjectMark;
         else studentMark.marks.push(newSubjectMark);
       });
-      if (coScholasticMarks?.length > 0) studentMark.coScholasticMarks = coScholasticMarks;
+      if (coScholasticMarks?.length > 0)
+        studentMark.coScholasticMarks = coScholasticMarks;
     } else {
       studentMark = new Mark({
         studentId,
@@ -47,12 +76,19 @@ exports.addMark = async (req, res) => {
         section,
         marks: marks.map((m) => ({
           subjectName: m.subjectName,
-          assessments: m.assessments.map((a) => ({
-            assessmentName: a.assessmentName,
-            marksObtained: a.marksObtained,
-            totalMarks: exam.subjects.find((s) => s.name === m.subjectName)
-              .assessments.find((ass) => ass.name === a.assessmentName).totalMarks,
-          })),
+          assessments: m.assessments.map((a) => {
+            const examAss = exam.subjects
+              .find((s) => s.name === m.subjectName)
+              .assessments.find((ass) => ass.name === a.assessmentName);
+            return {
+              assessmentName: a.assessmentName,
+              marksObtained: a.marksObtained,
+              totalMarks: examAss.totalMarks,
+              examDate: examAss.examDate, // Copy examDate
+              startTime: examAss.startTime,
+              endTime: examAss.endTime,
+            };
+          }),
         })),
         coScholasticMarks: coScholasticMarks || [],
         session: req.user.session,
@@ -60,7 +96,24 @@ exports.addMark = async (req, res) => {
     }
 
     await studentMark.save();
-    res.status(201).json({ success: true, mark: studentMark });
+    // Format response for frontend
+    const formattedMark = {
+      ...studentMark._doc,
+      marks: studentMark.marks.map((subject) => ({
+        ...subject,
+        assessments: subject.assessments.map((ass) => ({
+          ...ass,
+          examDate: ass.examDate
+            ? moment(ass.examDate).format("DD-MM-YYYY")
+            : "",
+          startTime: ass.startTime
+            ? moment(ass.startTime).format("hh:mm a")
+            : "",
+          endTime: ass.endTime ? moment(ass.endTime).format("hh:mm a") : "",
+        })),
+      })),
+    };
+    res.status(201).json({ success: true, mark: formattedMark });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -120,27 +173,60 @@ exports.updateMark = async (req, res) => {
       schoolId: req.user.schoolId,
       session: req.user.session,
     });
-    if (!mark) return res.status(404).json({ success: false, message: "Mark record not found" });
+    if (!mark)
+      return res
+        .status(404)
+        .json({ success: false, message: "Mark record not found" });
 
     const exam = await Exam.findOne({ examId: mark.examId });
-    if (!exam) return res.status(404).json({ success: false, message: "Associated exam not found" });
+    if (!exam)
+      return res
+        .status(404)
+        .json({ success: false, message: "Associated exam not found" });
 
     if (req.body.marks) {
       req.body.marks.forEach((newMark) => {
-        const examSubject = exam.subjects.find((s) => s.name === newMark.subjectName);
-        if (!examSubject) throw new Error(`Subject ${newMark.subjectName} not found`);
+        const examSubject = exam.subjects.find(
+          (s) => s.name === newMark.subjectName
+        );
+        if (!examSubject)
+          throw new Error(`Subject ${newMark.subjectName} not found`);
         newMark.assessments.forEach((newAss) => {
-          const examAss = examSubject.assessments.find((a) => a.name === newAss.assessmentName);
-          if (!examAss) throw new Error(`Assessment ${newAss.assessmentName} not found`);
-          if (newAss.marksObtained > examAss.totalMarks) throw new Error(`Marks exceed total for ${newAss.assessmentName}`);
+          const examAss = examSubject.assessments.find(
+            (a) => a.name === newAss.assessmentName
+          );
+          if (!examAss)
+            throw new Error(`Assessment ${newAss.assessmentName} not found`);
+          if (newAss.marksObtained > examAss.totalMarks)
+            throw new Error(`Marks exceed total for ${newAss.assessmentName}`);
           newAss.totalMarks = examAss.totalMarks;
+          newAss.examDate = examAss.examDate; // Copy examDate
+          newAss.startTime = examAss.startTime;
+          newAss.endTime = examAss.endTime;
         });
       });
     }
 
     Object.assign(mark, req.body);
     await mark.save();
-    res.status(200).json({ success: true, mark });
+    // Format response for frontend
+    const formattedMark = {
+      ...mark._doc,
+      marks: mark.marks.map((subject) => ({
+        ...subject,
+        assessments: subject.assessments.map((ass) => ({
+          ...ass,
+          examDate: ass.examDate
+            ? moment(ass.examDate).format("DD-MM-YYYY")
+            : "",
+          startTime: ass.startTime
+            ? moment(ass.startTime).format("hh:mm a")
+            : "",
+          endTime: ass.endTime ? moment(ass.endTime).format("hh:mm a") : "",
+        })),
+      })),
+    };
+    res.status(200).json({ success: true, mark: formattedMark });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -165,69 +251,120 @@ exports.bulkUploadMarks = async (req, res) => {
   try {
     const { examId, studentsMarks } = req.body;
 
-    const exam = await Exam.findOne({ examId, schoolId: req.user.schoolId, session: req.user.session });
-    if (!exam) return res.status(404).json({ success: false, message: "Exam not found" });
+    const exam = await Exam.findOne({
+      examId,
+      schoolId: req.user.schoolId,
+      session: req.user.session,
+    });
+    if (!exam)
+      return res
+        .status(404)
+        .json({ success: false, message: "Exam not found" });
 
     const results = [];
     const errors = [];
 
     for (const studentData of studentsMarks) {
       try {
-        if (!studentData.className || !studentData.section) {
+        const { studentId, className, section, marks, coScholasticMarks } = studentData;
+        if (!className || !section) {
           throw new Error("className and section are required for each student");
         }
-        if (!exam.classNames.includes(studentData.className) || !exam.sections.includes(studentData.section)) {
-          throw new Error(`Class ${studentData.className} or section ${studentData.section} not part of exam`);
+        if (!exam.classNames.includes(className) || !exam.sections.includes(section)) {
+          throw new Error(
+            `Class ${className} or section ${section} not part of exam`
+          );
         }
 
         let studentMark = await Mark.findOne({
-          studentId: studentData.studentId,
+          studentId,
           examId,
           schoolId: req.user.schoolId,
-          className: studentData.className,
-          section: studentData.section,
+          className,
+          section,
           session: req.user.session,
         });
 
         if (studentMark) {
-          studentData.marks.forEach((newSubjectMark) => {
-            const examSubject = exam.subjects.find((s) => s.name === newSubjectMark.subjectName);
-            if (!examSubject) throw new Error(`Subject ${newSubjectMark.subjectName} not found`);
+          marks.forEach((newSubjectMark) => {
+            const examSubject = exam.subjects.find(
+              (s) => s.name === newSubjectMark.subjectName
+            );
+            if (!examSubject)
+              throw new Error(`Subject ${newSubjectMark.subjectName} not found`);
             newSubjectMark.assessments.forEach((newAss) => {
-              const examAss = examSubject.assessments.find((a) => a.name === newAss.assessmentName);
-              if (!examAss) throw new Error(`Assessment ${newAss.assessmentName} not found`);
+              const examAss = examSubject.assessments.find(
+                (a) => a.name === newAss.assessmentName
+              );
+              if (!examAss)
+                throw new Error(`Assessment ${newAss.assessmentName} not found`);
               if (Number(newAss.marksObtained) > examAss.totalMarks) {
-                throw new Error(`Marks exceed total for ${newAss.assessmentName}`);
+                throw new Error(
+                  `Marks exceed total for ${newAss.assessmentName}`
+                );
               }
               newAss.totalMarks = examAss.totalMarks;
+              newAss.examDate = examAss.examDate; // Copy examDate
+              newAss.startTime = examAss.startTime;
+              newAss.endTime = examAss.endTime;
             });
-            const idx = studentMark.marks.findIndex((m) => m.subjectName === newSubjectMark.subjectName);
+            const idx = studentMark.marks.findIndex(
+              (m) => m.subjectName === newSubjectMark.subjectName
+            );
             if (idx !== -1) studentMark.marks[idx] = newSubjectMark;
             else studentMark.marks.push(newSubjectMark);
           });
+          if (coScholasticMarks?.length > 0)
+            studentMark.coScholasticMarks = coScholasticMarks;
         } else {
           studentMark = new Mark({
-            studentId: studentData.studentId,
+            studentId,
             examId,
             schoolId: req.user.schoolId,
-            className: studentData.className,
-            section: studentData.section,
-            marks: studentData.marks.map((m) => ({
+            className,
+            section,
+            marks: marks.map((m) => ({
               subjectName: m.subjectName,
-              assessments: m.assessments.map((a) => ({
-                assessmentName: a.assessmentName,
-                marksObtained: a.marksObtained,
-                totalMarks: exam.subjects.find((s) => s.name === m.subjectName)
-                  .assessments.find((ass) => ass.name === a.assessmentName).totalMarks,
-              })),
+              assessments: m.assessments.map((a) => {
+                const examAss = exam.subjects
+                  .find((s) => s.name === m.subjectName)
+                  .assessments.find((ass) => ass.name === a.assessmentName);
+                return {
+                  assessmentName: a.assessmentName,
+                  marksObtained: a.marksObtained,
+                  totalMarks: examAss.totalMarks,
+                  examDate: examAss.examDate, // Copy examDate
+                  startTime: examAss.startTime,
+                  endTime: examAss.endTime,
+                };
+              }),
             })),
-            coScholasticMarks: studentData.coScholasticMarks || [],
+            coScholasticMarks: coScholasticMarks || [],
             session: req.user.session,
           });
         }
 
         await studentMark.save();
-        results.push(studentMark);
+        // Format response for frontend
+        const formattedMark = {
+          ...studentMark._doc,
+          marks: studentMark.marks.map((subject) => ({
+            ...subject,
+            assessments: subject.assessments.map((ass) => ({
+              ...ass,
+              examDate: ass.examDate
+                ? moment(ass.examDate).format("DD-MM-YYYY")
+                : "",
+              startTime: ass.startTime
+                ? moment(ass.startTime).format("hh:mm a")
+                : "",
+              endTime: ass.endTime
+                ? moment(ass.endTime).format("hh:mm a")
+                : "",
+            })),
+          })),
+        };
+        results.push(formattedMark);
       } catch (error) {
         errors.push({ studentId: studentData.studentId, error: error.message });
       }
@@ -245,38 +382,37 @@ exports.bulkUploadMarks = async (req, res) => {
   }
 };
 
-
 exports.bulkUpdateMarks = async (req, res) => {
   try {
     const { examId, studentsMarks } = req.body;
 
-    // Validate exam existence
-    const exam = await Exam.findOne({ 
-      examId, 
-      schoolId: req.user.schoolId, 
-      session: req.user.session 
+    const exam = await Exam.findOne({
+      examId,
+      schoolId: req.user.schoolId,
+      session: req.user.session,
     });
     if (!exam) {
-      return res.status(404).json({ success: false, message: "Exam not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Exam not found" });
     }
 
     const results = [];
     const errors = [];
 
-    // Process each student's data
     for (const studentData of studentsMarks) {
       try {
-        const { studentId, className, section, coScholasticMarks } = studentData;
+        const { studentId, className, section, marks, coScholasticMarks } = studentData;
 
-        // Validate required fields
         if (!className || !section) {
           throw new Error("className and section are required for each student");
         }
         if (!exam.classNames.includes(className) || !exam.sections.includes(section)) {
-          throw new Error(`Class ${className} or section ${section} not part of exam`);
+          throw new Error(
+            `Class ${className} or section ${section} not part of exam`
+          );
         }
 
-        // Find existing mark record
         let studentMark = await Mark.findOne({
           studentId,
           examId,
@@ -287,10 +423,42 @@ exports.bulkUpdateMarks = async (req, res) => {
         });
 
         if (!studentMark) {
-          throw new Error(`No existing mark record found for student ${studentId}`);
+          throw new Error(
+            `No existing mark record found for student ${studentId}`
+          );
         }
 
-        // Update coScholasticMarks if provided
+        if (marks) {
+          marks.forEach((newSubjectMark) => {
+            const examSubject = exam.subjects.find(
+              (s) => s.name === newSubjectMark.subjectName
+            );
+            if (!examSubject)
+              throw new Error(`Subject ${newSubjectMark.subjectName} not found`);
+            newSubjectMark.assessments.forEach((newAss) => {
+              const examAss = examSubject.assessments.find(
+                (a) => a.name === newAss.assessmentName
+              );
+              if (!examAss)
+                throw new Error(`Assessment ${newAss.assessmentName} not found`);
+              if (Number(newAss.marksObtained) > examAss.totalMarks) {
+                throw new Error(
+                  `Marks exceed total for ${newAss.assessmentName}`
+                );
+              }
+              newAss.totalMarks = examAss.totalMarks;
+              newAss.examDate = examAss.examDate; // Copy examDate
+              newAss.startTime = examAss.startTime;
+              newAss.endTime = examAss.endTime;
+            });
+            const idx = studentMark.marks.findIndex(
+              (m) => m.subjectName === newSubjectMark.subjectName
+            );
+            if (idx !== -1) studentMark.marks[idx] = newSubjectMark;
+            else studentMark.marks.push(newSubjectMark);
+          });
+        }
+
         if (coScholasticMarks && Array.isArray(coScholasticMarks)) {
           studentMark.coScholasticMarks = coScholasticMarks.map((item) => ({
             areaName: item.areaName,
@@ -298,16 +466,32 @@ exports.bulkUpdateMarks = async (req, res) => {
           }));
         }
 
-        // Save the updated record
         await studentMark.save();
-        results.push(studentMark);
-
+        // Format response for frontend
+        const formattedMark = {
+          ...studentMark._doc,
+          marks: studentMark.marks.map((subject) => ({
+            ...subject,
+            assessments: subject.assessments.map((ass) => ({
+              ...ass,
+              examDate: ass.examDate
+                ? moment(ass.examDate).format("DD-MM-YYYY")
+                : "",
+              startTime: ass.startTime
+                ? moment(ass.startTime).format("hh:mm a")
+                : "",
+              endTime: ass.endTime
+                ? moment(ass.endTime).format("hh:mm a")
+                : "",
+            })),
+          })),
+        };
+        results.push(formattedMark);
       } catch (error) {
         errors.push({ studentId: studentData.studentId, error: error.message });
       }
     }
 
-    // Respond with results
     res.status(200).json({
       success: true,
       message: `Successfully updated marks for ${results.length} students`,

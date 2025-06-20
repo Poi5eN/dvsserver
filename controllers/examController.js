@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const moment = require("moment");
 const Mark = require("../models/mark");
 const NewStudentModel = require("../models/newStudentModel");
 const Exam = require("../models/exam"); // Import Exam model
@@ -28,14 +29,37 @@ exports.createExam = async (req, res) => {
       session,
     };
 
-    // Check for an existing exam with the same name, term, session, schoolId, classNames, and sections
+    // Parse top-level dates
+    if (examData.startDate) {
+      examData.startDate = moment(examData.startDate, "DD-MM-YYYY").toDate();
+      if (!moment(examData.startDate).isValid()) {
+        throw new Error("Invalid startDate format. Use DD-MM-YYYY.");
+      }
+    }
+    if (examData.endDate) {
+      examData.endDate = moment(examData.endDate, "DD-MM-YYYY").toDate();
+      if (!moment(examData.endDate).isValid()) {
+        throw new Error("Invalid endDate format. Use DD-MM-YYYY.");
+      }
+    }
+    if (examData.resultPublishDate) {
+      examData.resultPublishDate = moment(
+        examData.resultPublishDate,
+        "DD-MM-YYYY"
+      ).toDate();
+      if (!moment(examData.resultPublishDate).isValid()) {
+        throw new Error("Invalid resultPublishDate format. Use DD-MM-YYYY.");
+      }
+    }
+
+    // Check for existing exam
     const existingExam = await Exam.findOne({
       schoolId: examData.schoolId,
       name: examData.name,
       term: examData.term,
       session,
-      classNames: { $all: classNames, $size: classNames.length }, // Exact match for classNames array
-      sections: { $all: sections, $size: sections.length }, // Exact match for sections array
+      classNames: { $all: classNames, $size: classNames.length },
+      sections: { $all: sections, $size: sections.length },
     });
 
     if (existingExam) {
@@ -45,18 +69,37 @@ exports.createExam = async (req, res) => {
       });
     }
 
-    // Calculate totalMarks for each subject based on assessments
+    // Parse and validate assessment dates/times
     examData.subjects.forEach((subject) => {
       subject.totalMarks = subject.assessments.reduce(
-        (sum, a) => sum + a.totalMarks,
+        (sum, a) => sum + Number(a.totalMarks),
         0
       );
-      // Ensure startTime and endTime are parsed as Dates if provided
       subject.assessments.forEach((assessment) => {
-        if (assessment.startTime)
-          assessment.startTime = new Date(assessment.startTime);
-        if (assessment.endTime)
-          assessment.endTime = new Date(assessment.endTime);
+        if (assessment.examDate) {
+          assessment.examDate = moment(assessment.examDate, "DD-MM-YYYY").toDate();
+          if (!moment(assessment.examDate).isValid()) {
+            throw new Error(
+              `Invalid examDate for assessment ${assessment.name}. Use DD-MM-YYYY.`
+            );
+          }
+        }
+        if (assessment.startTime) {
+          assessment.startTime = moment(assessment.startTime, "hh:mm a").toDate();
+          if (!moment(assessment.startTime).isValid()) {
+            throw new Error(
+              `Invalid startTime for assessment ${assessment.name}. Use hh:mm a.`
+            );
+          }
+        }
+        if (assessment.endTime) {
+          assessment.endTime = moment(assessment.endTime, "hh:mm a").toDate();
+          if (!moment(assessment.endTime).isValid()) {
+            throw new Error(
+              `Invalid endTime for assessment ${assessment.name}. Use hh:mm a.`
+            );
+          }
+        }
       });
     });
 
@@ -80,7 +123,31 @@ exports.getExams = async (req, res) => {
     if (published === "true") query.resultPublishDate = { $lte: new Date() };
 
     const exams = await Exam.find(query).sort({ startDate: -1 });
-    res.status(200).json({ success: true, count: exams.length, exams });
+    // Format dates/times for frontend
+    const formattedExams = exams.map((exam) => ({
+      ...exam._doc,
+      startDate: exam.startDate
+        ? moment(exam.startDate).format("DD-MM-YYYY")
+        : "",
+      endDate: exam.endDate ? moment(exam.endDate).format("DD-MM-YYYY") : "",
+      resultPublishDate: exam.resultPublishDate
+        ? moment(exam.resultPublishDate).format("DD-MM-YYYY")
+        : "",
+      subjects: exam.subjects.map((subject) => ({
+        ...subject,
+        assessments: subject.assessments.map((ass) => ({
+          ...ass,
+          examDate: ass.examDate
+            ? moment(ass.examDate).format("DD-MM-YYYY")
+            : "",
+          startTime: ass.startTime
+            ? moment(ass.startTime).format("hh:mm a")
+            : "",
+          endTime: ass.endTime ? moment(ass.endTime).format("hh:mm a") : "",
+        })),
+      })),
+    }));
+    res.status(200).json({ success: true, count: exams.length, exams: formattedExams });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -98,17 +165,90 @@ exports.updateExam = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Exam not found" });
 
-    Object.assign(exam, req.body);
+    // Parse top-level dates
+    if (req.body.startDate) {
+      req.body.startDate = moment(req.body.startDate, "DD-MM-YYYY").toDate();
+      if (!moment(req.body.startDate).isValid()) {
+        throw new Error("Invalid startDate format. Use DD-MM-YYYY.");
+      }
+    }
+    if (req.body.endDate) {
+      req.body.endDate = moment(req.body.endDate, "DD-MM-YYYY").toDate();
+      if (!moment(req.body.endDate).isValid()) {
+        throw new Error("Invalid endDate format. Use DD-MM-YYYY.");
+      }
+    }
+    if (req.body.resultPublishDate) {
+      req.body.resultPublishDate = moment(
+        req.body.resultPublishDate,
+        "DD-MM-YYYY"
+      ).toDate();
+      if (!moment(req.body.resultPublishDate).isValid()) {
+        throw new Error("Invalid resultPublishDate format. Use DD-MM-YYYY.");
+      }
+    }
+
+    // Parse and validate assessment dates/times
     if (req.body.subjects) {
-      exam.subjects.forEach((subject) => {
+      req.body.subjects.forEach((subject) => {
         subject.totalMarks = subject.assessments.reduce(
-          (sum, a) => sum + a.totalMarks,
+          (sum, a) => sum + Number(a.totalMarks),
           0
         );
+        subject.assessments.forEach((assessment) => {
+          if (assessment.examDate) {
+            assessment.examDate = moment(assessment.examDate, "DD-MM-YYYY").toDate();
+            if (!moment(assessment.examDate).isValid()) {
+              throw new Error(
+                `Invalid examDate for assessment ${assessment.name}. Use DD-MM-YYYY.`
+              );
+            }
+          }
+          if (assessment.startTime) {
+            assessment.startTime = moment(assessment.startTime, "hh:mm a").toDate();
+            if (!moment(assessment.startTime).isValid()) {
+              throw new Error(
+                `Invalid startTime for assessment ${assessment.name}. Use hh:mm a.`
+              );
+            }
+          }
+          if (assessment.endTime) {
+            assessment.endTime = moment(assessment.endTime, "hh:mm a").toDate();
+            if (!moment(assessment.endTime).isValid()) {
+              throw new Error(
+                `Invalid endTime for assessment ${assessment.name}. Use hh:mm a.`
+              );
+            }
+          }
+        });
       });
     }
+
+    Object.assign(exam, req.body);
     await exam.save();
-    res.status(200).json({ success: true, exam });
+    // Format response for frontend
+    const formattedExam = {
+      ...exam._doc,
+      startDate: exam.startDate ? moment(exam.startDate).format("DD-MM-YYYY") : "",
+      endDate: exam.endDate ? moment(exam.endDate).format("DD-MM-YYYY") : "",
+      resultPublishDate: exam.resultPublishDate
+        ? moment(exam.resultPublishDate).format("DD-MM-YYYY")
+        : "",
+      subjects: exam.subjects.map((subject) => ({
+        ...subject,
+        assessments: subject.assessments.map((ass) => ({
+          ...ass,
+          examDate: ass.examDate
+            ? moment(ass.examDate).format("DD-MM-YYYY")
+            : "",
+          startTime: ass.startTime
+            ? moment(ass.startTime).format("hh:mm a")
+            : "",
+          endTime: ass.endTime ? moment(ass.endTime).format("hh:mm a") : "",
+        })),
+      })),
+    };
+    res.status(200).json({ success: true, exam: formattedExam });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -136,7 +276,7 @@ exports.deleteExam = async (req, res) => {
 exports.submitExamResults = async (req, res) => {
   try {
     const { examId } = req.params;
-    const { studentId, marks, coScholasticMarks } = req.body; // Assume these are provided in the request
+    const { studentId, marks, coScholasticMarks } = req.body;
 
     const exam = await Exam.findOne({
       examId,
@@ -148,21 +288,19 @@ exports.submitExamResults = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Exam not found" });
 
-    // Validate student
     const student = await NewStudentModel.findOne({ studentId });
     if (!student)
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
 
-    // Build the mark record
     const markData = {
       examId: exam.examId,
       studentId,
       schoolId: req.user.schoolId,
       session: req.user.session,
-      className: exam.classNames[0], // Assuming single class for simplicity
-      section: exam.sections[0], // Assuming single section for simplicity
+      className: exam.classNames[0],
+      section: exam.sections[0],
       marks: marks.map((subjectMark) => {
         const examSubject = exam.subjects.find(
           (s) => s.name === subjectMark.subjectName
@@ -182,11 +320,12 @@ exports.submitExamResults = async (req, res) => {
               )?.marksObtained || 0,
             totalMarks: examAssessment.totalMarks,
             passingMarks: examAssessment.passingMarks || 0,
+            examDate: examAssessment.examDate, // Include examDate
             startTime: examAssessment.startTime,
             endTime: examAssessment.endTime,
           })),
           total: subjectMark.total,
-          grade: subjectMark.grade, // Uses grade from req.body
+          grade: subjectMark.grade,
         };
       }),
       coScholasticMarks: coScholasticMarks || [],
@@ -221,7 +360,25 @@ exports.generateReportCard = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Mark record not found" });
 
-    res.status(200).json({ success: true, reportCard: markRecord });
+    // Format dates/times for frontend
+    const formattedMark = {
+      ...markRecord._doc,
+      marks: markRecord.marks.map((subject) => ({
+        ...subject,
+        assessments: subject.assessments.map((ass) => ({
+          ...ass,
+          examDate: ass.examDate
+            ? moment(ass.examDate).format("DD-MM-YYYY")
+            : "",
+          startTime: ass.startTime
+            ? moment(ass.startTime).format("hh:mm a")
+            : "",
+          endTime: ass.endTime ? moment(ass.endTime).format("hh:mm a") : "",
+        })),
+      })),
+    };
+
+    res.status(200).json({ success: true, reportCard: formattedMark });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -316,6 +473,9 @@ exports.generateFullReportCard = async (req, res) => {
             passingMarks: a.passingMarks || 0,
             grade: assessmentGrade,
             percentage: parseFloat(percentage.toFixed(2)),
+            examDate: a.examDate ? moment(a.examDate).format("DD-MM-YYYY") : "", // Add examDate
+            startTime: a.startTime ? moment(a.startTime).format("hh:mm a") : "", // Format time
+            endTime: a.endTime ? moment(a.endTime).format("hh:mm a") : "", // Format time
           };
           totalPossibleMarksForTerm += a.totalMarks;
         });
@@ -608,6 +768,7 @@ exports.generateClassReport = async (req, res) => {
 
     let termsToInclude = [];
     if (examIds) {
+      const examIdArray = examIds.split(",").map((id) => id.trim());
       const filteredExams = exams.filter((exam) =>
         examIdArray.includes(exam.examId)
       );
@@ -670,7 +831,7 @@ exports.generateClassReport = async (req, res) => {
             const normalizedSubjectName = subjectMark.subjectName.toLowerCase();
             if (!subjectMap.has(normalizedSubjectName)) {
               subjectMap.set(normalizedSubjectName, {
-                name: subjectMark.subjectName, // Preserve original casing
+                name: subjectMark.subjectName,
                 terms: {},
               });
             }
@@ -692,8 +853,9 @@ exports.generateClassReport = async (req, res) => {
                 passingMarks: a.passingMarks || 0,
                 grade: assessmentGrade,
                 percentage: parseFloat(percentage.toFixed(2)),
-                startTime: a.startTime,
-                endTime: a.endTime,
+                examDate: a.examDate ? moment(a.examDate).format("DD-MM-YYYY") : "", // Add examDate
+                startTime: a.startTime ? moment(a.startTime).format("hh:mm a") : "", // Format time
+                endTime: a.endTime ? moment(a.endTime).format("hh:mm a") : "", // Format time
               };
               totalPossibleMarksForTerm += a.totalMarks;
             });
@@ -718,7 +880,6 @@ exports.generateClassReport = async (req, res) => {
           });
         });
 
-        // Normalize subject names in allSubjects
         const allSubjects = [
           ...new Set(
             marks.flatMap((mark) =>
@@ -734,7 +895,7 @@ exports.generateClassReport = async (req, res) => {
             name:
               subjectMap.get(normalizedSubjectName)?.name ||
               normalizedSubjectName.charAt(0).toUpperCase() +
-                normalizedSubjectName.slice(1), // Default to title case
+                normalizedSubjectName.slice(1),
             terms: {},
           };
           const subject = {
@@ -765,6 +926,9 @@ exports.generateClassReport = async (req, res) => {
                   passingMarks: 0,
                   grade: "--",
                   percentage: "--",
+                  examDate: "", // Include empty examDate
+                  startTime: "", // Include empty startTime
+                  endTime: "", // Include empty endTime
                 };
               });
             }
@@ -951,14 +1115,27 @@ exports.updateReportCard = async (req, res) => {
           return {
             subjectName: subject.name,
             assessments: Object.keys(termData)
-              .filter((key) => key !== "total" && key !== "grade")
+              .filter(
+                (key) =>
+                  key !== "total" &&
+                  key !== "grade" &&
+                  key !== "percentage" &&
+                  key !== "totalPossibleMarks"
+              )
               .map((assessmentName) => ({
                 assessmentName,
                 marksObtained: termData[assessmentName].marksObtained,
                 totalMarks: termData[assessmentName].totalMarks,
                 passingMarks: termData[assessmentName].passingMarks,
-                startTime: termData[assessmentName].startTime,
-                endTime: termData[assessmentName].endTime,
+                examDate: termData[assessmentName].examDate
+                  ? moment(termData[assessmentName].examDate, "DD-MM-YYYY").toDate()
+                  : null, // Parse examDate
+                startTime: termData[assessmentName].startTime
+                  ? moment(termData[assessmentName].startTime, "hh:mm a").toDate()
+                  : null, // Parse startTime
+                endTime: termData[assessmentName].endTime
+                  ? moment(termData[assessmentName].endTime, "hh:mm a").toDate()
+                  : null, // Parse endTime
               })),
             total: termData.total,
             grade: termData.grade,

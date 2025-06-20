@@ -31,13 +31,13 @@ exports.createExam = async (req, res) => {
 
     // Parse top-level dates
     if (examData.startDate) {
-      examData.startDate = moment(examData.startDate, "DD-MM-YYYY").toDate();
+      examData.startDate = moment(examData.startDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).toDate();
       if (!moment(examData.startDate).isValid()) {
         throw new Error("Invalid startDate format. Use DD-MM-YYYY.");
       }
     }
     if (examData.endDate) {
-      examData.endDate = moment(examData.endDate, "DD-MM-YYYY").toDate();
+      examData.endDate = moment(examData.endDate, ["DD-MM-YYYY", "YYYY-MM-DD"]).toDate();
       if (!moment(examData.endDate).isValid()) {
         throw new Error("Invalid endDate format. Use DD-MM-YYYY.");
       }
@@ -122,31 +122,25 @@ exports.getExams = async (req, res) => {
     if (upcoming === "true") query.startDate = { $gt: new Date() };
     if (published === "true") query.resultPublishDate = { $lte: new Date() };
 
-    const exams = await Exam.find(query).sort({ startDate: -1 });
-    // Format dates/times for frontend
+    // Use lean() to get plain JavaScript objects
+    const exams = await Exam.find(query).lean().sort({ startDate: -1 });
+    
     const formattedExams = exams.map((exam) => ({
-      ...exam._doc,
-      startDate: exam.startDate
-        ? moment(exam.startDate).format("DD-MM-YYYY")
-        : "",
+      ...exam,
+      startDate: exam.startDate ? moment(exam.startDate).format("DD-MM-YYYY") : "",
       endDate: exam.endDate ? moment(exam.endDate).format("DD-MM-YYYY") : "",
-      resultPublishDate: exam.resultPublishDate
-        ? moment(exam.resultPublishDate).format("DD-MM-YYYY")
-        : "",
+      resultPublishDate: exam.resultPublishDate ? moment(exam.resultPublishDate).format("DD-MM-YYYY") : "",
       subjects: exam.subjects.map((subject) => ({
         ...subject,
         assessments: subject.assessments.map((ass) => ({
           ...ass,
-          examDate: ass.examDate
-            ? moment(ass.examDate).format("DD-MM-YYYY")
-            : "",
-          startTime: ass.startTime
-            ? moment(ass.startTime).format("hh:mm a")
-            : "",
+          examDate: ass.examDate ? moment(ass.examDate).format("DD-MM-YYYY") : "",
+          startTime: ass.startTime ? moment(ass.startTime).format("hh:mm a") : "",
           endTime: ass.endTime ? moment(ass.endTime).format("hh:mm a") : "",
         })),
       })),
     }));
+    
     res.status(200).json({ success: true, count: exams.length, exams: formattedExams });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

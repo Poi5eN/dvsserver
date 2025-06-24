@@ -21,7 +21,7 @@ const designFormatSchema = mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'],
+    enum: ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm', 'registrationCard', 'reimbursementForm', 'bonafideCertificate', 'transferCertificate', 'characterCertificate', 'schoolLeavingCertificate', 'schoolLeavingCard'],
     index: true
   },
   isDefault: {

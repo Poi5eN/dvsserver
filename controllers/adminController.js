@@ -358,7 +358,7 @@ exports.createDesignFormat = async (req, res) => {
         message: "Type is required and cannot be empty"
       });
     }
-    const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
+    const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm', 'registrationCard', 'reimbursementForm', 'bonafideCertificate', 'transferCertificate', 'characterCertificate', 'schoolLeavingCertificate', 'schoolLeavingCard'];
     if (!validTypes.includes(type)) {
       console.log("Validation failed: Invalid type", type);
       return res.status(400).json({
@@ -635,7 +635,7 @@ exports.getDesignFormats = async (req, res) => {
     let query = {};
 
     if (type) {
-      const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm'];
+      const validTypes = ['idCard', 'feeReceipt', 'reportCard', 'admissionForm', 'registrationForm', 'registrationCard', 'reimbursementForm', 'bonafideCertificate', 'transferCertificate', 'characterCertificate', 'schoolLeavingCertificate', 'schoolLeavingCard'];
       if (!validTypes.includes(type)) {
         return res.status(400).json({
           success: false,

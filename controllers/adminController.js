@@ -3170,21 +3170,24 @@ exports.createSale = async (req, res) => {
     const { studentId, items, paymentStatus, paidAmount, paymentMode } = req.body;
     const { schoolId, session, _id: updatedBy } = req.user;
 
-    if (!schoolId || !session)
+    if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
         message: "School ID and session are required.",
       });
-    if (!studentId || !items)
+    }
+    if (!studentId || !items) {
       return res.status(400).json({
         success: false,
         message: "Student ID and items are required.",
       });
-    if (paidAmount > 0 && !paymentMode)
+    }
+    if (paidAmount > 0 && !paymentMode) {
       return res.status(400).json({
         success: false,
         message: "Payment mode is required when paid amount is provided.",
       });
+    }
 
     const studentResponse = await axios.get(
       `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${studentId}`,
@@ -3194,10 +3197,12 @@ exports.createSale = async (req, res) => {
         },
       }
     );
-    if (!studentResponse.data.success)
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found." });
+    if (!studentResponse.data.success) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found.",
+      });
+    }
 
     let totalAmount = 0;
     for (let item of items) {
@@ -3205,32 +3210,34 @@ exports.createSale = async (req, res) => {
         itemId: item.itemId,
         schoolId,
         session,
-      });
-      if (!inventoryItem)
-        return res
-          .status(404)
-          .json({ success: false, message: `Item ${item.itemId} not found.` });
-      if (inventoryItem.quantity < item.quantity)
+      }).lean();
+      if (!inventoryItem) {
+        return res.status(404).json({
+          success: false,
+          message: `Item ${item.itemId} not found.`,
+        });
+      }
+      if (inventoryItem.quantity < item.quantity) {
         return res.status(400).json({
           success: false,
           message: `Insufficient stock for ${inventoryItem.itemName}.`,
         });
+      }
       item.itemName = inventoryItem.itemName;
       item.category = inventoryItem.category;
       item.price = inventoryItem.price;
       item.total = item.quantity * inventoryItem.price;
-      item.icon = inventoryItem.icon;
-      item.color = inventoryItem.color;
       totalAmount += item.total;
     }
 
     const dueAmount =
       paymentStatus === "paid" ? 0 : totalAmount - (paidAmount || 0);
-    if (paymentStatus === "paid" && paidAmount < totalAmount)
+    if (paymentStatus === "paid" && paidAmount < totalAmount) {
       return res.status(400).json({
         success: false,
         message: "Paid amount insufficient for paid status.",
       });
+    }
 
     let counter = await Counter.findOneAndUpdate(
       { schoolId, session },
@@ -3253,8 +3260,8 @@ exports.createSale = async (req, res) => {
       items,
       totalAmount,
       paymentStatus,
-      paidAmount,
-      dueAmount,
+      paidAmount: paidAmount || 0,
+      dueAmount: dueAmount,
       updatedBy,
       paymentMode,
       paymentHistory: paidAmount
@@ -3264,7 +3271,7 @@ exports.createSale = async (req, res) => {
     await sale.save();
 
     for (let item of items) {
-      await ItemModel.findOneAndUpdate(
+      await ItemModel.updateOne(
         { itemId: item.itemId, schoolId, session },
         {
           $inc: {
@@ -3300,17 +3307,21 @@ exports.createSale = async (req, res) => {
         paymentHistory: sale.paymentHistory,
       };
 
-      await ReceiptModel.create({
-        receiptId: receiptData.receiptId,
-        saleNumber: sale.saleNumber,
-        studentId: sale.studentId,
-        itemsSold: receiptData.items,
-        totalAmount: receiptData.totalAmount,
-        dueAmount: receiptData.dueAmount,
-        paymentStatus: receiptData.paymentStatus,
-        paymentMode: receiptData.paymentMode,
-        paymentHistory: receiptData.paymentHistory,
-      });
+      await ReceiptModel.updateOne(
+        { saleNumber: sale.saleNumber },
+        {
+          receiptId: receiptData.receiptId,
+          saleNumber: sale.saleNumber,
+          studentId: sale.studentId,
+          itemsSold: receiptData.items,
+          totalAmount: receiptData.totalAmount,
+          dueAmount: receiptData.dueAmount,
+          paymentStatus: receiptData.paymentStatus,
+          paymentMode: receiptData.paymentMode,
+          paymentHistory: receiptData.paymentHistory,
+        },
+        { upsert: true }
+      );
 
       receipt = receiptData;
     } catch (receiptError) {
@@ -3730,7 +3741,7 @@ exports.getAllSales = async (req, res) => {
       studentId,
       paymentStatus,
       page = 1,
-      limit = 10,
+      limit = 50,
     } = req.query;
 
     if (!schoolId || !session)
@@ -3754,48 +3765,21 @@ exports.getAllSales = async (req, res) => {
       if (dateEnd) query.date.$lte = new Date(dateEnd);
     }
 
-    // Search filter (assuming fields like customerName or description exist)
-    if (search) {
-      query.$or = [
-        { customerName: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ];
-    }
+    if (saleNumber) query.saleNumber = Number(saleNumber);
+    if (studentId) query.studentId = studentId;
+    if (paymentStatus) query.paymentStatus = paymentStatus;
 
-    // Sale number filter
-    if (saleNumber) {
-      query.saleNumber = saleNumber;
-    }
-
-    // Student ID filter
-    if (studentId) {
-      query.studentId = studentId;
-    }
-
-    // Payment status filter
-    if (paymentStatus) {
-      query.paymentStatus = paymentStatus;
-    }
-
-    // Fetch sales
+    // Optimize with indexes (ensure these are created in MongoDB)
     const sales = await Sale.find(query)
+      .hint({ schoolId: 1, session: 1, date: -1 }) // Index hint for faster queries
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();
 
-    // Count total sales
     const totalSales = await Sale.countDocuments(query);
-
-    // Count sales with dues (paymentStatus: 'pending' or similar)
     const salesWithDues = await Sale.countDocuments({
       ...query,
-      paymentStatus: 'pending',
-    });
-
-    // Count sales without dues (paymentStatus: 'completed' or similar)
-    const salesWithoutDues = await Sale.countDocuments({
-      ...query,
-      paymentStatus: 'completed',
+      paymentStatus: "pending",
     });
 
     res.status(200).json({
@@ -3804,7 +3788,7 @@ exports.getAllSales = async (req, res) => {
       counts: {
         totalSales,
         salesWithDues,
-        salesWithoutDues,
+        salesWithoutDues: totalSales - salesWithDues,
       },
       sales,
       pagination: {

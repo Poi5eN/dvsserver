@@ -3190,7 +3190,7 @@ exports.createSale = async (req, res) => {
     }
 
     const studentResponse = await axios.get(
-      `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${studentId}`,
+      `https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent?studentId=${studentId}`,
       {
         headers: {
           Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
@@ -3387,7 +3387,7 @@ exports.payDuesAndAddSale = async (req, res) => {
     let studentName = "Unknown";
     try {
       const studentResponse = await axios.get(
-        `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
+        `https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
         {
           headers: {
             Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
@@ -3837,7 +3837,7 @@ exports.generateReceipt = async (req, res) => {
     let section = "N/A";
     try {
       const studentResponse = await axios.get(
-        `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
+        `https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
         {
           headers: {
             Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
@@ -3913,6 +3913,8 @@ exports.generateReceipt = async (req, res) => {
   }
 };
 
+const axios = require('axios');
+
 exports.getStudentsWithDues = async (req, res) => {
   try {
     const { schoolId, session } = req.user;
@@ -3921,56 +3923,57 @@ exports.getStudentsWithDues = async (req, res) => {
     if (!schoolId || !session) {
       return res.status(400).json({
         success: false,
-        message: "School ID and session are required.",
+        message: 'School ID and session are required.',
       });
     }
 
+    // Optimized aggregation pipeline
     const salesWithDues = await Sale.aggregate([
       {
         $match: {
           schoolId,
           session,
-          paymentStatus: { $ne: "paid" },
+          paymentStatus: { $ne: 'paid' },
           dueAmount: { $gt: 0 },
         },
       },
       {
         $group: {
-          _id: "$studentId",
-          totalDue: { $sum: "$dueAmount" },
+          _id: '$studentId',
+          totalDue: { $sum: '$dueAmount' },
           sales: {
             $push: {
-              saleNumber: "$saleNumber",
-              date: "$date",
-              totalAmount: "$totalAmount",
-              paidAmount: "$paidAmount",
-              dueAmount: "$dueAmount",
-              paymentStatus: "$paymentStatus",
+              saleNumber: '$saleNumber',
+              date: '$date',
+              totalAmount: '$totalAmount',
+              paidAmount: '$paidAmount',
+              dueAmount: '$dueAmount',
+              paymentStatus: '$paymentStatus',
             },
           },
         },
       },
       {
         $lookup: {
-          from: "students", // Assuming a students collection exists
-          localField: "_id",
-          foreignField: "studentId",
-          as: "studentDetails",
+          from: 'students',
+          localField: '_id',
+          foreignField: 'studentId',
+          as: 'studentDetails',
         },
       },
       {
         $unwind: {
-          path: "$studentDetails",
+          path: '$studentDetails',
           preserveNullAndEmptyArrays: true,
         },
       },
       {
         $project: {
-          studentId: "$_id",
-          studentName: "$studentDetails.studentName",
-          class: "$studentDetails.class",
-          section: "$studentDetails.section",
-          admissionNumber: "$studentDetails.admissionNumber",
+          studentId: '$_id',
+          studentName: '$studentDetails.studentName',
+          class: '$studentDetails.class',
+          section: '$studentDetails.section',
+          admissionNumber: '$studentDetails.admissionNumber',
           totalDue: 1,
           sales: 1,
         },
@@ -3982,46 +3985,77 @@ exports.getStudentsWithDues = async (req, res) => {
             { $skip: (parseInt(page) - 1) * parseInt(limit) },
             { $limit: parseInt(limit) },
           ],
-          totalCount: [{ $count: "count" }],
+          totalCount: [{ $count: 'count' }],
         },
       },
-    ]);
+    ]).hint({ schoolId: 1, session: 1, paymentStatus: 1, dueAmount: 1 });
 
     const studentsWithDues = salesWithDues[0].paginatedResults;
     const total = salesWithDues[0].totalCount[0]?.count || 0;
 
-    // Fetch student details from external API for those not found in local collection
-    for (let student of studentsWithDues) {
-      if (!student.studentName) {
-        try {
-          const studentResponse = await axios.get(
-            `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${student.studentId}`,
+    // Collect studentIds that need external API lookup
+    const studentsToFetch = studentsWithDues
+      .filter(student => !student.studentName)
+      .map(student => student.studentId);
+
+    // Batch fetch student details if needed
+    if (studentsToFetch.length > 0) {
+      try {
+        const studentResponse = await axios.post(
+          'https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent/batch',
+          { studentIds: studentsToFetch },
+          {
+            headers: {
+              Authorization: `Bearer ${req.headers.authorization.split(' ')[1]}`,
+            },
+            timeout: 10000, // Set timeout to 10 seconds
+          }
+        ).catch(async error => {
+          // Retry once after 2 seconds if the request fails
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return axios.post(
+            'https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent/batch',
+            { studentIds: studentsToFetch },
             {
               headers: {
-                Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,
+                Authorization: `Bearer ${req.headers.authorization.split(' ')[1]}`,
               },
+              timeout: 10000,
             }
           );
-          if (studentResponse.data.success) {
-            const studentData = studentResponse.data.students?.data[0] || {};
-            student.studentName = studentData.studentName || "Unknown";
-            student.class = studentData.class || "N/A";
-            student.section = studentData.section || "N/A";
-            student.admissionNumber = studentData.admissionNumber || "N/A";
+        });
+
+        if (studentResponse.data.success) {
+          const studentDataMap = new Map(
+            studentResponse.data.students?.data.map(s => [s.studentId, s]) || []
+          );
+          for (let student of studentsWithDues) {
+            if (!student.studentName) {
+              const studentData = studentDataMap.get(student.studentId) || {};
+              student.studentName = studentData.studentName || 'Unknown';
+              student.class = studentData.class || 'N/A';
+              student.section = studentData.section || 'N/A';
+              student.admissionNumber = studentData.admissionNumber || 'N/A';
+            }
           }
-        } catch (studentError) {
-          console.error(`Error fetching student ${student.studentId}:`, studentError.message);
-          student.studentName = "Unknown";
-          student.class = "N/A";
-          student.section = "N/A";
-          student.admissionNumber = "N/A";
+        }
+      } catch (studentError) {
+        console.error('Error fetching batch student details:', studentError.message);
+        // Fallback to default values for all missing students
+        for (let student of studentsWithDues) {
+          if (!student.studentName) {
+            student.studentName = 'Unknown';
+            student.class = 'N/A';
+            student.section = 'N/A';
+            student.admissionNumber = 'N/A';
+          }
         }
       }
     }
 
     res.status(200).json({
       success: true,
-      message: "Students with dues fetched",
+      message: 'Students with dues fetched',
       students: studentsWithDues,
       pagination: {
         total,
@@ -4031,10 +4065,10 @@ exports.getStudentsWithDues = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in getStudentsWithDues:", error);
+    console.error('Error in getStudentsWithDues:', error);
     res.status(500).json({
       success: false,
-      message: "Error fetching students with dues",
+      message: 'Error fetching students with dues',
       error: error.message,
     });
   }

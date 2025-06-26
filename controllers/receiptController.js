@@ -31,7 +31,7 @@ exports.generateReceipt = async (req, res) => {
     }
 
     const student = await axios.get(
-      `https://dvsserver.onrender.com/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
+      `https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent?studentId=${sale.studentId}`,
       {
         headers: {
           Authorization: `Bearer ${req.headers.authorization.split(" ")[1]}`,

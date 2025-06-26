@@ -3769,9 +3769,7 @@ exports.getAllSales = async (req, res) => {
     if (studentId) query.studentId = studentId;
     if (paymentStatus) query.paymentStatus = paymentStatus;
 
-    // Optimize with indexes (ensure these are created in MongoDB)
     const sales = await Sale.find(query)
-      .hint({ schoolId: 1, session: 1, date: -1 }) // Index hint for faster queries
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();

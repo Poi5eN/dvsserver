@@ -3750,7 +3750,12 @@ exports.getAllSales = async (req, res) => {
         message: "School ID and session are required.",
       });
 
-    const query = { schoolId, session };
+    const query = { 
+      schoolId, 
+      session,
+      saleNumber: { $ne: null },
+      totalAmount: { $ne: null },
+    };
 
     // Date filters
     if (specificDate) {
@@ -3770,6 +3775,7 @@ exports.getAllSales = async (req, res) => {
     if (paymentStatus) query.paymentStatus = paymentStatus;
 
     const sales = await Sale.find(query)
+      .select('saleNumber date totalAmount paidAmount dueAmount paymentStatus studentId')
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();
@@ -3778,6 +3784,7 @@ exports.getAllSales = async (req, res) => {
     const salesWithDues = await Sale.countDocuments({
       ...query,
       paymentStatus: "pending",
+      dueAmount: { $gt: 0 },
     });
 
     res.status(200).json({
@@ -3788,7 +3795,15 @@ exports.getAllSales = async (req, res) => {
         salesWithDues,
         salesWithoutDues: totalSales - salesWithDues,
       },
-      sales,
+      sales: sales.map(sale => ({
+        ...sale,
+        saleNumber: sale.saleNumber || 0,
+        date: sale.date || new Date(),
+        totalAmount: sale.totalAmount || 0,
+        paidAmount: sale.paidAmount || 0,
+        dueAmount: sale.dueAmount || 0,
+        paymentStatus: sale.paymentStatus || 'pending',
+      })),
       pagination: {
         total: totalSales,
         page: parseInt(page),
@@ -3797,6 +3812,7 @@ exports.getAllSales = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Error in getAllSales:', error);
     res.status(500).json({
       success: false,
       message: "Error fetching sales",
@@ -3935,6 +3951,8 @@ exports.getStudentsWithDues = async (req, res) => {
           session,
           paymentStatus: { $ne: 'paid' },
           dueAmount: { $gt: 0 },
+          saleNumber: { $ne: null },
+          totalAmount: { $ne: null },
         },
       },
       {
@@ -3943,19 +3961,19 @@ exports.getStudentsWithDues = async (req, res) => {
           totalDue: { $sum: '$dueAmount' },
           sales: {
             $push: {
-              saleNumber: '$saleNumber',
-              date: '$date',
-              totalAmount: '$totalAmount',
-              paidAmount: '$paidAmount',
-              dueAmount: '$dueAmount',
-              paymentStatus: '$paymentStatus',
+              saleNumber: { $ifNull: ['$saleNumber', 0] },
+              date: { $ifNull: ['$date', new Date()] },
+              totalAmount: { $ifNull: ['$totalAmount', 0] },
+              paidAmount: { $ifNull: ['$paidAmount', 0] },
+              dueAmount: { $ifNull: ['$dueAmount', 0] },
+              paymentStatus: { $ifNull: ['$paymentStatus', 'pending'] },
             },
           },
         },
       },
       {
         $lookup: {
-          from: 'students',
+          from: 'newstudentmodels', // Matches NewStudentModel collection
           localField: '_id',
           foreignField: 'studentId',
           as: 'studentDetails',
@@ -3970,10 +3988,10 @@ exports.getStudentsWithDues = async (req, res) => {
       {
         $project: {
           studentId: '$_id',
-          studentName: '$studentDetails.studentName',
-          class: '$studentDetails.class',
-          section: '$studentDetails.section',
-          admissionNumber: '$studentDetails.admissionNumber',
+          studentName: { $ifNull: ['$studentDetails.studentName', 'Unknown'] },
+          class: { $ifNull: ['$studentDetails.class', 'N/A'] },
+          section: { $ifNull: ['$studentDetails.section', 'N/A'] },
+          admissionNumber: { $ifNull: ['$studentDetails.admissionNumber', 'N/A'] },
           totalDue: 1,
           sales: 1,
         },
@@ -3988,17 +4006,16 @@ exports.getStudentsWithDues = async (req, res) => {
           totalCount: [{ $count: 'count' }],
         },
       },
-    ]).hint("sales_dues_index"); // Removed .hint()
+    ]);
 
     const studentsWithDues = salesWithDues[0].paginatedResults;
     const total = salesWithDues[0].totalCount[0]?.count || 0;
 
-    // Collect studentIds that need external API lookup
+    // Batch fetch student details if needed
     const studentsToFetch = studentsWithDues
-      .filter(student => !student.studentName)
+      .filter(student => student.studentName === 'Unknown')
       .map(student => student.studentId);
 
-    // Batch fetch student details if needed
     if (studentsToFetch.length > 0) {
       try {
         const studentResponse = await axios.post(
@@ -4011,7 +4028,6 @@ exports.getStudentsWithDues = async (req, res) => {
             timeout: 10000,
           }
         ).catch(async error => {
-          // Retry once after 2 seconds if the request fails
           await new Promise(resolve => setTimeout(resolve, 2000));
           return axios.post(
             'https://api.digitalvidyasaarthi.in/api/v1/adminRoute/studentparent/batch',
@@ -4030,7 +4046,7 @@ exports.getStudentsWithDues = async (req, res) => {
             studentResponse.data.students?.data.map(s => [s.studentId, s]) || []
           );
           for (let student of studentsWithDues) {
-            if (!student.studentName) {
+            if (student.studentName === 'Unknown') {
               const studentData = studentDataMap.get(student.studentId) || {};
               student.studentName = studentData.studentName || 'Unknown';
               student.class = studentData.class || 'N/A';
@@ -4041,15 +4057,6 @@ exports.getStudentsWithDues = async (req, res) => {
         }
       } catch (studentError) {
         console.error('Error fetching batch student details:', studentError.message);
-        // Fallback to default values for all missing students
-        for (let student of studentsWithDues) {
-          if (!student.studentName) {
-            student.studentName = 'Unknown';
-            student.class = 'N/A';
-            student.section = 'N/A';
-            student.admissionNumber = 'N/A';
-          }
-        }
       }
     }
 

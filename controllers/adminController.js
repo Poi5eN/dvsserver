@@ -3988,7 +3988,7 @@ exports.getStudentsWithDues = async (req, res) => {
           totalCount: [{ $count: 'count' }],
         },
       },
-    ]).hint({ schoolId: 1, session: 1, paymentStatus: 1, dueAmount: 1 });
+    ]); // Removed .hint()
 
     const studentsWithDues = salesWithDues[0].paginatedResults;
     const total = salesWithDues[0].totalCount[0]?.count || 0;
@@ -4008,7 +4008,7 @@ exports.getStudentsWithDues = async (req, res) => {
             headers: {
               Authorization: `Bearer ${req.headers.authorization.split(' ')[1]}`,
             },
-            timeout: 10000, // Set timeout to 10 seconds
+            timeout: 10000,
           }
         ).catch(async error => {
           // Retry once after 2 seconds if the request fails

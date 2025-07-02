@@ -8080,6 +8080,7 @@ exports.getStudentParent = async (req, res) => {
       joiningDateEnd,
       dateOfBirthStart,
       dateOfBirthEnd,
+      searchTerm, // Added searchTerm parameter
     } = req.query;
 
     let studentQuery = { schoolId };
@@ -8129,6 +8130,14 @@ exports.getStudentParent = async (req, res) => {
     }
     if (fetchNewAdmissions === "true") {
       studentQuery.isNewAdmission = true;
+    }
+
+    // Add searchTerm logic to filter by name or admission number
+    if (searchTerm) {
+      studentQuery.$or = [
+        { studentName: { $regex: searchTerm, $options: "i" } },
+        { admissionNumber: { $regex: searchTerm, $options: "i" } },
+      ];
     }
 
     if (parentId) parentQuery.parentId = parentId;

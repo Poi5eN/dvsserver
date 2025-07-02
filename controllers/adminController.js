@@ -3988,7 +3988,7 @@ exports.getStudentsWithDues = async (req, res) => {
           totalCount: [{ $count: 'count' }],
         },
       },
-    ]); // Removed .hint()
+    ]).hint("sales_dues_index"); // Removed .hint()
 
     const studentsWithDues = salesWithDues[0].paginatedResults;
     const total = salesWithDues[0].totalCount[0]?.count || 0;

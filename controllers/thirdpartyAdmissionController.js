@@ -1,21 +1,21 @@
-const AdminInfo = require('../models/adminModel');
-const PhotoModel = require('../models/photoModel');
-const NewStudentModel = require('../models/newStudentModel');
-const classModel = require('../models/classModel');
-const ParentModel = require('../models/parentModel');
+const AdminInfo = require("../models/adminModel");
+const PhotoModel = require("../models/photoModel");
+const NewStudentModel = require("../models/newStudentModel");
+const classModel = require("../models/classModel");
+const ParentModel = require("../models/parentModel");
 const sendEmail = require("../utils/email");
-const { hashPassword } = require('./authController');
-const cloudinary = require('cloudinary');
-const s3 = require('../config/minio');
+const { hashPassword } = require("./authController");
+const cloudinary = require("cloudinary");
+const s3 = require("../config/minio");
 const getDataUri = require("../utils/dataUri");
-const { generateStructuredNumber } = require('../utils/numberGenerator');
+const { generateStructuredNumber } = require("../utils/numberGenerator");
 const mongoose = require("mongoose");
-const ThirdPartyUser = require('../models/thirdPartyModel');
+const ThirdPartyUser = require("../models/thirdPartyModel");
 const { v4: uuidv4 } = require("uuid");
 
 // Generate Admission Number
 const generateAdmissionNumber = async (schoolId, Model) => {
-  return generateStructuredNumber(schoolId, Model, 'admissionNumber');
+  return generateStructuredNumber(schoolId, Model, "admissionNumber");
 };
 
 /**
@@ -25,7 +25,9 @@ exports.createAdmission = async (req, res) => {
   try {
     const { schoolId, photoId } = req.body;
     const session = req.user.session;
-    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    const hasAccess = req.user.assignedSchools.some(
+      (s) => s.schoolId === schoolId
+    );
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -34,34 +36,136 @@ exports.createAdmission = async (req, res) => {
     }
 
     const {
-      studentFullName, studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
-      studentAddress, studentContact, studentClass, studentSection, studentCountry, studentSubject,
-      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword, parentContact,
-      parentIncome, parentQualification, religion, caste, nationality, pincode, state, city,
-      studentAdmissionNumber, parentAdmissionNumber, rollNo,
+      studentFullName,
+      studentEmail,
+      studentPassword,
+      studentDateOfBirth,
+      studentGender,
+      studentJoiningDate,
+      studentAddress,
+      studentContact,
+      studentClass,
+      studentSection,
+      studentCountry,
+      studentSubject,
+      fatherName,
+      motherName,
+      guardianName,
+      remarks,
+      transport,
+      parentEmail,
+      parentPassword,
+      parentContact,
+      parentIncome,
+      parentQualification,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      studentAdmissionNumber,
+      parentAdmissionNumber,
+      rollNo,
       // UDISE+ fields
-      stu_id, studentUdiseClass, studentUdiseSection, roll_no, student_name, studentUdiseGender, DOB,
-      aadhar_no, aadhar_name, paddress, udisePlusPincode, mobile_no, alt_mobile_no, email_id,
-      mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type,
-      ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class,
-      stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform,
-      fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship,
-      received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder,
-      ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject,
-      bpl_card_no, ann_card_no,
+      stu_id,
+      studentUdiseClass,
+      studentUdiseSection,
+      roll_no,
+      student_name,
+      studentUdiseGender,
+      DOB,
+      aadhar_no,
+      aadhar_name,
+      paddress,
+      udisePlusPincode,
+      mobile_no,
+      alt_mobile_no,
+      email_id,
+      mothere_tougue,
+      category,
+      minority,
+      is_bpl,
+      is_aay,
+      ews_aged_group,
+      is_cwsn,
+      cwsn_imp_type,
+      ind_national,
+      mainstramed_child,
+      adm_no,
+      adm_date,
+      stu_stream,
+      pre_year_schl_status,
+      pre_year_class,
+      stu_ward,
+      pre_class_exam_app,
+      result_pre_exam,
+      perc_pre_class,
+      att_pre_class,
+      fac_free_uniform,
+      fac_free_textbook,
+      received_central_scholarship,
+      name_central_scholarship,
+      received_state_scholarship,
+      received_other_scholarship,
+      scholarship_amount,
+      fac_provided_cwsn,
+      SLD_type,
+      aut_spec_disorder,
+      ADHD,
+      inv_ext_curr_activity,
+      vocational_course,
+      trade_sector_id,
+      job_role_id,
+      pre_app_exam_vocationalsubject,
+      bpl_card_no,
+      ann_card_no,
     } = req.body;
 
     // Validation
-    if (!studentFullName && !photoId) return res.status(400).json({ success: false, message: "Student name or photoId is required." });
-    if (!studentEmail) return res.status(400).json({ success: false, message: "Student email is required." });
-    if (!studentPassword) return res.status(400).json({ success: false, message: "Student password is required." });
-    if (!studentJoiningDate) return res.status(400).json({ success: false, message: "Student joining date is required." });
-    if (!studentClass && !photoId) return res.status(400).json({ success: false, message: "Student class or photoId is required." });
-    if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
-    if (!parentEmail) return res.status(400).json({ success: false, message: "Parent email is required." });
-    if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
+    if (!studentFullName && !photoId)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Student name or photoId is required.",
+        });
+    if (!studentEmail)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student email is required." });
+    if (!studentPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student password is required." });
+    if (!studentJoiningDate)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student joining date is required." });
+    if (!studentClass && !photoId)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Student class or photoId is required.",
+        });
+    if (!fatherName)
+      return res
+        .status(400)
+        .json({ success: false, message: "Father's name is required." });
+    if (!parentEmail)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent email is required." });
+    if (!parentPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent password is required." });
 
-    const existingStudent = await NewStudentModel.findOne({ email: studentEmail, schoolId });
+    const existingStudent = await NewStudentModel.findOne({
+      email: studentEmail,
+      schoolId,
+    });
     if (existingStudent) {
       return res.status(400).json({
         success: false,
@@ -84,16 +188,26 @@ exports.createAdmission = async (req, res) => {
     }
 
     const files = req.files || [];
-    let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
-    const studentFile = files.studentPhoto || files.find(f => f.fieldname === "studentImage");
-    const fatherFile = files.find(f => f.fieldname === "fatherImage");
-    const motherFile = files.find(f => f.fieldname === "motherImage");
-    const guardianFile = files.find(f => f.fieldname === "guardianImage");
+    let studentImageResult = {},
+      fatherImageResult = {},
+      motherImageResult = {},
+      guardianImageResult = {};
+    const studentFile =
+      files.studentPhoto || files.find((f) => f.fieldname === "studentImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     // Prioritize studentImage from file upload, then photoId, then empty
     if (studentFile) {
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentFile.buffer,
+        ContentType: studentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     } else if (photoData && photoData.studentImage?.url) {
@@ -101,36 +215,67 @@ exports.createAdmission = async (req, res) => {
     }
 
     if (fatherFile) {
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const studentAdmissionNumberToUse = studentAdmissionNumber && studentAdmissionNumber.trim() !== "" 
-      ? studentAdmissionNumber 
-      : await generateAdmissionNumber(schoolId, NewStudentModel);
+    const studentAdmissionNumberToUse =
+      studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
+        ? studentAdmissionNumber
+        : await generateAdmissionNumber(schoolId, NewStudentModel);
 
     // Prioritize provided fields, then photoData
-    const finalStudentName = studentFullName?.trim() || photoData?.studentName || student_name || "Unknown";
-    const finalClass = studentClass || photoData?.class || studentUdiseClass || "Unknown";
-    const finalSection = studentSection || photoData?.section || studentUdiseSection || null;
+    const finalStudentName =
+      studentFullName?.trim() ||
+      photoData?.studentName ||
+      student_name ||
+      "Unknown";
+    const finalClass =
+      studentClass || photoData?.class || studentUdiseClass || "Unknown";
+    const finalSection =
+      studentSection || photoData?.section || studentUdiseSection || null;
 
     // Generate student UUID
     const studentUUID = uuidv4();
-    
+
     // Match NewStudentModel schema
     const studentData = await NewStudentModel.create({
       studentId: studentUUID,
@@ -158,10 +303,18 @@ exports.createAdmission = async (req, res) => {
       remarks,
       transport,
       base64: undefined,
-      studentImage: studentImageResult.url ? studentImageResult : { public_id: "", url: "" },
-      fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
-      motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
-      guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+      studentImage: studentImageResult.url
+        ? studentImageResult
+        : { public_id: "", url: "" },
+      fatherImage: fatherImageResult.url
+        ? fatherImageResult
+        : { public_id: "", url: "" },
+      motherImage: motherImageResult.url
+        ? motherImageResult
+        : { public_id: "", url: "" },
+      guardianImage: guardianImageResult.url
+        ? guardianImageResult
+        : { public_id: "", url: "" },
       admissionNumber: studentAdmissionNumberToUse,
       isGenerated: !studentAdmissionNumber,
       religion,
@@ -236,12 +389,15 @@ exports.createAdmission = async (req, res) => {
     let parentData = null;
     // Generate parent UUID
     const parentUUID = uuidv4();
-    
+
     if (parentAdmissionNumber) {
       // Find parent by admission number and update with student's UUID, not ObjectId
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId },
-        { $push: { studentIds: studentUUID }, $addToSet: { studentNames: finalStudentName } },
+        {
+          $push: { studentIds: studentUUID },
+          $addToSet: { studentNames: finalStudentName },
+        },
         { new: true }
       );
       if (!parentData) {
@@ -250,23 +406,31 @@ exports.createAdmission = async (req, res) => {
           message: "Parent with provided admission number does not exist.",
         });
       }
-      
+
       // Update student with parent's UUID
-      await NewStudentModel.findByIdAndUpdate(
-        studentData._id,
-        { parentId: parentData.parentId }
-      );
+      await NewStudentModel.findByIdAndUpdate(studentData._id, {
+        parentId: parentData.parentId,
+      });
     } else {
-      const parentFile = files.find(f => f.fieldname === "parentImage");
+      const parentFile = files.find((f) => f.fieldname === "parentImage");
       let parentImageResult = {};
       if (parentFile) {
         const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: parentFile.buffer,
+          ContentType: parentFile.mimetype,
+          ACL: "public-read",
+        };
         const minioData = await s3.upload(params).promise();
         parentImageResult = { public_id: fileKey, url: minioData.Location };
       }
 
-      const parentAdmissionNumberGenerated = await generateAdmissionNumber(schoolId, ParentModel);
+      const parentAdmissionNumberGenerated = await generateAdmissionNumber(
+        schoolId,
+        ParentModel
+      );
       parentData = await ParentModel.create({
         parentId: parentUUID,
         schoolId,
@@ -280,10 +444,18 @@ exports.createAdmission = async (req, res) => {
         status: "active",
         contact: parentContact,
         role: "parent",
-        parentImage: parentImageResult.url ? parentImageResult : { public_id: "", url: "" },
-        fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
-        motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
-        guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+        parentImage: parentImageResult.url
+          ? parentImageResult
+          : { public_id: "", url: "" },
+        fatherImage: fatherImageResult.url
+          ? fatherImageResult
+          : { public_id: "", url: "" },
+        motherImage: motherImageResult.url
+          ? motherImageResult
+          : { public_id: "", url: "" },
+        guardianImage: guardianImageResult.url
+          ? guardianImageResult
+          : { public_id: "", url: "" },
         admissionNumber: parentAdmissionNumberGenerated,
         base64: undefined,
         income: parentIncome ? Number(parentIncome) : undefined,
@@ -300,13 +472,22 @@ exports.createAdmission = async (req, res) => {
       await studentData.save();
 
       const parentEmailContent = `<p>Your login credentials are as follows:</p><p>Email: ${parentEmail}</p><p>Password: ${parentPassword}</p>`;
-      await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
+      await sendEmail(
+        parentEmail,
+        "Parent Login Credentials",
+        parentEmailContent
+      );
     }
 
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
-    const schoolName = schoolDetails?.schoolName || 'Your School';
-    const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94';
-    const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
+    const schoolName = schoolDetails?.schoolName || "Your School";
+    const schoolImageUrl =
+      schoolDetails?.image?.url ||
+      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94";
+    const softwareLogoUrl =
+      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -355,7 +536,11 @@ exports.createAdmission = async (req, res) => {
       </body>
       </html>
     `;
-    await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
+    await sendEmail(
+      studentEmail,
+      "Admission Confirmation",
+      studentEmailContent
+    );
 
     // Delete photo record if used
     // if (photoId && photoData) {
@@ -386,25 +571,38 @@ exports.getStudentsUnified = async (req, res) => {
     if (!req.user || !req.user.assignedSchools) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication failed or no assigned schools',
+        message: "Authentication failed or no assigned schools",
       });
     }
 
     const {
-      schoolId, studentId, studentName, class: studentClass, section, admissionNumber, email,
-      parentId, parentAdmissionNumber, approvalStatus, isNewAdmission, assignedThirdParty,
-      page = 1, limit = 0, sortBy = 'createdAt', sortOrder = -1,
-      status // <-- Add this line
+      schoolId,
+      studentId,
+      studentName,
+      class: studentClass,
+      section,
+      admissionNumber,
+      email,
+      parentId,
+      parentAdmissionNumber,
+      approvalStatus,
+      isNewAdmission,
+      assignedThirdParty,
+      page = 1,
+      limit = 0,
+      sortBy = "createdAt",
+      sortOrder = -1,
+      status, // <-- Add this line
     } = req.query;
 
-    const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map((s) => s.schoolId);
     let filterSchoolIds = assignedSchoolIds;
 
     if (schoolId) {
       if (!assignedSchoolIds.includes(schoolId)) {
         return res.status(403).json({
           success: false,
-          message: 'You do not have access to this school',
+          message: "You do not have access to this school",
         });
       }
       filterSchoolIds = [schoolId];
@@ -412,29 +610,31 @@ exports.getStudentsUnified = async (req, res) => {
 
     const query = {
       schoolId: { $in: filterSchoolIds },
-      status: status || 'active',
+      status: status || "active",
     };
-    
+
     if (studentId) query.studentId = studentId;
-    if (studentName) query.studentName = { $regex: studentName.trim(), $options: 'i' };
+    if (studentName)
+      query.studentName = { $regex: studentName.trim(), $options: "i" };
     if (studentClass) query.class = studentClass;
     if (section) query.section = section;
     if (admissionNumber) query.admissionNumber = admissionNumber;
     if (email) query.email = email;
     if (parentId) query.parentId = parentId;
-    if (parentAdmissionNumber) query.parentAdmissionNumber = parentAdmissionNumber;
+    if (parentAdmissionNumber)
+      query.parentAdmissionNumber = parentAdmissionNumber;
     if (approvalStatus) query.approvalStatus = approvalStatus;
-    if (isNewAdmission !== undefined) query.isNewAdmission = isNewAdmission === 'true';
+    if (isNewAdmission !== undefined)
+      query.isNewAdmission = isNewAdmission === "true";
     if (assignedThirdParty) {
-      if (req.user.role !== 'admin' && assignedThirdParty !== req.user.userId) {
+      if (req.user.role !== "admin" && assignedThirdParty !== req.user.userId) {
         return res.status(403).json({
           success: false,
-          message: 'You can only fetch your own assigned students',
+          message: "You can only fetch your own assigned students",
         });
       }
       query.assignedThirdParty = assignedThirdParty;
     }
-    
 
     const parsedPage = parseInt(page) || 1;
     const parsedLimit = parseInt(limit) || 10;
@@ -446,8 +646,9 @@ exports.getStudentsUnified = async (req, res) => {
     // Fetch students with pagination
     const students = await NewStudentModel.find(query)
       .select(
-        'studentId schoolId session studentName email dateOfBirth motherName fatherName parentContact rollNo parentId parentAdmissionNumber status gender joiningDate address contact class section country subject guardianName remarks transport base64 studentImage fatherImage motherImage guardianImage admissionNumber isGenerated religion caste nationality pincode state city approvalStatus isNewAdmission assignedThirdParty createdAt udisePlusDetails'
+        "studentId schoolId session studentName email dateOfBirth motherName fatherName parentContact rollNo parentId parentAdmissionNumber status gender joiningDate address contact class section country subject guardianName remarks transport base64 studentImage fatherImage motherImage guardianImage admissionNumber isGenerated isPrinted religion caste nationality pincode state city approvalStatus isNewAdmission assignedThirdParty createdAt udisePlusDetails"
       )
+
       .sort(sortOptions)
       .skip(skip)
       .limit(parsedLimit)
@@ -458,16 +659,18 @@ exports.getStudentsUnified = async (req, res) => {
     // Calculate image stats
     const studentsWithImages = await NewStudentModel.countDocuments({
       ...query,
-      'studentImage.url': { $ne: '' }
+      "studentImage.url": { $ne: "" },
     });
     const studentsWithoutImages = totalStudents - studentsWithImages;
 
     // Fetch parent data for each student
     for (let student of students) {
       if (student.parentId) {
-        const parent = await ParentModel.findOne({ parentId: student.parentId }).select(
-          'parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt'
-        ).lean();
+        const parent = await ParentModel.findOne({ parentId: student.parentId })
+          .select(
+            "parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt"
+          )
+          .lean();
         student.parent = parent || null;
       } else {
         student.parent = null;
@@ -476,10 +679,10 @@ exports.getStudentsUnified = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Students fetched successfully',
+      message: "Students fetched successfully",
       imageStats: {
         withImages: studentsWithImages,
-        withoutImages: studentsWithoutImages
+        withoutImages: studentsWithoutImages,
       },
       count: students.length,
       data: students,
@@ -490,10 +693,10 @@ exports.getStudentsUnified = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error in getStudentsUnified:', error);
+    console.error("Error in getStudentsUnified:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch students',
+      message: "Failed to fetch students",
       error: error.message,
     });
   }
@@ -515,7 +718,9 @@ exports.editAdmission = async (req, res) => {
       });
     }
 
-    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    const hasAccess = req.user.assignedSchools.some(
+      (s) => s.schoolId === schoolId
+    );
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -525,7 +730,9 @@ exports.editAdmission = async (req, res) => {
 
     const student = await NewStudentModel.findOne({ studentId });
     if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found." });
     }
 
     if (student.schoolId !== schoolId) {
@@ -540,7 +747,10 @@ exports.editAdmission = async (req, res) => {
 
     // Validate required fields
     if (formData.studentEmail && formData.studentEmail !== student.email) {
-      const existingStudent = await NewStudentModel.findOne({ email: formData.studentEmail, schoolId });
+      const existingStudent = await NewStudentModel.findOne({
+        email: formData.studentEmail,
+        schoolId,
+      });
       if (existingStudent && existingStudent.studentId !== studentId) {
         return res.status(400).json({
           success: false,
@@ -550,16 +760,20 @@ exports.editAdmission = async (req, res) => {
     }
 
     // Check if student admission number is being updated and validate uniqueness
-    if (formData.studentAdmissionNumber && formData.studentAdmissionNumber !== student.admissionNumber) {
-      const existingStudentWithAdmissionNumber = await NewStudentModel.findOne({ 
-        admissionNumber: formData.studentAdmissionNumber, 
+    if (
+      formData.studentAdmissionNumber &&
+      formData.studentAdmissionNumber !== student.admissionNumber
+    ) {
+      const existingStudentWithAdmissionNumber = await NewStudentModel.findOne({
+        admissionNumber: formData.studentAdmissionNumber,
         schoolId,
-        studentId: { $ne: studentId } // Exclude current student
+        studentId: { $ne: studentId }, // Exclude current student
       });
       if (existingStudentWithAdmissionNumber) {
         return res.status(400).json({
           success: false,
-          message: "Student admission number is already in use by another student in this school.",
+          message:
+            "Student admission number is already in use by another student in this school.",
         });
       }
     }
@@ -572,47 +786,100 @@ exports.editAdmission = async (req, res) => {
     let studentImageResult = student.studentImage || { public_id: "", url: "" };
     let fatherImageResult = student.fatherImage || { public_id: "", url: "" };
     let motherImageResult = student.motherImage || { public_id: "", url: "" };
-    let guardianImageResult = student.guardianImage || { public_id: "", url: "" };
+    let guardianImageResult = student.guardianImage || {
+      public_id: "",
+      url: "",
+    };
 
-    const studentFile = files.find(f => f.fieldname === "studentImage");
-    const fatherFile = files.find(f => f.fieldname === "fatherImage");
-    const motherFile = files.find(f => f.fieldname === "motherImage");
-    const guardianFile = files.find(f => f.fieldname === "guardianImage");
+    const studentFile = files.find((f) => f.fieldname === "studentImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     // Handle image uploads
     if (studentFile) {
       if (studentImageResult.public_id) {
-        await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: studentImageResult.public_id }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: studentImageResult.public_id,
+          })
+          .promise();
       }
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentFile.buffer,
+        ContentType: studentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
       if (fatherImageResult.public_id) {
-        await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: fatherImageResult.public_id }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: fatherImageResult.public_id,
+          })
+          .promise();
       }
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
       if (motherImageResult.public_id) {
-        await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: motherImageResult.public_id }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: motherImageResult.public_id,
+          })
+          .promise();
       }
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
       if (guardianImageResult.public_id) {
-        await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: guardianImageResult.public_id }).promise();
+        await s3
+          .deleteObject({
+            Bucket: process.env.MINIO_BUCKET,
+            Key: guardianImageResult.public_id,
+          })
+          .promise();
       }
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
@@ -637,17 +904,24 @@ exports.editAdmission = async (req, res) => {
       dateOfBirth: formData.studentDateOfBirth || student.dateOfBirth,
       motherName: formData.motherName || student.motherName,
       fatherName: formData.fatherName || student.fatherName,
-      parentContact: formData.parentContact ? Number(formData.parentContact) : student.parentContact,
+      parentContact: formData.parentContact
+        ? Number(formData.parentContact)
+        : student.parentContact,
       rollNo: formData.rollNo || student.rollNo,
-      admissionNumber: formData.studentAdmissionNumber || student.admissionNumber, // ADDED: Support for student admission number update
+      admissionNumber:
+        formData.studentAdmissionNumber || student.admissionNumber, // ADDED: Support for student admission number update
       gender: formData.studentGender || student.gender,
       joiningDate: formData.studentJoiningDate || student.joiningDate,
       address: formData.studentAddress || student.address,
-      contact: formData.studentContact ? Number(formData.studentContact) : student.contact,
+      contact: formData.studentContact
+        ? Number(formData.studentContact)
+        : student.contact,
       class: formData.studentClass || student.class,
       section: formData.studentSection || student.section,
       country: formData.studentCountry || student.country,
-      subject: formData.studentSubject ? formData.studentSubject.split(",") : student.subject,
+      subject: formData.studentSubject
+        ? formData.studentSubject.split(",")
+        : student.subject,
       guardianName: formData.guardianName || student.guardianName,
       remarks: formData.remarks || student.remarks,
       transport: formData.transport || student.transport,
@@ -663,64 +937,117 @@ exports.editAdmission = async (req, res) => {
       state: formData.state || student.state,
       city: formData.city || student.city,
       approvalStatus: formData.approvalStatus || student.approvalStatus,
-      isNewAdmission: formData.isNewAdmission !== undefined ? formData.isNewAdmission : student.isNewAdmission,
-      assignedThirdParty: formData.assignedThirdParty || student.assignedThirdParty,
+      isNewAdmission:
+        formData.isNewAdmission !== undefined
+          ? formData.isNewAdmission
+          : student.isNewAdmission,
+      assignedThirdParty:
+        formData.assignedThirdParty || student.assignedThirdParty,
       udisePlusDetails: {
         stu_id: formData.stu_id || student.udisePlusDetails?.stu_id,
         class: formData.studentUdiseClass || student.udisePlusDetails?.class,
-        section: formData.studentUdiseSection || student.udisePlusDetails?.section,
+        section:
+          formData.studentUdiseSection || student.udisePlusDetails?.section,
         roll_no: formData.roll_no || student.udisePlusDetails?.roll_no,
-        student_name: formData.student_name || student.udisePlusDetails?.student_name,
+        student_name:
+          formData.student_name || student.udisePlusDetails?.student_name,
         gender: formData.studentUdiseGender || student.udisePlusDetails?.gender,
         DOB: formData.DOB || student.udisePlusDetails?.DOB,
-        mother_name: formData.motherName || student.udisePlusDetails?.mother_name,
-        father_name: formData.fatherName || student.udisePlusDetails?.father_name,
-        guardian_name: formData.guardianName || student.udisePlusDetails?.guardian_name,
+        mother_name:
+          formData.motherName || student.udisePlusDetails?.mother_name,
+        father_name:
+          formData.fatherName || student.udisePlusDetails?.father_name,
+        guardian_name:
+          formData.guardianName || student.udisePlusDetails?.guardian_name,
         aadhar_no: formData.aadhar_no || student.udisePlusDetails?.aadhar_no,
-        aadhar_name: formData.aadhar_name || student.udisePlusDetails?.aadhar_name,
+        aadhar_name:
+          formData.aadhar_name || student.udisePlusDetails?.aadhar_name,
         paddress: formData.paddress || student.udisePlusDetails?.paddress,
         pincode: formData.udisePlusPincode || student.udisePlusDetails?.pincode,
         mobile_no: formData.mobile_no || student.udisePlusDetails?.mobile_no,
-        alt_mobile_no: formData.alt_mobile_no || student.udisePlusDetails?.alt_mobile_no,
+        alt_mobile_no:
+          formData.alt_mobile_no || student.udisePlusDetails?.alt_mobile_no,
         email_id: formData.email_id || student.udisePlusDetails?.email_id,
-        mothere_tougue: formData.mothere_tougue || student.udisePlusDetails?.mothere_tougue,
+        mothere_tougue:
+          formData.mothere_tougue || student.udisePlusDetails?.mothere_tougue,
         category: formData.category || student.udisePlusDetails?.category,
         minority: formData.minority || student.udisePlusDetails?.minority,
         is_bpl: formData.is_bpl || student.udisePlusDetails?.is_bpl,
         is_aay: formData.is_aay || student.udisePlusDetails?.is_aay,
-        ews_aged_group: formData.ews_aged_group || student.udisePlusDetails?.ews_aged_group,
+        ews_aged_group:
+          formData.ews_aged_group || student.udisePlusDetails?.ews_aged_group,
         is_cwsn: formData.is_cwsn || student.udisePlusDetails?.is_cwsn,
-        cwsn_imp_type: formData.cwsn_imp_type || student.udisePlusDetails?.cwsn_imp_type,
-        ind_national: formData.ind_national || student.udisePlusDetails?.ind_national,
-        mainstramed_child: formData.mainstramed_child || student.udisePlusDetails?.mainstramed_child,
+        cwsn_imp_type:
+          formData.cwsn_imp_type || student.udisePlusDetails?.cwsn_imp_type,
+        ind_national:
+          formData.ind_national || student.udisePlusDetails?.ind_national,
+        mainstramed_child:
+          formData.mainstramed_child ||
+          student.udisePlusDetails?.mainstramed_child,
         adm_no: formData.adm_no || student.udisePlusDetails?.adm_no,
         adm_date: formData.adm_date || student.udisePlusDetails?.adm_date,
         stu_stream: formData.stu_stream || student.udisePlusDetails?.stu_stream,
-        pre_year_schl_status: formData.pre_year_schl_status || student.udisePlusDetails?.pre_year_schl_status,
-        pre_year_class: formData.pre_year_class || student.udisePlusDetails?.pre_year_class,
+        pre_year_schl_status:
+          formData.pre_year_schl_status ||
+          student.udisePlusDetails?.pre_year_schl_status,
+        pre_year_class:
+          formData.pre_year_class || student.udisePlusDetails?.pre_year_class,
         stu_ward: formData.stu_ward || student.udisePlusDetails?.stu_ward,
-        pre_class_exam_app: formData.pre_class_exam_app || student.udisePlusDetails?.pre_class_exam_app,
-        result_pre_exam: formData.result_pre_exam || student.udisePlusDetails?.result_pre_exam,
-        perc_pre_class: formData.perc_pre_class || student.udisePlusDetails?.perc_pre_class,
-        att_pre_class: formData.att_pre_class || student.udisePlusDetails?.att_pre_class,
-        fac_free_uniform: formData.fac_free_uniform || student.udisePlusDetails?.fac_free_uniform,
-        fac_free_textbook: formData.fac_free_textbook || student.udisePlusDetails?.fac_free_textbook,
-        received_central_scholarship: formData.received_central_scholarship || student.udisePlusDetails?.received_central_scholarship,
-        name_central_scholarship: formData.name_central_scholarship || student.udisePlusDetails?.name_central_scholarship,
-        received_state_scholarship: formData.received_state_scholarship || student.udisePlusDetails?.received_state_scholarship,
-        received_other_scholarship: formData.received_other_scholarship || student.udisePlusDetails?.received_other_scholarship,
-        scholarship_amount: formData.scholarship_amount || student.udisePlusDetails?.scholarship_amount,
-        fac_provided_cwsn: formData.fac_provided_cwsn || student.udisePlusDetails?.fac_provided_cwsn,
+        pre_class_exam_app:
+          formData.pre_class_exam_app ||
+          student.udisePlusDetails?.pre_class_exam_app,
+        result_pre_exam:
+          formData.result_pre_exam || student.udisePlusDetails?.result_pre_exam,
+        perc_pre_class:
+          formData.perc_pre_class || student.udisePlusDetails?.perc_pre_class,
+        att_pre_class:
+          formData.att_pre_class || student.udisePlusDetails?.att_pre_class,
+        fac_free_uniform:
+          formData.fac_free_uniform ||
+          student.udisePlusDetails?.fac_free_uniform,
+        fac_free_textbook:
+          formData.fac_free_textbook ||
+          student.udisePlusDetails?.fac_free_textbook,
+        received_central_scholarship:
+          formData.received_central_scholarship ||
+          student.udisePlusDetails?.received_central_scholarship,
+        name_central_scholarship:
+          formData.name_central_scholarship ||
+          student.udisePlusDetails?.name_central_scholarship,
+        received_state_scholarship:
+          formData.received_state_scholarship ||
+          student.udisePlusDetails?.received_state_scholarship,
+        received_other_scholarship:
+          formData.received_other_scholarship ||
+          student.udisePlusDetails?.received_other_scholarship,
+        scholarship_amount:
+          formData.scholarship_amount ||
+          student.udisePlusDetails?.scholarship_amount,
+        fac_provided_cwsn:
+          formData.fac_provided_cwsn ||
+          student.udisePlusDetails?.fac_provided_cwsn,
         SLD_type: formData.SLD_type || student.udisePlusDetails?.SLD_type,
-        aut_spec_disorder: formData.aut_spec_disorder || student.udisePlusDetails?.aut_spec_disorder,
+        aut_spec_disorder:
+          formData.aut_spec_disorder ||
+          student.udisePlusDetails?.aut_spec_disorder,
         ADHD: formData.ADHD || student.udisePlusDetails?.ADHD,
-        inv_ext_curr_activity: formData.inv_ext_curr_activity || student.udisePlusDetails?.inv_ext_curr_activity,
-        vocational_course: formData.vocational_course || student.udisePlusDetails?.vocational_course,
-        trade_sector_id: formData.trade_sector_id || student.udisePlusDetails?.trade_sector_id,
-        job_role_id: formData.job_role_id || student.udisePlusDetails?.job_role_id,
-        pre_app_exam_vocationalsubject: formData.pre_app_exam_vocationalsubject || student.udisePlusDetails?.pre_app_exam_vocationalsubject,
-        bpl_card_no: formData.bpl_card_no || student.udisePlusDetails?.bpl_card_no,
-        ann_card_no: formData.ann_card_no || student.udisePlusDetails?.ann_card_no,
+        inv_ext_curr_activity:
+          formData.inv_ext_curr_activity ||
+          student.udisePlusDetails?.inv_ext_curr_activity,
+        vocational_course:
+          formData.vocational_course ||
+          student.udisePlusDetails?.vocational_course,
+        trade_sector_id:
+          formData.trade_sector_id || student.udisePlusDetails?.trade_sector_id,
+        job_role_id:
+          formData.job_role_id || student.udisePlusDetails?.job_role_id,
+        pre_app_exam_vocationalsubject:
+          formData.pre_app_exam_vocationalsubject ||
+          student.udisePlusDetails?.pre_app_exam_vocationalsubject,
+        bpl_card_no:
+          formData.bpl_card_no || student.udisePlusDetails?.bpl_card_no,
+        ann_card_no:
+          formData.ann_card_no || student.udisePlusDetails?.ann_card_no,
       },
     };
 
@@ -741,26 +1068,32 @@ exports.editAdmission = async (req, res) => {
     // Handle parent updates
     let updatedParent = null;
     if (formData.parentId || formData.parentAdmissionNumber) {
-      const parentQuery = formData.parentId 
+      const parentQuery = formData.parentId
         ? { parentId: formData.parentId }
         : { admissionNumber: formData.parentAdmissionNumber, schoolId };
-      
+
       const parent = await ParentModel.findOne(parentQuery);
       if (!parent) {
-        return res.status(404).json({ success: false, message: "Parent not found." });
+        return res
+          .status(404)
+          .json({ success: false, message: "Parent not found." });
       }
 
       // Check if parent admission number is being updated and validate uniqueness
-      if (formData.parentAdmissionNumber && formData.parentAdmissionNumber !== parent.admissionNumber) {
-        const existingParentWithAdmissionNumber = await ParentModel.findOne({ 
-          admissionNumber: formData.parentAdmissionNumber, 
+      if (
+        formData.parentAdmissionNumber &&
+        formData.parentAdmissionNumber !== parent.admissionNumber
+      ) {
+        const existingParentWithAdmissionNumber = await ParentModel.findOne({
+          admissionNumber: formData.parentAdmissionNumber,
           schoolId,
-          parentId: { $ne: parent.parentId } // Exclude current parent
+          parentId: { $ne: parent.parentId }, // Exclude current parent
         });
         if (existingParentWithAdmissionNumber) {
           return res.status(400).json({
             success: false,
-            message: "Parent admission number is already in use by another parent in this school.",
+            message:
+              "Parent admission number is already in use by another parent in this school.",
           });
         }
       }
@@ -769,42 +1102,95 @@ exports.editAdmission = async (req, res) => {
       let parentImageResult = parent.parentImage || { public_id: "", url: "" };
       let pFatherImageResult = parent.fatherImage || { public_id: "", url: "" };
       let pMotherImageResult = parent.motherImage || { public_id: "", url: "" };
-      let pGuardianImageResult = parent.guardianImage || { public_id: "", url: "" };
+      let pGuardianImageResult = parent.guardianImage || {
+        public_id: "",
+        url: "",
+      };
 
-      const parentFile = files.find(f => f.fieldname === "parentImage");
+      const parentFile = files.find((f) => f.fieldname === "parentImage");
       if (parentFile) {
         if (parentImageResult.public_id) {
-          await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: parentImageResult.public_id }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: parentImageResult.public_id,
+            })
+            .promise();
         }
         const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: parentFile.buffer,
+          ContentType: parentFile.mimetype,
+          ACL: "public-read",
+        };
         const minioData = await s3.upload(params).promise();
         parentImageResult = { public_id: fileKey, url: minioData.Location };
       }
       if (fatherFile) {
         if (pFatherImageResult.public_id) {
-          await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: pFatherImageResult.public_id }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: pFatherImageResult.public_id,
+            })
+            .promise();
         }
-        const fileKey = `parents/father/${Date.now()}-${fatherFile.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+        const fileKey = `parents/father/${Date.now()}-${
+          fatherFile.originalname
+        }`;
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: fatherFile.buffer,
+          ContentType: fatherFile.mimetype,
+          ACL: "public-read",
+        };
         const minioData = await s3.upload(params).promise();
         pFatherImageResult = { public_id: fileKey, url: minioData.Location };
       }
       if (motherFile) {
         if (pMotherImageResult.public_id) {
-          await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: pMotherImageResult.public_id }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: pMotherImageResult.public_id,
+            })
+            .promise();
         }
-        const fileKey = `parents/mother/${Date.now()}-${motherFile.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+        const fileKey = `parents/mother/${Date.now()}-${
+          motherFile.originalname
+        }`;
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: motherFile.buffer,
+          ContentType: motherFile.mimetype,
+          ACL: "public-read",
+        };
         const minioData = await s3.upload(params).promise();
         pMotherImageResult = { public_id: fileKey, url: minioData.Location };
       }
       if (guardianFile) {
         if (pGuardianImageResult.public_id) {
-          await s3.deleteObject({ Bucket: process.env.MINIO_BUCKET, Key: pGuardianImageResult.public_id }).promise();
+          await s3
+            .deleteObject({
+              Bucket: process.env.MINIO_BUCKET,
+              Key: pGuardianImageResult.public_id,
+            })
+            .promise();
         }
-        const fileKey = `parents/guardian/${Date.now()}-${guardianFile.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+        const fileKey = `parents/guardian/${Date.now()}-${
+          guardianFile.originalname
+        }`;
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: guardianFile.buffer,
+          ContentType: guardianFile.mimetype,
+          ACL: "public-read",
+        };
         const minioData = await s3.upload(params).promise();
         pGuardianImageResult = { public_id: fileKey, url: minioData.Location };
       }
@@ -827,11 +1213,16 @@ exports.editAdmission = async (req, res) => {
         motherName: formData.motherName || parent.motherName,
         email: formData.parentEmail || parent.email,
         password: parentHashPassword,
-        contact: formData.parentContact ? Number(formData.parentContact) : parent.contact,
-        income: formData.parentIncome ? Number(formData.parentIncome) : parent.income,
+        contact: formData.parentContact
+          ? Number(formData.parentContact)
+          : parent.contact,
+        income: formData.parentIncome
+          ? Number(formData.parentIncome)
+          : parent.income,
         qualification: formData.parentQualification || parent.qualification,
         guardianName: formData.guardianName || parent.guardianName,
-        admissionNumber: formData.parentAdmissionNumber || parent.admissionNumber, // ADDED: Support for parent admission number update
+        admissionNumber:
+          formData.parentAdmissionNumber || parent.admissionNumber, // ADDED: Support for parent admission number update
         parentImage: parentImageResult,
         fatherImage: pFatherImageResult,
         motherImage: pMotherImageResult,
@@ -849,8 +1240,13 @@ exports.editAdmission = async (req, res) => {
       );
 
       // Update student with parentId and new parent admission number if updated
-      if (!updatedStudent.parentId || updatedStudent.parentId !== parent.parentId || 
-          (formData.parentAdmissionNumber && updatedStudent.parentAdmissionNumber !== formData.parentAdmissionNumber)) {
+      if (
+        !updatedStudent.parentId ||
+        updatedStudent.parentId !== parent.parentId ||
+        (formData.parentAdmissionNumber &&
+          updatedStudent.parentAdmissionNumber !==
+            formData.parentAdmissionNumber)
+      ) {
         updatedStudent.parentId = parent.parentId;
         updatedStudent.parentAdmissionNumber = updatedParent.admissionNumber; // Use the updated admission number
         await updatedStudent.save();
@@ -881,11 +1277,13 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
     if (!req.user || !req.user.assignedSchools) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication failed or no assigned schools',
+        message: "Authentication failed or no assigned schools",
       });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
     let filterSchoolIds = assignedSchoolIds;
 
     if (req.query.schoolId) {
@@ -893,7 +1291,7 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
       if (!assignedSchoolIds.includes(requestedSchoolId)) {
         return res.status(403).json({
           success: false,
-          message: 'You do not have access to this school',
+          message: "You do not have access to this school",
         });
       }
       filterSchoolIds = [requestedSchoolId];
@@ -907,7 +1305,7 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
       schoolId: { $in: filterSchoolIds },
     })
       .select(
-        'studentId schoolId session studentName email dateOfBirth motherName fatherName parentContact rollNo parentId parentAdmissionNumber status gender joiningDate address contact class section country subject guardianName remarks transport base64 studentImage fatherImage motherImage guardianImage admissionNumber isGenerated religion caste nationality pincode state city approvalStatus isNewAdmission assignedThirdParty createdAt udisePlusDetails'
+        "studentId schoolId session studentName email dateOfBirth motherName fatherName parentContact rollNo parentId parentAdmissionNumber status gender joiningDate address contact class section country subject guardianName remarks transport base64 studentImage fatherImage motherImage guardianImage admissionNumber isGenerated religion caste nationality pincode state city approvalStatus isNewAdmission assignedThirdParty createdAt udisePlusDetails"
       )
       .sort({ createdAt: -1 });
 
@@ -923,9 +1321,11 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
     // Manually fetch parent data for each student
     for (let student of students) {
       if (student.parentId) {
-        const parent = await ParentModel.findOne({ parentId: student.parentId }).select(
-          'parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt'
-        ).lean();
+        const parent = await ParentModel.findOne({ parentId: student.parentId })
+          .select(
+            "parentId schoolId session studentIds studentNames fatherName motherName email status contact role parentImage fatherImage motherImage guardianImage admissionNumber income qualification guardianName createdBy createdAt"
+          )
+          .lean();
         student.parent = parent || null; // Add parent data or null if not found
       } else {
         student.parent = null;
@@ -936,20 +1336,22 @@ exports.getAllStudentsForThirdParty = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Students fetched successfully',
+      message: "Students fetched successfully",
       count,
       data: students,
-      pagination: limit ? {
-        currentPage: page,
-        totalPages: Math.ceil(totalStudents / limit),
-        totalStudents,
-      } : { totalStudents },
+      pagination: limit
+        ? {
+            currentPage: page,
+            totalPages: Math.ceil(totalStudents / limit),
+            totalStudents,
+          }
+        : { totalStudents },
     });
   } catch (error) {
-    console.error('Error fetching students for third-party:', error);
+    console.error("Error fetching students for third-party:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch students',
+      message: "Failed to fetch students",
       error: error.message,
     });
   }
@@ -962,25 +1364,29 @@ exports.getStudentsBySchool = async (req, res) => {
   try {
     const { schoolId } = req.query;
     if (!schoolId) {
-      return res.status(400).json({ success: false, message: "Please provide a schoolId" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Please provide a schoolId" });
     }
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
     if (!assignedSchoolIds.includes(schoolId)) {
       return res.status(403).json({
         success: false,
-        message: "You do not have access to this school."
+        message: "You do not have access to this school.",
       });
     }
     const students = await NewStudentModel.find({ schoolId });
     return res.status(200).json({
       success: true,
       message: "Students fetched successfully",
-      data: students
+      data: students,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -998,16 +1404,18 @@ exports.getStudentsByClassSectionThirdParty = async (req, res) => {
     const query = {};
 
     if (schoolId) {
-      const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+      const hasAccess = req.user.assignedSchools.some(
+        (s) => s.schoolId === schoolId
+      );
       if (!hasAccess) {
         return res.status(403).json({
           success: false,
-          message: "You do not have access to this school."
+          message: "You do not have access to this school.",
         });
       }
       query.schoolId = schoolId;
     } else {
-      query.schoolId = { $in: req.user.assignedSchools.map(s => s.schoolId) };
+      query.schoolId = { $in: req.user.assignedSchools.map((s) => s.schoolId) };
     }
 
     if (studentClass) query.class = studentClass;
@@ -1026,8 +1434,8 @@ exports.getStudentsByClassSectionThirdParty = async (req, res) => {
       pagination: {
         currentPage: page,
         totalPages: Math.ceil(totalStudents / limit),
-        totalStudents
-      }
+        totalStudents,
+      },
     });
   } catch (error) {
     console.error("Error in getStudentsByClassSectionThirdParty:", error);
@@ -1040,7 +1448,9 @@ exports.getStudentsByClassSectionThirdParty = async (req, res) => {
  */
 exports.getMyAdmissions = async (req, res) => {
   try {
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
 
     const students = await NewStudentModel.find({
       schoolId: { $in: assignedSchoolIds },
@@ -1049,7 +1459,7 @@ exports.getMyAdmissions = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Your admissions fetched successfully',
+      message: "Your admissions fetched successfully",
       data: students,
     });
   } catch (error) {
@@ -1065,16 +1475,24 @@ exports.getMyAdmissions = async (req, res) => {
  */
 exports.getMyAdmissionsBySchool = async (req, res) => {
   try {
-    const { schoolId, class: studentClass, section: studentSection } = req.query;
+    const {
+      schoolId,
+      class: studentClass,
+      section: studentSection,
+    } = req.query;
     if (!schoolId) {
-      return res.status(400).json({ success: false, message: 'Please provide a schoolId' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Please provide a schoolId" });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
     if (!assignedSchoolIds.includes(schoolId)) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have access to this school',
+        message: "You do not have access to this school",
       });
     }
 
@@ -1089,7 +1507,7 @@ exports.getMyAdmissionsBySchool = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Your admissions for the school fetched successfully',
+      message: "Your admissions for the school fetched successfully",
       data: students,
     });
   } catch (error) {
@@ -1108,19 +1526,24 @@ exports.updateMyStudent = async (req, res) => {
     const { studentId } = req.params;
     const updateData = req.body;
 
-    const student = await NewStudentModel.findOne({studentId});
+    const student = await NewStudentModel.findOne({ studentId });
     if (!student) {
       return res.status(404).json({
         success: false,
-        message: 'Student not found',
+        message: "Student not found",
       });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
-    if (!assignedSchoolIds.includes(student.schoolId) || student.assignedThirdParty !== req.user.userId) {
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
+    if (
+      !assignedSchoolIds.includes(student.schoolId) ||
+      student.assignedThirdParty !== req.user.userId
+    ) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have permission to edit this student',
+        message: "You do not have permission to edit this student",
       });
     }
 
@@ -1129,7 +1552,8 @@ exports.updateMyStudent = async (req, res) => {
     delete updateData.approvalStatus;
 
     // Match NewStudentModel schema
-    if (updateData.studentFullName) student.studentName = updateData.studentFullName;
+    if (updateData.studentFullName)
+      student.studentName = updateData.studentFullName;
     if (updateData.studentEmail) student.email = updateData.studentEmail;
     if (updateData.studentPassword) {
       if (updateData.studentPassword.length < 8) {
@@ -1140,19 +1564,24 @@ exports.updateMyStudent = async (req, res) => {
       }
       student.password = await hashPassword(updateData.studentPassword);
     }
-    if (updateData.studentDateOfBirth) student.dateOfBirth = updateData.studentDateOfBirth;
+    if (updateData.studentDateOfBirth)
+      student.dateOfBirth = updateData.studentDateOfBirth;
     if (updateData.motherName) student.motherName = updateData.motherName;
     if (updateData.fatherName) student.fatherName = updateData.fatherName;
-    if (updateData.studentContact) student.parentContact = Number(updateData.studentContact);
+    if (updateData.studentContact)
+      student.parentContact = Number(updateData.studentContact);
     if (updateData.rollNo) student.rollNo = updateData.rollNo;
     if (updateData.studentGender) student.gender = updateData.studentGender;
-    if (updateData.studentJoiningDate) student.joiningDate = updateData.studentJoiningDate;
+    if (updateData.studentJoiningDate)
+      student.joiningDate = updateData.studentJoiningDate;
     if (updateData.studentAddress) student.address = updateData.studentAddress;
-    if (updateData.studentContact) student.contact = Number(updateData.studentContact);
+    if (updateData.studentContact)
+      student.contact = Number(updateData.studentContact);
     if (updateData.studentClass) student.class = updateData.studentClass;
     if (updateData.studentSection) student.section = updateData.studentSection;
     if (updateData.studentCountry) student.country = updateData.studentCountry;
-    if (updateData.studentSubject) student.subject = updateData.studentSubject.split(",");
+    if (updateData.studentSubject)
+      student.subject = updateData.studentSubject.split(",");
     if (updateData.guardianName) student.guardianName = updateData.guardianName;
     if (updateData.remarks) student.remarks = updateData.remarks;
     if (updateData.transport) student.transport = updateData.transport;
@@ -1171,7 +1600,7 @@ exports.updateMyStudent = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Student updated successfully',
+      message: "Student updated successfully",
       student,
     });
   } catch (error) {
@@ -1192,14 +1621,18 @@ exports.updateAnyStudent = async (req, res) => {
 
     const student = await NewStudentModel.findOne({ studentId });
     if (!student) {
-      return res.status(404).json({ success: false, message: "Student not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
     if (!assignedSchoolIds.includes(student.schoolId)) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have access to edit students from this school',
+        message: "You do not have access to edit students from this school",
       });
     }
 
@@ -1208,7 +1641,8 @@ exports.updateAnyStudent = async (req, res) => {
     delete updateData.approvalStatus;
 
     // Match NewStudentModel schema
-    if (updateData.studentFullName) student.studentName = updateData.studentFullName;
+    if (updateData.studentFullName)
+      student.studentName = updateData.studentFullName;
     if (updateData.studentEmail) student.email = updateData.studentEmail;
     if (updateData.studentPassword) {
       if (updateData.studentPassword.length < 8) {
@@ -1219,19 +1653,24 @@ exports.updateAnyStudent = async (req, res) => {
       }
       student.password = await hashPassword(updateData.studentPassword);
     }
-    if (updateData.studentDateOfBirth) student.dateOfBirth = updateData.studentDateOfBirth;
+    if (updateData.studentDateOfBirth)
+      student.dateOfBirth = updateData.studentDateOfBirth;
     if (updateData.motherName) student.motherName = updateData.motherName;
     if (updateData.fatherName) student.fatherName = updateData.fatherName;
-    if (updateData.studentContact) student.parentContact = Number(updateData.studentContact);
+    if (updateData.studentContact)
+      student.parentContact = Number(updateData.studentContact);
     if (updateData.rollNo) student.rollNo = updateData.rollNo;
     if (updateData.studentGender) student.gender = updateData.studentGender;
-    if (updateData.studentJoiningDate) student.joiningDate = updateData.studentJoiningDate;
+    if (updateData.studentJoiningDate)
+      student.joiningDate = updateData.studentJoiningDate;
     if (updateData.studentAddress) student.address = updateData.studentAddress;
-    if (updateData.studentContact) student.contact = Number(updateData.studentContact);
+    if (updateData.studentContact)
+      student.contact = Number(updateData.studentContact);
     if (updateData.studentClass) student.class = updateData.studentClass;
     if (updateData.studentSection) student.section = updateData.studentSection;
     if (updateData.studentCountry) student.country = updateData.studentCountry;
-    if (updateData.studentSubject) student.subject = updateData.studentSubject.split(",");
+    if (updateData.studentSubject)
+      student.subject = updateData.studentSubject.split(",");
     if (updateData.guardianName) student.guardianName = updateData.guardianName;
     if (updateData.remarks) student.remarks = updateData.remarks;
     if (updateData.transport) student.transport = updateData.transport;
@@ -1250,7 +1689,7 @@ exports.updateAnyStudent = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Student updated successfully',
+      message: "Student updated successfully",
       student,
     });
   } catch (error) {
@@ -1268,14 +1707,18 @@ exports.getMyStudentsBySchool = async (req, res) => {
   try {
     const { schoolId } = req.query;
     if (!schoolId) {
-      return res.status(400).json({ success: false, message: 'Please provide a schoolId' });
+      return res
+        .status(400)
+        .json({ success: false, message: "Please provide a schoolId" });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
     if (!assignedSchoolIds.includes(schoolId)) {
       return res.status(403).json({
         success: false,
-        message: 'You do not have access to this school',
+        message: "You do not have access to this school",
       });
     }
 
@@ -1286,7 +1729,7 @@ exports.getMyStudentsBySchool = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Your students for the school fetched successfully',
+      message: "Your students for the school fetched successfully",
       data: students,
     });
   } catch (error) {
@@ -1310,7 +1753,9 @@ exports.getClassesForSchool = async (req, res) => {
       });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
     if (!assignedSchoolIds.includes(schoolId)) {
       return res.status(403).json({
         success: false,
@@ -1320,7 +1765,7 @@ exports.getClassesForSchool = async (req, res) => {
 
     const classList = await classModel.find({ schoolId });
 
-    const formattedClassList = classList.map(classItem => ({
+    const formattedClassList = classList.map((classItem) => ({
       ...classItem._doc,
       sections: classItem.sections.join(", "),
       subjects: classItem.subjects.join(", "),
@@ -1347,7 +1792,9 @@ exports.createStudentOnlyThirdParty = async (req, res) => {
   try {
     const { schoolId } = req.body;
     const session = req.user.session;
-    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    const hasAccess = req.user.assignedSchools.some(
+      (s) => s.schoolId === schoolId
+    );
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -1356,29 +1803,111 @@ exports.createStudentOnlyThirdParty = async (req, res) => {
     }
 
     const {
-      studentFullName, studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
-      studentAddress, studentContact, studentClass, studentSection, studentCountry, studentSubject,
-      fatherName, motherName, guardianName, remarks, transport, religion, caste, nationality, pincode, state, city,
-      studentAdmissionNumber, rollNo,
+      studentFullName,
+      studentEmail,
+      studentPassword,
+      studentDateOfBirth,
+      studentGender,
+      studentJoiningDate,
+      studentAddress,
+      studentContact,
+      studentClass,
+      studentSection,
+      studentCountry,
+      studentSubject,
+      fatherName,
+      motherName,
+      guardianName,
+      remarks,
+      transport,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      studentAdmissionNumber,
+      rollNo,
       // UDISE+ fields
-      stu_id, studentUdiseClass, studentUdiseSection, roll_no, student_name, studentUdiseGender, DOB,
-      aadhar_no, aadhar_name, paddress, udisePlusPincode, mobile_no, alt_mobile_no, email_id,
-      mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type,
-      ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class,
-      stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform,
-      fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship,
-      received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder,
-      ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject,
-      bpl_card_no, ann_card_no,
+      stu_id,
+      studentUdiseClass,
+      studentUdiseSection,
+      roll_no,
+      student_name,
+      studentUdiseGender,
+      DOB,
+      aadhar_no,
+      aadhar_name,
+      paddress,
+      udisePlusPincode,
+      mobile_no,
+      alt_mobile_no,
+      email_id,
+      mothere_tougue,
+      category,
+      minority,
+      is_bpl,
+      is_aay,
+      ews_aged_group,
+      is_cwsn,
+      cwsn_imp_type,
+      ind_national,
+      mainstramed_child,
+      adm_no,
+      adm_date,
+      stu_stream,
+      pre_year_schl_status,
+      pre_year_class,
+      stu_ward,
+      pre_class_exam_app,
+      result_pre_exam,
+      perc_pre_class,
+      att_pre_class,
+      fac_free_uniform,
+      fac_free_textbook,
+      received_central_scholarship,
+      name_central_scholarship,
+      received_state_scholarship,
+      received_other_scholarship,
+      scholarship_amount,
+      fac_provided_cwsn,
+      SLD_type,
+      aut_spec_disorder,
+      ADHD,
+      inv_ext_curr_activity,
+      vocational_course,
+      trade_sector_id,
+      job_role_id,
+      pre_app_exam_vocationalsubject,
+      bpl_card_no,
+      ann_card_no,
     } = req.body;
 
-    if (!studentFullName) return res.status(400).json({ success: false, message: "Student name is required." });
-    if (!studentEmail) return res.status(400).json({ success: false, message: "Student email is required." });
-    if (!studentPassword) return res.status(400).json({ success: false, message: "Student password is required." });
-    if (!studentJoiningDate) return res.status(400).json({ success: false, message: "Student joining date is required." });
-    if (!studentClass) return res.status(400).json({ success: false, message: "Student class is required." });
+    if (!studentFullName)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student name is required." });
+    if (!studentEmail)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student email is required." });
+    if (!studentPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student password is required." });
+    if (!studentJoiningDate)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student joining date is required." });
+    if (!studentClass)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student class is required." });
 
-    const existingStudent = await NewStudentModel.findOne({ email: studentEmail, schoolId });
+    const existingStudent = await NewStudentModel.findOne({
+      email: studentEmail,
+      schoolId,
+    });
     if (existingStudent) {
       return res.status(400).json({
         success: false,
@@ -1389,40 +1918,75 @@ exports.createStudentOnlyThirdParty = async (req, res) => {
     const studentHashedPassword = await hashPassword(studentPassword);
 
     const files = req.files || [];
-    let studentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
-    const studentFile = files.studentPhoto || files.find(f => f.fieldname === "studentImage");
-    const fatherFile = files.find(f => f.fieldname === "fatherImage");
-    const motherFile = files.find(f => f.fieldname === "motherImage");
-    const guardianFile = files.find(f => f.fieldname === "guardianImage");
+    let studentImageResult = {},
+      fatherImageResult = {},
+      motherImageResult = {},
+      guardianImageResult = {};
+    const studentFile =
+      files.studentPhoto || files.find((f) => f.fieldname === "studentImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     if (studentFile) {
       const fileKey = `students/${Date.now()}-${studentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: studentFile.buffer, ContentType: studentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: studentFile.buffer,
+        ContentType: studentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       studentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const studentAdmissionNumberToUse = studentAdmissionNumber && studentAdmissionNumber.trim() !== "" 
-      ? studentAdmissionNumber 
-      : await generateAdmissionNumber(schoolId, NewStudentModel);
+    const studentAdmissionNumberToUse =
+      studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
+        ? studentAdmissionNumber
+        : await generateAdmissionNumber(schoolId, NewStudentModel);
 
     // Match NewStudentModel schema
     const studentData = await NewStudentModel.create({
@@ -1451,10 +2015,18 @@ exports.createStudentOnlyThirdParty = async (req, res) => {
       remarks,
       transport,
       base64: undefined,
-      studentImage: studentImageResult.url ? studentImageResult : { public_id: "", url: "" },
-      fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
-      motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
-      guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+      studentImage: studentImageResult.url
+        ? studentImageResult
+        : { public_id: "", url: "" },
+      fatherImage: fatherImageResult.url
+        ? fatherImageResult
+        : { public_id: "", url: "" },
+      motherImage: motherImageResult.url
+        ? motherImageResult
+        : { public_id: "", url: "" },
+      guardianImage: guardianImageResult.url
+        ? guardianImageResult
+        : { public_id: "", url: "" },
       admissionNumber: studentAdmissionNumberToUse,
       isGenerated: !studentAdmissionNumber,
       religion,
@@ -1525,10 +2097,16 @@ exports.createStudentOnlyThirdParty = async (req, res) => {
       },
     });
 
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
-    const schoolName = schoolDetails?.schoolName || 'Your School';
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
+    const schoolName = schoolDetails?.schoolName || "Your School";
     const studentEmailContent = `Admission created for ${studentFullName} at ${schoolName}. Awaiting approval.`;
-    await sendEmail(studentEmail, "Student Admission Confirmation", studentEmailContent);
+    await sendEmail(
+      studentEmail,
+      "Student Admission Confirmation",
+      studentEmailContent
+    );
 
     return res.status(201).json({
       success: true,
@@ -1552,7 +2130,9 @@ exports.createParentOnlyThirdParty = async (req, res) => {
   try {
     const { schoolId } = req.body;
     const session = req.user.session;
-    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    const hasAccess = req.user.assignedSchools.some(
+      (s) => s.schoolId === schoolId
+    );
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -1561,15 +2141,34 @@ exports.createParentOnlyThirdParty = async (req, res) => {
     }
 
     const {
-      fatherName, motherName, guardianName, parentEmail, parentPassword, parentContact,
-      parentIncome, parentQualification, parentAdmissionNumber,
+      fatherName,
+      motherName,
+      guardianName,
+      parentEmail,
+      parentPassword,
+      parentContact,
+      parentIncome,
+      parentQualification,
+      parentAdmissionNumber,
     } = req.body;
 
-    if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
-    if (!parentEmail) return res.status(400).json({ success: false, message: "Parent email is required." });
-    if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
+    if (!fatherName)
+      return res
+        .status(400)
+        .json({ success: false, message: "Father's name is required." });
+    if (!parentEmail)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent email is required." });
+    if (!parentPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent password is required." });
 
-    const existingParent = await ParentModel.findOne({ email: parentEmail, schoolId });
+    const existingParent = await ParentModel.findOne({
+      email: parentEmail,
+      schoolId,
+    });
     if (existingParent) {
       return res.status(400).json({
         success: false,
@@ -1580,40 +2179,70 @@ exports.createParentOnlyThirdParty = async (req, res) => {
     const parentHashedPassword = await hashPassword(parentPassword);
 
     const files = req.files || [];
-    let parentImageResult = {}, fatherImageResult = {}, motherImageResult = {}, guardianImageResult = {};
-    const parentFile = files.find(f => f.fieldname === "parentImage");
-    const fatherFile = files.find(f => f.fieldname === "fatherImage");
-    const motherFile = files.find(f => f.fieldname === "motherImage");
-    const guardianFile = files.find(f => f.fieldname === "guardianImage");
+    let parentImageResult = {},
+      fatherImageResult = {},
+      motherImageResult = {},
+      guardianImageResult = {};
+    const parentFile = files.find((f) => f.fieldname === "parentImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     if (parentFile) {
       const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: parentFile.buffer,
+        ContentType: parentFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       parentImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (fatherFile) {
       const fileKey = `parents/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       fatherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (motherFile) {
       const fileKey = `parents/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       motherImageResult = { public_id: fileKey, url: minioData.Location };
     }
     if (guardianFile) {
-      const fileKey = `parents/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `parents/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       const minioData = await s3.upload(params).promise();
       guardianImageResult = { public_id: fileKey, url: minioData.Location };
     }
 
-    const parentAdmissionNumberToUse = parentAdmissionNumber && parentAdmissionNumber.trim() !== "" 
-      ? parentAdmissionNumber 
-      : await generateAdmissionNumber(schoolId, ParentModel);
+    const parentAdmissionNumberToUse =
+      parentAdmissionNumber && parentAdmissionNumber.trim() !== ""
+        ? parentAdmissionNumber
+        : await generateAdmissionNumber(schoolId, ParentModel);
 
     // Match ParentModel schema
     const parentData = await ParentModel.create({
@@ -1629,10 +2258,18 @@ exports.createParentOnlyThirdParty = async (req, res) => {
       status: "active",
       contact: parentContact,
       role: "parent",
-      parentImage: parentImageResult.url ? parentImageResult : { public_id: "", url: "" },
-      fatherImage: fatherImageResult.url ? fatherImageResult : { public_id: "", url: "" },
-      motherImage: motherImageResult.url ? motherImageResult : { public_id: "", url: "" },
-      guardianImage: guardianImageResult.url ? guardianImageResult : { public_id: "", url: "" },
+      parentImage: parentImageResult.url
+        ? parentImageResult
+        : { public_id: "", url: "" },
+      fatherImage: fatherImageResult.url
+        ? fatherImageResult
+        : { public_id: "", url: "" },
+      motherImage: motherImageResult.url
+        ? motherImageResult
+        : { public_id: "", url: "" },
+      guardianImage: guardianImageResult.url
+        ? guardianImageResult
+        : { public_id: "", url: "" },
       admissionNumber: parentAdmissionNumberToUse,
       base64: undefined,
       income: parentIncome ? Number(parentIncome) : undefined,
@@ -1671,20 +2308,43 @@ exports.linkStudentToParentThirdParty = async (req, res) => {
     const parent = await ParentModel.findOne({ parentId });
 
     if (!student || !parent) {
-      return res.status(404).json({ success: false, message: "Student or parent not found." });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student or parent not found." });
     }
 
-    const assignedSchoolIds = req.user.assignedSchools.map(school => school.schoolId);
-    if (!assignedSchoolIds.includes(student.schoolId) || !assignedSchoolIds.includes(parent.schoolId)) {
-      return res.status(403).json({ success: false, message: "You do not have access to link students or parents from this school." });
+    const assignedSchoolIds = req.user.assignedSchools.map(
+      (school) => school.schoolId
+    );
+    if (
+      !assignedSchoolIds.includes(student.schoolId) ||
+      !assignedSchoolIds.includes(parent.schoolId)
+    ) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message:
+            "You do not have access to link students or parents from this school.",
+        });
     }
 
     if (student.session !== session || parent.session !== session) {
-      return res.status(400).json({ success: false, message: "Student and parent must belong to the same session." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Student and parent must belong to the same session.",
+        });
     }
 
     if (student.parentId) {
-      return res.status(400).json({ success: false, message: "Student is already linked to a parent." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Student is already linked to a parent.",
+        });
     }
 
     student.parentId = parentId; // Use parentId (UUID)
@@ -1695,28 +2355,38 @@ exports.linkStudentToParentThirdParty = async (req, res) => {
     parent.studentNames.push(student.studentName);
     await parent.save();
 
-    return res.status(200).json({ success: true, message: "Student linked to parent successfully", student, parent });
+    return res
+      .status(200)
+      .json({
+        success: true,
+        message: "Student linked to parent successfully",
+        student,
+        parent,
+      });
   } catch (error) {
     console.error("Error in linkStudentToParentThirdParty:", error);
-    return res.status(500).json({ success: false, message: "Failed to link student to parent.", error: error.message });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to link student to parent.",
+        error: error.message,
+      });
   }
 };
-
-
-
 
 // Function to generate DVS photo number
 const generatePhotoNumber = async () => {
   const lastPhoto = await PhotoModel.findOne()
     .sort({ photoNo: -1 })
     .select("photoNo");
-  
+
   let nextNumber = 1;
   if (lastPhoto && lastPhoto.photoNo) {
     const numberPart = parseInt(lastPhoto.photoNo.replace("DVS", ""));
     nextNumber = numberPart + 1;
   }
-  
+
   return `DVS${nextNumber.toString().padStart(5, "0")}`;
 };
 
@@ -1729,7 +2399,12 @@ exports.createInitialStudentPhoto = async (req, res) => {
     const session = req.user?.session;
     const assignedThirdParty = req.user?.userId;
 
-    if (!req.user || !req.user.assignedSchools || !session || !assignedThirdParty) {
+    if (
+      !req.user ||
+      !req.user.assignedSchools ||
+      !session ||
+      !assignedThirdParty
+    ) {
       console.error("User data missing:", { user: req.user });
       return res.status(401).json({
         success: false,
@@ -1745,9 +2420,14 @@ exports.createInitialStudentPhoto = async (req, res) => {
     }
 
     console.log("Received schoolId:", schoolId);
-    console.log("Assigned schools:", req.user.assignedSchools.map(s => s.schoolId));
+    console.log(
+      "Assigned schools:",
+      req.user.assignedSchools.map((s) => s.schoolId)
+    );
 
-    const hasAccess = req.user.assignedSchools.some(s => s.schoolId === schoolId);
+    const hasAccess = req.user.assignedSchools.some(
+      (s) => s.schoolId === schoolId
+    );
     if (!hasAccess) {
       console.error("Access denied for schoolId:", schoolId);
       return res.status(403).json({
@@ -1757,11 +2437,13 @@ exports.createInitialStudentPhoto = async (req, res) => {
     }
 
     const files = req.files || [];
-    const studentFile = files.find(f => f.fieldname === "studentImage");
+    const studentFile = files.find((f) => f.fieldname === "studentImage");
     let studentImageResult = { public_id: "", url: "" };
 
     if (studentFile) {
-      const fileKey = `students/photos/${Date.now()}-${studentFile.originalname}`;
+      const fileKey = `students/photos/${Date.now()}-${
+        studentFile.originalname
+      }`;
       const params = {
         Bucket: process.env.MINIO_BUCKET,
         Key: fileKey,
@@ -1827,7 +2509,14 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     console.log("completeAdmissionFromPhoto - req.files:", req.files);
     console.log("completeAdmissionFromPhoto - req.user:", req.user);
 
-    const { photoId, schoolId, parentContact, studentName, class: studentClass, section } = req.body;
+    const {
+      photoId,
+      schoolId,
+      parentContact,
+      studentName,
+      class: studentClass,
+      section,
+    } = req.body;
     const session = req.user?.session || "2025-2026";
     const assignedThirdPartyId = req.user?.userId || req.user?._id;
 
@@ -1841,9 +2530,14 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
 
     let createdBy = req.user._id;
     if (!mongoose.Types.ObjectId.isValid(createdBy)) {
-      const thirdParty = await ThirdPartyUser.findOne({ userId: assignedThirdPartyId });
+      const thirdParty = await ThirdPartyUser.findOne({
+        userId: assignedThirdPartyId,
+      });
       if (!thirdParty) {
-        console.error("Third-party user not found for userId:", assignedThirdPartyId);
+        console.error(
+          "Third-party user not found for userId:",
+          assignedThirdPartyId
+        );
         return res.status(401).json({
           success: false,
           message: "Authenticated third-party user not found.",
@@ -1860,10 +2554,15 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       });
     }
 
-    const assignedSchools = Array.isArray(req.user.assignedSchools) ? req.user.assignedSchools : [];
+    const assignedSchools = Array.isArray(req.user.assignedSchools)
+      ? req.user.assignedSchools
+      : [];
     console.log("Received schoolId:", schoolId);
-    console.log("Assigned schools:", assignedSchools.map(s => s.schoolId));
-    const hasAccess = assignedSchools.some(s => s.schoolId === schoolId);
+    console.log(
+      "Assigned schools:",
+      assignedSchools.map((s) => s.schoolId)
+    );
+    const hasAccess = assignedSchools.some((s) => s.schoolId === schoolId);
     if (!hasAccess) {
       console.error("Access denied for schoolId:", schoolId);
       return res.status(403).json({
@@ -1889,33 +2588,122 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     }
 
     const {
-      studentEmail, studentPassword, studentDateOfBirth, studentGender, studentJoiningDate,
-      studentAddress, studentContact, studentCountry, studentSubject,
-      fatherName, motherName, guardianName, remarks, transport, parentEmail, parentPassword,
-      parentIncome, parentQualification, religion, caste, nationality, pincode, state, city,
-      studentAdmissionNumber, parentAdmissionNumber, rollNo,
+      studentEmail,
+      studentPassword,
+      studentDateOfBirth,
+      studentGender,
+      studentJoiningDate,
+      studentAddress,
+      studentContact,
+      studentCountry,
+      studentSubject,
+      fatherName,
+      motherName,
+      guardianName,
+      remarks,
+      transport,
+      parentEmail,
+      parentPassword,
+      parentIncome,
+      parentQualification,
+      religion,
+      caste,
+      nationality,
+      pincode,
+      state,
+      city,
+      studentAdmissionNumber,
+      parentAdmissionNumber,
+      rollNo,
       // UDISE+ fields
-      stu_id, studentUdiseClass, studentUdiseSection, roll_no, student_name, studentUdiseGender, DOB,
-      aadhar_no, aadhar_name, paddress, udisePlusPincode, mobile_no, alt_mobile_no, email_id,
-      mothere_tougue, category, minority, is_bpl, is_aay, ews_aged_group, is_cwsn, cwsn_imp_type,
-      ind_national, mainstramed_child, adm_no, adm_date, stu_stream, pre_year_schl_status, pre_year_class,
-      stu_ward, pre_class_exam_app, result_pre_exam, perc_pre_class, att_pre_class, fac_free_uniform,
-      fac_free_textbook, received_central_scholarship, name_central_scholarship, received_state_scholarship,
-      received_other_scholarship, scholarship_amount, fac_provided_cwsn, SLD_type, aut_spec_disorder,
-      ADHD, inv_ext_curr_activity, vocational_course, trade_sector_id, job_role_id, pre_app_exam_vocationalsubject,
-      bpl_card_no, ann_card_no,
+      stu_id,
+      studentUdiseClass,
+      studentUdiseSection,
+      roll_no,
+      student_name,
+      studentUdiseGender,
+      DOB,
+      aadhar_no,
+      aadhar_name,
+      paddress,
+      udisePlusPincode,
+      mobile_no,
+      alt_mobile_no,
+      email_id,
+      mothere_tougue,
+      category,
+      minority,
+      is_bpl,
+      is_aay,
+      ews_aged_group,
+      is_cwsn,
+      cwsn_imp_type,
+      ind_national,
+      mainstramed_child,
+      adm_no,
+      adm_date,
+      stu_stream,
+      pre_year_schl_status,
+      pre_year_class,
+      stu_ward,
+      pre_class_exam_app,
+      result_pre_exam,
+      perc_pre_class,
+      att_pre_class,
+      fac_free_uniform,
+      fac_free_textbook,
+      received_central_scholarship,
+      name_central_scholarship,
+      received_state_scholarship,
+      received_other_scholarship,
+      scholarship_amount,
+      fac_provided_cwsn,
+      SLD_type,
+      aut_spec_disorder,
+      ADHD,
+      inv_ext_curr_activity,
+      vocational_course,
+      trade_sector_id,
+      job_role_id,
+      pre_app_exam_vocationalsubject,
+      bpl_card_no,
+      ann_card_no,
     } = req.body;
 
     // Validation
-    if (!studentEmail) return res.status(400).json({ success: false, message: "Student email is required." });
-    if (!studentPassword) return res.status(400).json({ success: false, message: "Student password is required." });
-    if (!studentJoiningDate) return res.status(400).json({ success: false, message: "Student joining date is required." });
-    if (!fatherName) return res.status(400).json({ success: false, message: "Father's name is required." });
-    if (!parentEmail) return res.status(400).json({ success: false, message: "Parent email is required." });
-    if (!parentPassword) return res.status(400).json({ success: false, message: "Parent password is required." });
-    if (!parentContact) return res.status(400).json({ success: false, message: "Parent contact is required." });
+    if (!studentEmail)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student email is required." });
+    if (!studentPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student password is required." });
+    if (!studentJoiningDate)
+      return res
+        .status(400)
+        .json({ success: false, message: "Student joining date is required." });
+    if (!fatherName)
+      return res
+        .status(400)
+        .json({ success: false, message: "Father's name is required." });
+    if (!parentEmail)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent email is required." });
+    if (!parentPassword)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent password is required." });
+    if (!parentContact)
+      return res
+        .status(400)
+        .json({ success: false, message: "Parent contact is required." });
 
-    const existingStudent = await NewStudentModel.findOne({ email: studentEmail, schoolId });
+    const existingStudent = await NewStudentModel.findOne({
+      email: studentEmail,
+      schoolId,
+    });
     if (existingStudent) {
       return res.status(400).json({
         success: false,
@@ -1931,13 +2719,21 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     let motherImageResult = { public_id: "", url: "" };
     let guardianImageResult = { public_id: "", url: "" };
 
-    const fatherFile = files.find(f => f.fieldname === "fatherImage");
-    const motherFile = files.find(f => f.fieldname === "motherImage");
-    const guardianFile = files.find(f => f.fieldname === "guardianImage");
+    const fatherFile = files.find((f) => f.fieldname === "fatherImage");
+    const motherFile = files.find((f) => f.fieldname === "motherImage");
+    const guardianFile = files.find((f) => f.fieldname === "guardianImage");
 
     if (fatherFile) {
-      const fileKey = `students/father/${Date.now()}-${fatherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: fatherFile.buffer, ContentType: fatherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/father/${Date.now()}-${
+        fatherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: fatherFile.buffer,
+        ContentType: fatherFile.mimetype,
+        ACL: "public-read",
+      };
       try {
         const minioData = await s3.upload(params).promise();
         fatherImageResult = { public_id: fileKey, url: minioData.Location };
@@ -1953,8 +2749,16 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       }
     }
     if (motherFile) {
-      const fileKey = `students/mother/${Date.now()}-${motherFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: motherFile.buffer, ContentType: motherFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/mother/${Date.now()}-${
+        motherFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: motherFile.buffer,
+        ContentType: motherFile.mimetype,
+        ACL: "public-read",
+      };
       try {
         const minioData = await s3.upload(params).promise();
         motherImageResult = { public_id: fileKey, url: minioData.Location };
@@ -1970,8 +2774,16 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       }
     }
     if (guardianFile) {
-      const fileKey = `students/guardian/${Date.now()}-${guardianFile.originalname}`;
-      const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: guardianFile.buffer, ContentType: guardianFile.mimetype, ACL: "public-read" };
+      const fileKey = `students/guardian/${Date.now()}-${
+        guardianFile.originalname
+      }`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: guardianFile.buffer,
+        ContentType: guardianFile.mimetype,
+        ACL: "public-read",
+      };
       try {
         const minioData = await s3.upload(params).promise();
         guardianImageResult = { public_id: fileKey, url: minioData.Location };
@@ -1987,14 +2799,18 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       }
     }
 
-    const studentAdmissionNumberToUse = studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
-      ? studentAdmissionNumber
-      : await generateAdmissionNumber(schoolId, NewStudentModel);
+    const studentAdmissionNumberToUse =
+      studentAdmissionNumber && studentAdmissionNumber.trim() !== ""
+        ? studentAdmissionNumber
+        : await generateAdmissionNumber(schoolId, NewStudentModel);
 
     // Use provided values if available, else fall back to photo record
-    const finalStudentName = studentName?.trim() || photo.studentName || student_name || "Unknown";
-    const finalClass = studentClass || photo.class || studentUdiseClass || "Unknown";
-    const finalSection = section || photo.section || studentUdiseSection || null;
+    const finalStudentName =
+      studentName?.trim() || photo.studentName || student_name || "Unknown";
+    const finalClass =
+      studentClass || photo.class || studentUdiseClass || "Unknown";
+    const finalSection =
+      section || photo.section || studentUdiseSection || null;
 
     const studentData = await NewStudentModel.create({
       studentId: uuidv4(),
@@ -2101,7 +2917,10 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
     if (parentAdmissionNumber) {
       parentData = await ParentModel.findOneAndUpdate(
         { admissionNumber: parentAdmissionNumber, schoolId },
-        { $push: { studentIds: studentData._id }, $addToSet: { studentNames: finalStudentName } },
+        {
+          $push: { studentIds: studentData._id },
+          $addToSet: { studentNames: finalStudentName },
+        },
         { new: true }
       );
       if (!parentData) {
@@ -2111,11 +2930,17 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
         });
       }
     } else {
-      const parentFile = files.find(f => f.fieldname === "parentImage");
+      const parentFile = files.find((f) => f.fieldname === "parentImage");
       let parentImageResult = { public_id: "", url: "" };
       if (parentFile) {
         const fileKey = `parents/${Date.now()}-${parentFile.originalname}`;
-        const params = { Bucket: process.env.MINIO_BUCKET, Key: fileKey, Body: parentFile.buffer, ContentType: parentFile.mimetype, ACL: "public-read" };
+        const params = {
+          Bucket: process.env.MINIO_BUCKET,
+          Key: fileKey,
+          Body: parentFile.buffer,
+          ContentType: parentFile.mimetype,
+          ACL: "public-read",
+        };
         try {
           const minioData = await s3.upload(params).promise();
           parentImageResult = { public_id: fileKey, url: minioData.Location };
@@ -2131,7 +2956,10 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
         }
       }
 
-      const parentAdmissionNumberGenerated = await generateAdmissionNumber(schoolId, ParentModel);
+      const parentAdmissionNumberGenerated = await generateAdmissionNumber(
+        schoolId,
+        ParentModel
+      );
       parentData = await ParentModel.create({
         parentId: uuidv4(),
         schoolId,
@@ -2164,13 +2992,22 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       await studentData.save();
 
       const parentEmailContent = `<p>Your login credentials are as follows:</p><p>Email: ${parentEmail}</p><p>Password: ${parentPassword}</p>`;
-      await sendEmail(parentEmail, "Parent Login Credentials", parentEmailContent);
+      await sendEmail(
+        parentEmail,
+        "Parent Login Credentials",
+        parentEmailContent
+      );
     }
 
-    const schoolDetails = await AdminInfo.findOne({ schoolId }).select('schoolName image.url');
-    const schoolName = schoolDetails?.schoolName || 'Your School';
-    const schoolImageUrl = schoolDetails?.image?.url || 'https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg';
-    const softwareLogoUrl = 'https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png';
+    const schoolDetails = await AdminInfo.findOne({ schoolId }).select(
+      "schoolName image.url"
+    );
+    const schoolName = schoolDetails?.schoolName || "Your School";
+    const schoolImageUrl =
+      schoolDetails?.image?.url ||
+      "https://digitalvidyasaarthi.in/static/media/welcome.8b61029bfec85910cb94.jpg";
+    const softwareLogoUrl =
+      "https://digitalvidyasaarthi.in/static/media/digitalvidya.37858264ee730ad2cc10.png";
 
     const studentEmailContent = `
       <!DOCTYPE html>
@@ -2219,13 +3056,18 @@ exports.completeAdmissionFromPhoto = async (req, res) => {
       </body>
       </html>
     `;
-    await sendEmail(studentEmail, "Admission Confirmation", studentEmailContent);
+    await sendEmail(
+      studentEmail,
+      "Admission Confirmation",
+      studentEmailContent
+    );
 
     await PhotoModel.deleteOne({ photoId });
 
     return res.status(201).json({
       success: true,
-      message: "Admission created successfully from photo record and is pending admin approval.",
+      message:
+        "Admission created successfully from photo record and is pending admin approval.",
       student: studentData,
       parent: parentData,
     });
@@ -2247,7 +3089,15 @@ exports.getPhotoRecords = async (req, res) => {
     console.log("getPhotoRecords - req.query:", req.query);
     console.log("getPhotoRecords - req.user:", req.user);
 
-    const { schoolId, studentName, class: studentClass, section, photoNo, page = 1, limit = 10 } = req.query;
+    const {
+      schoolId,
+      studentName,
+      class: studentClass,
+      section,
+      photoNo,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
     if (!req.user || !req.user.session) {
       console.error("User data missing:", { user: req.user });
@@ -2258,7 +3108,10 @@ exports.getPhotoRecords = async (req, res) => {
     }
 
     if (!Array.isArray(req.user.assignedSchools)) {
-      console.error("assignedSchools is not an array:", req.user.assignedSchools);
+      console.error(
+        "assignedSchools is not an array:",
+        req.user.assignedSchools
+      );
       return res.status(500).json({
         success: false,
         message: "User schools data is invalid.",
@@ -2266,9 +3119,12 @@ exports.getPhotoRecords = async (req, res) => {
     }
 
     console.log("Received schoolId:", schoolId);
-    console.log("Assigned schools:", req.user.assignedSchools.map(s => s.schoolId));
+    console.log(
+      "Assigned schools:",
+      req.user.assignedSchools.map((s) => s.schoolId)
+    );
 
-    const assignedSchoolIds = req.user.assignedSchools.map(s => s.schoolId);
+    const assignedSchoolIds = req.user.assignedSchools.map((s) => s.schoolId);
     let filterSchoolIds = assignedSchoolIds;
 
     if (schoolId) {
@@ -2305,7 +3161,9 @@ exports.getPhotoRecords = async (req, res) => {
     const skip = (parsedPage - 1) * parsedLimit;
 
     const photos = await PhotoModel.find(query)
-      .select("photoId photoNo schoolId session studentName class section studentImage createdAt assignedThirdParty")
+      .select(
+        "photoId photoNo schoolId session studentName class section studentImage createdAt assignedThirdParty"
+      )
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parsedLimit)
@@ -2342,7 +3200,8 @@ exports.toggleIsPrinted = async (req, res) => {
     if (!Array.isArray(studentIds) || typeof isPrinted !== "boolean") {
       return res.status(400).json({
         success: false,
-        message: "Invalid payload. 'studentIds' must be an array and 'isPrinted' a boolean.",
+        message:
+          "Invalid payload. 'studentIds' must be an array and 'isPrinted' a boolean.",
       });
     }
 
@@ -2355,8 +3214,10 @@ exports.toggleIsPrinted = async (req, res) => {
     }
 
     // Check access
-    const assignedSchools = Array.isArray(req.user.assignedSchools) ? req.user.assignedSchools : [];
-    const hasAccess = assignedSchools.some(s => s.schoolId === schoolId);
+    const assignedSchools = Array.isArray(req.user.assignedSchools)
+      ? req.user.assignedSchools
+      : [];
+    const hasAccess = assignedSchools.some((s) => s.schoolId === schoolId);
     if (!hasAccess) {
       console.error("Access denied for schoolId:", schoolId);
       return res.status(403).json({

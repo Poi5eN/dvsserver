@@ -1309,15 +1309,16 @@ exports.cancelFeePayment = async (req, res) => {
     }
 
     // Find the fee history entry to cancel
-    const feeToCancel = feeStatus.feeHistory.find(
+    const historyIndex = feeStatus.feeHistory.findIndex(
       (fee) => fee.feeReceiptNumber === feeReceiptNumber
     );
-    if (!feeToCancel) {
+    if (historyIndex === -1) {
       return res.status(404).json({
         success: false,
         message: "Fee receipt number not found.",
       });
     }
+    const feeToCancel = feeStatus.feeHistory[historyIndex];
     if (feeToCancel.status === "canceled") {
       return res.status(400).json({
         success: false,
@@ -1348,6 +1349,80 @@ exports.cancelFeePayment = async (req, res) => {
         return map;
       }, {});
 
+    // Helper to get previous value (paid, concession, exemption) for a specific fee from prior history
+    const getPrevValue = (feeType, feeItem, valueKey) => {
+      for (let i = historyIndex - 1; i >= 0; i--) {
+        if (feeStatus.feeHistory[i].status === "active") {
+          const prevFees = feeStatus.feeHistory[i][feeType === 'regular' ? 'regularFees' : 'additionalFees'];
+          const prevFee = prevFees.find(f => 
+            f.month === feeItem.month && 
+            (feeType === 'regular' || f.name === feeItem.name)
+          );
+          if (prevFee) {
+            return prevFee[valueKey] || 0;
+          }
+        }
+      }
+      return 0;
+    };
+
+    // Revert monthlyDues for regular fees
+    feeToCancel.regularFees.forEach((canceledFee) => {
+      const monthlyDue = feeStatus.monthlyDues.regularDues.find(
+        (d) => d.month === canceledFee.month
+      );
+      if (monthlyDue) {
+        const foundPrev = getPrevValue('regular', canceledFee, 'paidAmount') !== undefined; // Check if prev exists
+        const deltaPaid = canceledFee.paidAmount - getPrevValue('regular', canceledFee, 'paidAmount');
+        const deltaConcession = canceledFee.concessionApplied - getPrevValue('regular', canceledFee, 'concessionApplied');
+        const deltaExemption = canceledFee.exemptionApplied - getPrevValue('regular', canceledFee, 'exemptionApplied');
+
+        monthlyDue.paidAmount -= deltaPaid;
+        monthlyDue.dueAmount += deltaPaid;
+        monthlyDue.concessionApplied -= deltaConcession;
+        monthlyDue.dueAmount += deltaConcession;
+        monthlyDue.exemptionApplied -= deltaExemption;
+        monthlyDue.dueAmount += deltaExemption;
+
+        monthlyDue.status = monthlyDue.dueAmount === 0 ? "Paid" : (monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0 ? "Unpaid" : "Partial");
+
+        // Remove if new in this payment and now unpaid
+        if (!foundPrev && monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0) {
+          feeStatus.monthlyDues.regularDues = feeStatus.monthlyDues.regularDues.filter(
+            (d) => d.month !== canceledFee.month
+          );
+        }
+      }
+    });
+
+    // Revert monthlyDues for additional fees
+    feeToCancel.additionalFees.forEach((canceledFee) => {
+      const monthlyDue = feeStatus.monthlyDues.additionalDues.find(
+        (d) => d.name === canceledFee.name && (d.month === canceledFee.month || (!d.month && !canceledFee.month))
+      );
+      if (monthlyDue) {
+        const foundPrev = getPrevValue('additional', canceledFee, 'paidAmount') !== undefined;
+        const deltaPaid = canceledFee.paidAmount - getPrevValue('additional', canceledFee, 'paidAmount');
+        const deltaConcession = canceledFee.concessionApplied - getPrevValue('additional', canceledFee, 'concessionApplied');
+        const deltaExemption = canceledFee.exemptionApplied - getPrevValue('additional', canceledFee, 'exemptionApplied');
+
+        monthlyDue.paidAmount -= deltaPaid;
+        monthlyDue.dueAmount += deltaPaid;
+        monthlyDue.concessionApplied -= deltaConcession;
+        monthlyDue.dueAmount += deltaConcession;
+        monthlyDue.exemptionApplied -= deltaExemption;
+        monthlyDue.dueAmount += deltaExemption;
+
+        monthlyDue.status = monthlyDue.dueAmount === 0 ? "Paid" : (monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0 ? "Unpaid" : "Partial");
+
+        if (!foundPrev && monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0) {
+          feeStatus.monthlyDues.additionalDues = feeStatus.monthlyDues.additionalDues.filter(
+            (d) => !(d.name === canceledFee.name && (d.month === canceledFee.month || (!d.month && !canceledFee.month)))
+          );
+        }
+      }
+    });
+
     // Mark fee history as canceled and reset its payment details
     feeToCancel.status = "canceled";
     feeToCancel.totalAmountPaid = 0;
@@ -1370,30 +1445,11 @@ exports.cancelFeePayment = async (req, res) => {
       fee.status = "Unpaid";
     });
 
-    // Revert monthlyDues by removing or resetting dues affected by this payment
-    feeStatus.monthlyDues.regularDues =
-      feeStatus.monthlyDues.regularDues.filter(
-        (due) =>
-          !feeToCancel.regularFees.some(
-            (canceledFee) => canceledFee.month === due.month
-          )
-      );
-    feeStatus.monthlyDues.additionalDues =
-      feeStatus.monthlyDues.additionalDues.filter(
-        (due) =>
-          !feeToCancel.additionalFees.some(
-            (canceledFee) =>
-              canceledFee.name === due.name &&
-              (canceledFee.month === due.month ||
-                (!canceledFee.month && !due.month))
-          )
-      );
-
     // Restore past dues
     feeStatus.pastDues =
       (feeStatus.pastDues || 0) + (feeToCancel.pastDuesPaid || 0);
 
-    // Recalculate overall totals
+    // Recalculate overall totals (excluding canceled)
     feeStatus.overallAmountPaid = Math.max(
       0,
       feeStatus.feeHistory.reduce(
@@ -1419,14 +1475,13 @@ exports.cancelFeePayment = async (req, res) => {
       )
     );
 
-    // Recalculate total dues based on remaining active fee history entries
+    // Correctly recalculate total dues from monthlyDues
     feeStatus.dues =
-      feeStatus.feeHistory.reduce(
-        (sum, fh) => sum + (fh.status === "active" ? fh.totalDues || 0 : 0),
-        0
-      ) + (feeStatus.pastDues || 0);
+      feeStatus.monthlyDues.regularDues.reduce((sum, d) => sum + d.dueAmount, 0) +
+      feeStatus.monthlyDues.additionalDues.reduce((sum, d) => sum + d.dueAmount, 0) +
+      (feeStatus.pastDues || 0);
 
-    // If no dues remain, reset dues to 0
+    // If no dues remain, reset to 0
     if (
       feeStatus.monthlyDues.regularDues.length === 0 &&
       feeStatus.monthlyDues.additionalDues.length === 0 &&
@@ -1442,7 +1497,6 @@ exports.cancelFeePayment = async (req, res) => {
         unifiedReceiptNumber: feeToCancel.unifiedReceiptNumber,
       });
       if (unifiedReceipt) {
-        // Check if all related fee histories are canceled
         const relatedFeeStatuses = await FeeStatus.find({
           schoolId,
           "feeHistory.unifiedReceiptNumber": feeToCancel.unifiedReceiptNumber,

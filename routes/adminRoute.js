@@ -104,6 +104,7 @@ router.get("/fees", verifyToken, admin.getFeeStructures);
 router.get("/fees/all", verifyToken, admin.getAllFees);
 router.put('/fees/:feeStructureId', verifyToken, admin.updateFees)
 router.delete('/fees/:feeStructureId', verifyToken, admin.deleteFees)
+router.post("/fees/fix-frequency", verifyToken, admin.fixFeeFrequency);
 // BULK FEES CREATE AND EDIT OPTIONS
 router.post('/fees/bulk', verifyToken, admin.bulkCreateFees)
 router.put('/fees/bulk', verifyToken, admin.bulkEditFees)

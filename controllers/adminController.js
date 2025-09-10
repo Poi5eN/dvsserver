@@ -1362,6 +1362,64 @@ exports.getAllTeachers = async (req, res) => {
 
 // --------------------------------Fee Controller--------------------------------------\\
 
+// Fix fee frequency for existing fees
+exports.fixFeeFrequency = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    if (!schoolId || !session) {
+      return res.status(400).json({
+        success: false,
+        message: "School ID and session are required from authenticated admin.",
+      });
+    }
+
+    // Find all fees for this school and session
+    const fees = await FeeStructure.find({ schoolId, session });
+
+    let updatedCount = 0;
+    let errors = [];
+
+    for (const fee of fees) {
+      try {
+        const correctFrequency = getFrequencyFromFeeType(fee.feeType);
+
+        // Check if frequency needs to be updated
+        if (fee.frequency !== correctFrequency) {
+          await FeeStructure.updateOne(
+            { _id: fee._id },
+            { $set: { frequency: correctFrequency } }
+          );
+
+          updatedCount++;
+        }
+      } catch (error) {
+        console.error(`Error updating fee ${fee._id}:`, error);
+        errors.push({ feeId: fee._id, error: error.message });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Fee frequency fix completed",
+      data: {
+        totalFeesProcessed: fees.length,
+        feesUpdated: updatedCount,
+        errors: errors.length > 0 ? errors : undefined
+      }
+    });
+
+  } catch (error) {
+    console.error("fixFeeFrequency:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
+
 // Important utility function needed by both controllers
 const getFrequencyFromFeeType = (feeType) => {
   switch (feeType.toLowerCase()) {

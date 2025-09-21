@@ -4,6 +4,8 @@ const getDataUri = require("../utils/dataUri");
 const Attendance = require("../models/attendance");
 const { startOfMonth, endOfMonth } = require("date-fns");
 const teacherPayment = require("../models/teacherPayment");
+const AssignmentModel = require("../models/assignmentModel");
+const ExamModel = require("../models/examModel");
 
 exports.createStudyMaterial = async (req, res) => {
   try {
@@ -393,6 +395,80 @@ exports.getPayment = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Payment Details are not getting Successfully",
+      error: error.message,
+    });
+  }
+};
+
+// Get assignments for teacher's class and section
+exports.getTeacherAssignments = async (req, res) => {
+  try {
+    const { className, section } = req.query;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    // Use teacher's class if not provided in query
+    const teacherClass = className || req.user.classTeacher;
+    const teacherSection = section || req.user.section;
+
+    const filter = {
+      schoolId,
+      session,
+      ...(teacherClass ? { className: teacherClass } : {}),
+      ...(teacherSection ? { section: teacherSection } : {}),
+    };
+
+    const assignments = await AssignmentModel.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('createdBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: "Assignments fetched successfully",
+      assignments,
+    });
+  } catch (error) {
+    console.error("Error in getTeacherAssignments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Assignments not fetched due to error",
+      error: error.message,
+    });
+  }
+};
+
+// Get exams for teacher's class and section
+exports.getTeacherExams = async (req, res) => {
+  try {
+    const { className, section } = req.query;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    // Use teacher's class if not provided in query
+    const teacherClass = className || req.user.classTeacher;
+    const teacherSection = section || req.user.section;
+
+    const filter = {
+      schoolId,
+      session,
+      ...(teacherClass ? { className: teacherClass } : {}),
+      ...(teacherSection ? { section: teacherSection } : {}),
+    };
+
+    const exams = await ExamModel.find(filter)
+      .sort({ startDate: -1 })
+      .populate('createdBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: "Exams fetched successfully",
+      exams,
+    });
+  } catch (error) {
+    console.error("Error in getTeacherExams:", error);
+    res.status(500).json({
+      success: false,
+      message: "Exams not fetched due to error",
       error: error.message,
     });
   }

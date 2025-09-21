@@ -197,6 +197,7 @@ router.delete("/notice/:noticeId", verifyToken, admin.deleteNotice);
 // CURRICULUM RELATED CONTROLLERS FLOW
 router.post("/syllabus", verifyToken, uploads, admin.createSyllabus);
 router.get("/syllabus", verifyToken, admin.getSyllabuses);
+router.get("/getAllCurriculum", verifyToken, admin.getAllCurriculum);
 router.put("/syllabus/:syllabusId", verifyToken, uploads, admin.updateSyllabus);
 router.delete("/syllabus/:syllabusId", verifyToken, admin.deleteSyllabus);
 
@@ -206,6 +207,7 @@ router.delete("/syllabus/:syllabusId", verifyToken, admin.deleteSyllabus);
 // ASSIGNMENT RELATED CONTROLLERS FLOW
 router.post("/task", verifyToken, uploads, admin.createTask);
 router.get("/task", verifyToken, admin.getTasks);
+router.get("/getAllAssignment", verifyToken, admin.getAllAssignment);
 router.put("/task/:taskId", verifyToken, uploads, admin.updateTask);
 router.delete("/task/:taskId", verifyToken, admin.deleteTask);
 

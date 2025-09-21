@@ -1299,7 +1299,6 @@ exports.cancelFeePayment = async (req, res) => {
       });
     }
 
-    // Fetch fee status
     let feeStatus = await FeeStatus.findOne({ schoolId, studentId });
     if (!feeStatus) {
       return res.status(404).json({
@@ -1308,7 +1307,6 @@ exports.cancelFeePayment = async (req, res) => {
       });
     }
 
-    // Find the fee history entry to cancel
     const historyIndex = feeStatus.feeHistory.findIndex(
       (fee) => fee.feeReceiptNumber === feeReceiptNumber
     );
@@ -1326,7 +1324,6 @@ exports.cancelFeePayment = async (req, res) => {
       });
     }
 
-    // Fetch student and fee structure for original amounts
     const student = await NewStudentModel.findOne({
       schoolId,
       studentId,
@@ -1372,7 +1369,7 @@ exports.cancelFeePayment = async (req, res) => {
         (d) => d.month === canceledFee.month
       );
       if (monthlyDue) {
-        const foundPrev = getPrevValue('regular', canceledFee, 'paidAmount') !== undefined; // Check if prev exists
+        const foundPrev = getPrevValue('regular', canceledFee, 'paidAmount') !== undefined;
         const deltaPaid = canceledFee.paidAmount - getPrevValue('regular', canceledFee, 'paidAmount');
         const deltaConcession = canceledFee.concessionApplied - getPrevValue('regular', canceledFee, 'concessionApplied');
         const deltaExemption = canceledFee.exemptionApplied - getPrevValue('regular', canceledFee, 'exemptionApplied');
@@ -1384,9 +1381,12 @@ exports.cancelFeePayment = async (req, res) => {
         monthlyDue.exemptionApplied -= deltaExemption;
         monthlyDue.dueAmount += deltaExemption;
 
-        monthlyDue.status = monthlyDue.dueAmount === 0 ? "Paid" : (monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0 ? "Unpaid" : "Partial");
+        monthlyDue.status = monthlyDue.dueAmount === 0 
+          ? "Paid" 
+          : (monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0 
+            ? "Unpaid" 
+            : "Partial");
 
-        // Remove if new in this payment and now unpaid
         if (!foundPrev && monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0) {
           feeStatus.monthlyDues.regularDues = feeStatus.monthlyDues.regularDues.filter(
             (d) => d.month !== canceledFee.month
@@ -1413,7 +1413,11 @@ exports.cancelFeePayment = async (req, res) => {
         monthlyDue.exemptionApplied -= deltaExemption;
         monthlyDue.dueAmount += deltaExemption;
 
-        monthlyDue.status = monthlyDue.dueAmount === 0 ? "Paid" : (monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0 ? "Unpaid" : "Partial");
+        monthlyDue.status = monthlyDue.dueAmount === 0 
+          ? "Paid" 
+          : (monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0 
+            ? "Unpaid" 
+            : "Partial");
 
         if (!foundPrev && monthlyDue.paidAmount === 0 && monthlyDue.concessionApplied === 0 && monthlyDue.exemptionApplied === 0) {
           feeStatus.monthlyDues.additionalDues = feeStatus.monthlyDues.additionalDues.filter(
@@ -1423,33 +1427,22 @@ exports.cancelFeePayment = async (req, res) => {
       }
     });
 
-    // Mark fee history as canceled and reset its payment details
+    // Mark fee history as canceled but preserve original payment details
     feeToCancel.status = "canceled";
-    feeToCancel.totalAmountPaid = 0;
-    feeToCancel.concessionApplied = 0;
-    feeToCancel.exemptionApplied = 0;
-    feeToCancel.totalDues = feeToCancel.totalFeeAmount; // Restore original dues
-    feeToCancel.pastDuesPaid = 0;
-    feeToCancel.regularFees.forEach((fee) => {
-      fee.paidAmount = 0;
-      fee.concessionApplied = 0;
-      fee.exemptionApplied = 0;
-      fee.dueAmount = regularFeeMap.Monthly;
-      fee.status = "Unpaid";
-    });
-    feeToCancel.additionalFees.forEach((fee) => {
-      fee.paidAmount = 0;
-      fee.concessionApplied = 0;
-      fee.exemptionApplied = 0;
-      fee.dueAmount = additionalFeeMap[fee.name]?.amount || 0;
-      fee.status = "Unpaid";
-    });
+    // Do NOT reset the following fields to preserve historical data:
+    // feeToCancel.totalAmountPaid
+    // feeToCancel.concessionApplied
+    // feeToCancel.exemptionApplied
+    // feeToCancel.totalDues
+    // feeToCancel.pastDuesPaid
+    // feeToCancel.regularFees[].paidAmount, .concessionApplied, .exemptionApplied, .dueAmount
+    // feeToCancel.additionalFees[].paidAmount, .concessionApplied, .exemptionApplied, .dueAmount
 
     // Restore past dues
     feeStatus.pastDues =
       (feeStatus.pastDues || 0) + (feeToCancel.pastDuesPaid || 0);
 
-    // Recalculate overall totals (excluding canceled)
+    // Recalculate overall totals (excluding canceled entries)
     feeStatus.overallAmountPaid = Math.max(
       0,
       feeStatus.feeHistory.reduce(
@@ -1475,13 +1468,12 @@ exports.cancelFeePayment = async (req, res) => {
       )
     );
 
-    // Correctly recalculate total dues from monthlyDues
+    // Recalculate total dues from monthlyDues
     feeStatus.dues =
       feeStatus.monthlyDues.regularDues.reduce((sum, d) => sum + d.dueAmount, 0) +
       feeStatus.monthlyDues.additionalDues.reduce((sum, d) => sum + d.dueAmount, 0) +
       (feeStatus.pastDues || 0);
 
-    // If no dues remain, reset to 0
     if (
       feeStatus.monthlyDues.regularDues.length === 0 &&
       feeStatus.monthlyDues.additionalDues.length === 0 &&
@@ -1511,6 +1503,15 @@ exports.cancelFeePayment = async (req, res) => {
         );
         if (allCanceled) {
           unifiedReceipt.status = "canceled";
+          unifiedReceipt.totalAmountPaid = 0; // Reset to 0 since all related fees are canceled
+          unifiedReceipt.totalDues = relatedFeeStatuses.reduce(
+            (sum, fs) =>
+              sum +
+              fs.monthlyDues.regularDues.reduce((s, d) => s + d.dueAmount, 0) +
+              fs.monthlyDues.additionalDues.reduce((s, d) => s + d.dueAmount, 0) +
+              (fs.pastDues || 0),
+            0
+          );
           await unifiedReceipt.save();
         }
       }

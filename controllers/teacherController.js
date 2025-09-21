@@ -5,7 +5,7 @@ const Attendance = require("../models/attendance");
 const { startOfMonth, endOfMonth } = require("date-fns");
 const teacherPayment = require("../models/teacherPayment");
 const AssignmentModel = require("../models/assignmentModel");
-const ExamModel = require("../models/examModel");
+const ExamModel = require("../models/exam");
 
 exports.createStudyMaterial = async (req, res) => {
   try {
@@ -470,6 +470,71 @@ exports.getTeacherExams = async (req, res) => {
       success: false,
       message: "Exams not fetched due to error",
       error: error.message,
+    });
+  }
+};
+
+// Create exam for teacher
+exports.createTeacherExam = async (req, res) => {
+  try {
+    const {
+      name,
+      examType,
+      term,
+      className,
+      section,
+      subjects,
+      startDate,
+      endDate,
+      resultPublishDate,
+      gradeSystem
+    } = req.body;
+
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+    const createdBy = req.user._id;
+
+    // Validate required fields
+    if (!name || !examType || !term || !className || !section || !subjects || !startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "All required fields must be provided"
+      });
+    }
+
+    // Create the exam
+    const newExam = new ExamModel({
+      schoolId,
+      session,
+      createdBy,
+      name,
+      examType,
+      term,
+      classNames: [className],
+      sections: [section],
+      subjects: subjects.map(subject => ({
+        name: subject.name,
+        assessments: subject.assessments || []
+      })),
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      resultPublishDate: resultPublishDate ? new Date(resultPublishDate) : new Date(endDate),
+      gradeSystem: gradeSystem || 'Standard'
+    });
+
+    const savedExam = await newExam.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Exam created successfully",
+      exam: savedExam
+    });
+  } catch (error) {
+    console.error("Error in createTeacherExam:", error);
+    res.status(500).json({
+      success: false,
+      message: "Exam creation failed due to error",
+      error: error.message
     });
   }
 };

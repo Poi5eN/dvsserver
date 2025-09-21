@@ -12411,7 +12411,7 @@ exports.getAllAssignment = async (req, res) => {
       ...req.sessionFilter,
     };
 
-    const allAssignment = await AssignmentModel.find({
+    const allAssignment = await Assignment.find({
       ...filter,
       schoolId: req.user.schoolId,
     });

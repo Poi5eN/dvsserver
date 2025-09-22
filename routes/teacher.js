@@ -1,7 +1,6 @@
 const {Router} = require('express')
 const { createStudyMaterial, getStudyMaterial, deleteStudyMaterial ,createAttendance,getAttendanceByMonth,
-    createSalaryPayment,getPayment,updateAttendance, getAttendanceForStudent, getTeacherAssignments, getTeacherExams, createTeacherExam} = require('../controllers/teacherController')
-const { getAllAssignment, getAllCurriculum } = require('../controllers/adminController')
+    createSalaryPayment,getPayment,updateAttendance, getAttendanceForStudent, getTeacherAssignments, getTeacherExams, createTeacherExam, getAllTeacherAssignments, getAllTeacherCurriculum} = require('../controllers/teacherController')
 const { singleUpload } = require('../middleware/multer')
 const verifyToken = require('../middleware/auth')
 const router = Router()
@@ -22,7 +21,7 @@ router.get('/getPaymentHistory', verifyToken, getPayment);
 router.get('/assignments', verifyToken, getTeacherAssignments);
 router.get('/exams', verifyToken, getTeacherExams);
 router.post('/exams', verifyToken, createTeacherExam);
-router.get('/getAllAssignment', verifyToken, getAllAssignment);
-router.get('/getAllCurriculum', verifyToken, getAllCurriculum);
+router.get('/getAllAssignment', verifyToken, getAllTeacherAssignments);
+router.get('/getAllCurriculum', verifyToken, getAllTeacherCurriculum);
 
 module.exports = router

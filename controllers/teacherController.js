@@ -6,6 +6,7 @@ const { startOfMonth, endOfMonth } = require("date-fns");
 const teacherPayment = require("../models/teacherPayment");
 const AssignmentModel = require("../models/assignmentModel");
 const ExamModel = require("../models/exam");
+const s3 = require("../config/minio");
 
 exports.createStudyMaterial = async (req, res) => {
   try {
@@ -26,8 +27,16 @@ exports.createStudyMaterial = async (req, res) => {
         link,
       });
     } else {
-      const fileDataUri = getDataUri(file);
-      const mycloud = await cloudinary.v2.uploader.upload(fileDataUri.content);
+      // Use Minio for file uploads
+      const fileKey = `study-materials/${req.user.schoolId}/${Date.now()}-${file.originalname}`;
+      const params = {
+        Bucket: process.env.MINIO_BUCKET,
+        Key: fileKey,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read',
+      };
+      const minioData = await s3.upload(params).promise();
       study = await studyMaterial.create({
         schoolId: req.user.schoolId,
         session: req.user.session, // Added session
@@ -35,8 +44,8 @@ exports.createStudyMaterial = async (req, res) => {
         title,
         type,
         file: {
-          public_id: mycloud.public_id,
-          url: mycloud.secure_url,
+          public_id: fileKey,
+          url: minioData.Location,
         },
       });
     }
@@ -535,6 +544,80 @@ exports.createTeacherExam = async (req, res) => {
       success: false,
       message: "Exam creation failed due to error",
       error: error.message
+    });
+  }
+};
+
+// Get all assignments for teacher (teacher-specific version)
+exports.getAllTeacherAssignments = async (req, res) => {
+  try {
+    const { assignmentId, className, section } = req.query;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    // Use teacher's class and section if not provided
+    const teacherClass = className || req.user.classTeacher;
+    const teacherSection = section || req.user.section;
+
+    const filter = {
+      schoolId,
+      session,
+      ...(assignmentId ? { _id: assignmentId } : {}),
+      ...(teacherClass ? { className: teacherClass } : {}),
+      ...(teacherSection ? { section: teacherSection } : {}),
+    };
+
+    const allAssignment = await AssignmentModel.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('updatedBy', 'name email');
+
+    res.status(200).json({
+      success: true,
+      message: "Assignments fetched successfully",
+      allAssignment,
+    });
+  } catch (error) {
+    console.error("Error in getAllTeacherAssignments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Assignments not fetched due to error",
+      error: error.message,
+    });
+  }
+};
+
+// Get all curriculum for teacher (teacher-specific version)
+exports.getAllTeacherCurriculum = async (req, res) => {
+  try {
+    const { curriculumId, className } = req.query;
+    const schoolId = req.user.schoolId;
+    const session = req.user.session;
+
+    // Use teacher's class if not provided
+    const teacherClass = className || req.user.classTeacher;
+
+    const filter = {
+      schoolId,
+      session,
+      ...(curriculumId ? { _id: curriculumId } : {}),
+      ...(teacherClass ? { className: teacherClass } : {}),
+    };
+
+    const CurriculumModel = require("../models/curriculumModel");
+    const allCurriculum = await CurriculumModel.find(filter)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      message: "Curriculum fetched successfully",
+      allCurriculum,
+    });
+  } catch (error) {
+    console.error("Error in getAllTeacherCurriculum:", error);
+    res.status(500).json({
+      success: false,
+      message: "Curriculum not fetched due to error",
+      error: error.message,
     });
   }
 };

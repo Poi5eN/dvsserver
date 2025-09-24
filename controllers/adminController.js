@@ -8,6 +8,9 @@ const crypto = require("crypto");
 const s3 = require("../config/minio");
 const axios = require("axios");
 const moment = require('moment');
+const bcrypt = require('bcrypt');
+const Subject = require("../models/subjectModel");
+const CurriculumModel = require("../models/curriculumModel");
 
 const {
   setTokenCookie,
@@ -25,6 +28,7 @@ const ItemModel = require("../models/inventoryItemModel");
 const Return = require("../models/returnModel");
 const {Sale, Counter} = require("../models/salesModel");
 const PurchaseOrder = require("../models/purchaseOrderModel");
+const GradeSettingsModel = require("../models/gradeSettingsModel");
 const NewRegistrationModel = require("../models/newRegistrationModel");
 const NewStudentModel = require("../models/newStudentModel");
 const ParentModel = require("../models/parentModel");
@@ -11150,6 +11154,101 @@ exports.getClassesGrouped = async (req, res) => {
   }
 };
 
+// Grade Settings Management
+exports.getGradeSettings = async (req, res) => {
+  try {
+    const { schoolId } = req.user;
+
+    // Check if grade settings exist for this school
+    let gradeSettings = await GradeSettingsModel.findOne({ schoolId });
+
+    if (!gradeSettings) {
+      // Create default grade settings if none exist
+      const defaultSettings = {
+        schoolId,
+        scholastic: [
+          { grade: "A+", minMarks: 91, maxMarks: 100, description: "Outstanding" },
+          { grade: "A", minMarks: 81, maxMarks: 90, description: "Excellent" },
+          { grade: "B+", minMarks: 71, maxMarks: 80, description: "Very Good" },
+          { grade: "B", minMarks: 61, maxMarks: 70, description: "Good" },
+          { grade: "C+", minMarks: 51, maxMarks: 60, description: "Satisfactory" },
+          { grade: "C", minMarks: 41, maxMarks: 50, description: "Acceptable" },
+          { grade: "D", minMarks: 33, maxMarks: 40, description: "Needs Improvement" },
+          { grade: "E", minMarks: 0, maxMarks: 32, description: "Unsatisfactory" }
+        ],
+        coScholastic: [
+          { grade: "A+", description: "Outstanding Performance" },
+          { grade: "A", description: "Excellent Performance" },
+          { grade: "B+", description: "Very Good Performance" },
+          { grade: "B", description: "Good Performance" },
+          { grade: "C+", description: "Satisfactory Performance" },
+          { grade: "C", description: "Acceptable Performance" },
+          { grade: "D", description: "Needs Improvement" },
+          { grade: "E", description: "Unsatisfactory Performance" }
+        ]
+      };
+
+      gradeSettings = await GradeSettingsModel.create(defaultSettings);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Grade settings fetched successfully",
+      settings: gradeSettings
+    });
+  } catch (error) {
+    console.error("Error fetching grade settings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching grade settings",
+      error: error.message
+    });
+  }
+};
+
+exports.saveGradeSettings = async (req, res) => {
+  try {
+    const { schoolId } = req.user;
+    const { scholastic, coScholastic } = req.body;
+
+    // Validate input
+    if (!scholastic || !coScholastic) {
+      return res.status(400).json({
+        success: false,
+        message: "Both scholastic and co-scholastic settings are required"
+      });
+    }
+
+    // Update or create grade settings
+    const gradeSettings = await GradeSettingsModel.findOneAndUpdate(
+      { schoolId },
+      {
+        schoolId,
+        scholastic,
+        coScholastic,
+        updatedAt: new Date()
+      },
+      {
+        new: true,
+        upsert: true
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Grade settings saved successfully",
+      settings: gradeSettings
+    });
+  } catch (error) {
+    console.error("Error saving grade settings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error saving grade settings",
+      error: error.message
+    });
+  }
+};
+
 // Get a class by classId
 exports.getClassById = async (req, res) => {
   try {
@@ -13041,8 +13140,8 @@ exports.addAdminMark = async (req, res) => {
         studentId,
         examId,
         schoolId: req.user.schoolId,
-        className: exam.className, // Get from exam instead of user
-        section: exam.section, // Get from exam instead of user
+        className: exam.classNames[0] || '', // Get first class from exam
+        section: exam.sections[0] || '', // Get first section from exam
         marks,
         coScholasticMarks: coScholasticMarks || [],
       });
@@ -13396,8 +13495,8 @@ exports.bulkUploadAdminMarks = async (req, res) => {
             session,
             examId,
             studentId: studentData.studentId,
-            className: exam.className,
-            section: exam.section,
+            className: exam.classNames[0] || '',
+            section: exam.sections[0] || '',
             marks: validatedMarks,
             coScholasticMarks: studentData.coScholasticMarks || [],
           });

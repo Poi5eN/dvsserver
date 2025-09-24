@@ -1,3 +1,4 @@
 node_modules
-.env
 obfuscate.js
+# Don't ignore .env file - we need it for Docker build
+# .env

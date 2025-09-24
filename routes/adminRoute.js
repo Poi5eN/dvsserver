@@ -255,6 +255,10 @@ router.get('/pendingAdmissions', verifyToken, admin.getPendingAdmissions);
 router.put('/promotionOfStudent', verifyToken, admin.promotionOfStudent);
 router.get('/getStudentsBySession', verifyToken, admin.getStudentsBySession);
 
+// GRADE SETTINGS ROUTES
+router.get('/gradeSettings', verifyToken, admin.getGradeSettings);
+router.post('/gradeSettings', verifyToken, admin.saveGradeSettings);
+
 
 
 

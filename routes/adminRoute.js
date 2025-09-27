@@ -288,7 +288,7 @@ router.post('/addSibling', verifyToken, uploads, admin.addSibling);
 router.get('/students/inactive', verifyToken, singleUpload, admin.getDeactivatedStudents);
 router.get('/getRegistration/:registrationNumber', verifyToken, uploads, admin.getRegistrationByNumber);
 router.delete('/deleteRegistration/:registrationNumber', verifyToken, uploads, admin.deleteRegistration);
-router.get('/getAllStudentStatus', verifyToken, admin.getAllStudentStatus)
+router.get('/studentstatus', verifyToken, admin.getAllStudentStatus)
 router.get('/myKids', verifyToken, admin.getMyKids);
 
 

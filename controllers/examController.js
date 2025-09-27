@@ -1118,21 +1118,21 @@ exports.updateReportCard = async (req, res) => {
               )
               .map((assessmentName) => ({
                 assessmentName,
-                marksObtained: termData[assessmentName].marksObtained,
-                totalMarks: termData[assessmentName].totalMarks,
-                passingMarks: termData[assessmentName].passingMarks,
-                examDate: termData[assessmentName].examDate
+                marksObtained: termData[assessmentName]?.marksObtained || 0,
+                totalMarks: termData[assessmentName]?.totalMarks || 0,
+                passingMarks: termData[assessmentName]?.passingMarks || 0,
+                examDate: termData[assessmentName]?.examDate
                   ? moment(termData[assessmentName].examDate, "DD-MM-YYYY").toDate()
                   : null, // Parse examDate
-                startTime: termData[assessmentName].startTime
+                startTime: termData[assessmentName]?.startTime
                   ? moment(termData[assessmentName].startTime, "hh:mm a").toDate()
                   : null, // Parse startTime
-                endTime: termData[assessmentName].endTime
+                endTime: termData[assessmentName]?.endTime
                   ? moment(termData[assessmentName].endTime, "hh:mm a").toDate()
                   : null, // Parse endTime
               })),
-            total: termData.total,
-            grade: termData.grade,
+            total: termData?.total || 0,
+            grade: termData?.grade || "N/A",
           };
         })
         .filter(Boolean);

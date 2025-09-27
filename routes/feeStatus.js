@@ -19,7 +19,7 @@ router.post('/addPastDues', verifyToken, addPastDues);
 router.get('/getFeeStatus', verifyToken, getFeeStatus);
 router.get('/feeIncomeMonths', verifyToken, feeIncomeMonths);
 router.get('/feeHistory', verifyToken, getFeeHistory);
-router.get('/getAllStudentsFeeStatus', verifyToken, getAllStudentsFeeStatus);
+router.get('/studentsFeeStatus', verifyToken, getAllStudentsFeeStatus);
 router.get('/getFeeStatusByMonth', verifyToken, getFeeStatusByMonth);
 router.get('/getStudentFeeHistory/:admissionNumber', verifyToken, getStudentFeeHistory);
 router.get('/getStudentFeeInfo', verifyToken, getStudentFeeInfo);

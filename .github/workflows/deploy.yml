@@ -23,9 +23,17 @@ jobs:
       - name: Obfuscate code
         run: node obfuscate.js
 
+      - name: Verify obfuscated files
+        run: |
+          echo "Checking if dist directory exists..."
+          ls -la dist/
+          echo "Checking if key files exist..."
+          ls -la dist/server.js dist/app.js
+
       - name: Create .env file
         run: |
           echo "PORT=4000" > .env
+          echo "NODE_ENV=production" >> .env
           echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> .env
           echo "CLOUDINARY_CLIENT_NAME=${{ secrets.CLOUDINARY_CLIENT_NAME }}" >> .env
           echo "CLOUDINARY_CLIENT_API=${{ secrets.CLOUDINARY_CLIENT_API }}" >> .env
@@ -69,9 +77,22 @@ jobs:
           port: 22
           script: |
             cd /root/backend
-            docker build -t digiserver:latest .
+            echo "Current directory contents:"
+            ls -la
+            echo "Building Docker image..."
+            docker build -t digiserver:latest . || { echo "Docker build failed"; exit 1; }
+            echo "Stopping existing container..."
             docker stop digiserver || true
+            echo "Removing existing container..."
             docker rm digiserver || true
-            docker run -d -p 4000:4000 --name digiserver digiserver:latest
+            echo "Starting new container..."
+            docker run -d -p 4000:4000 --name digiserver digiserver:latest || { echo "Container start failed"; exit 1; }
+            echo "Checking container status..."
+            docker ps | grep digiserver
+            echo "Checking container logs..."
+            sleep 5
+            docker logs digiserver --tail 20
+            echo "Cleaning up old images..."
             docker image prune -a -f
             docker container prune -f
+            echo "Deployment completed successfully!"

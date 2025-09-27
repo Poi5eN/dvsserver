@@ -65,7 +65,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          source: "dist,package.json,Dockerfile,.env"
+          source: "dist,package.json,Dockerfile,.env,entrypoint.sh"
           target: "/root/backend"
 
       - name: Deploy on VPS and clean up

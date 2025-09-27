@@ -39,7 +39,7 @@ app.use(cookieParser())
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "All route is working fine"
+    message: "All routes are working fine - Updated 2025-01-27"
   })
 })
 

@@ -24,4 +24,9 @@ router.post('/exams', verifyToken, createTeacherExam);
 router.get('/getAllAssignment', verifyToken, getAllTeacherAssignments);
 router.get('/getAllCurriculum', verifyToken, getAllTeacherCurriculum);
 
+// Debug route to test if teacher routes are working
+router.get('/test', (req, res) => {
+    res.json({ success: true, message: "Teacher routes are working - Updated 2025-01-27" });
+});
+
 module.exports = router

@@ -11,11 +11,15 @@ RUN npm install
 # Copy obfuscated code
 COPY dist/ ./
 
-# Copy .env file (provided by CI/CD pipeline)
-COPY .env ./
+# Copy entrypoint script
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
+# Copy .env file if it exists (for CI/CD), otherwise entrypoint will create default
+COPY .env* ./
 
 # Expose port
 EXPOSE 4000
 
-# Start the app
-CMD ["node", "server.js"]
+# Start the app using entrypoint
+CMD ["./entrypoint.sh"]
